@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Kumo",
+    "slug": "kumo",
+    "scheme": "kumo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAF9F5",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ar.com.kumoclub.app"
+    },
+    "android": {
+      "package": "ar.com.kumoclub.app"
+    },
+    "extra": {
+      "note": "Configurá EXPO_PUBLIC_* en .env.local (Supabase, Google Maps)."
+    },
+    "plugins": [
+      "expo-font"
+    ]
+  }
+}

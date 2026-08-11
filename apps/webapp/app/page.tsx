@@ -1,0 +1,202 @@
+import { redirect } from 'next/navigation';
+import { urls } from '@kumo/shared';
+import { createClient } from '@/lib/supabase-server';
+import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost } from './AppClient';
+
+/** Landing: ahí está el login si no hay sesión. */
+const LANDING = urls.landing;
+
+const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function fmtDate(iso: string | null): string {
+  if (!iso) return 'a definir';
+  const d = new Date(iso + 'T00:00:00');
+  return `${String(d.getDate()).padStart(2, '0')} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
+}
+function daysUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((new Date(iso + 'T00:00:00').getTime() - today.getTime()) / 86400000);
+}
+
+type VaccinationRow = { id: string; name: string; status: string; applied_on: string | null; due_on: string | null };
+function mapVac(v: VaccinationRow): Vac {
+  const icon: Vac['icon'] = /despara/i.test(v.name) ? 'pill' : 'shield';
+  if (v.status === 'aplicada') {
+    return { id: v.id, name: v.name, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green', icon };
+  }
+  const days = daysUntil(v.due_on);
+  const near = days !== null && days <= 3;
+  return {
+    id: v.id,
+    name: v.name,
+    sub: `Próxima: ${fmtDate(v.due_on)}`,
+    status: days === null ? 'Pendiente' : days < 0 ? 'Vencida' : `En ${days} día${days === 1 ? '' : 's'}`,
+    tone: near ? 'lime' : 'amber',
+    icon,
+    reminder: near ? '⏰ Recordatorio: aplicala pronto' : undefined,
+    mark: true,
+  };
+}
+
+/** En la base las fotos se guardan como nombre de archivo (seed) o URL de Storage. */
+function imgSrc(photoUrl: string | null, fallback = 'default-pet.webp'): string {
+  const v = photoUrl ?? fallback;
+  return v.startsWith('http') ? v : `/img/${v}`;
+}
+
+type PetRow = { id: string; name: string; breed: string | null; age_years: number | null; weight_kg: number | null; microchip: string | null; neutered: boolean; photo_url: string | null; vaccinations: VaccinationRow[] };
+function mapPet(row: PetRow, memberNo: number, planName: string): Pet {
+  return {
+    id: row.id,
+    name: row.name,
+    plan: planName,
+    socio: `#${memberNo}`,
+    photo: imgSrc(row.photo_url),
+    breed: [row.breed ?? 'Mestizo', row.age_years != null ? `${row.age_years} años` : null, row.weight_kg != null ? `${row.weight_kg} kg` : null].filter(Boolean).join(' · '),
+    microchip: row.microchip ?? 'Sin chip',
+    castrado: row.neutered ? 'Sí' : 'No',
+    odonto: 'No activo',
+    vaccines: (row.vaccinations ?? []).map(mapVac),
+  };
+}
+
+function relTime(iso: string): string {
+  const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 60) return `hace ${mins} min`;
+  const hs = Math.round(mins / 60);
+  if (hs < 24) return `hace ${hs}h`;
+  const days = Math.round(hs / 24);
+  return days === 1 ? 'ayer' : `hace ${days} días`;
+}
+
+/** Distancia aproximada al centro de CABA (no tenemos la ubicación real del socio). */
+const CABA_LAT = -34.6037;
+const CABA_LNG = -58.3816;
+function haversineKm(lat: number, lng: number): number {
+  const R = 6371;
+  const dLat = ((lat - CABA_LAT) * Math.PI) / 180;
+  const dLng = ((lng - CABA_LNG) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((CABA_LAT * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
+}
+
+type ProviderRow = { id: string; name: string; category: string; zone: string; address: string | null; phone: string | null; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number | null; price_unit: string | null; photo_url: string | null; lat: number | null; lng: number | null };
+function mapProvider(row: ProviderRow): ProviderVM {
+  const km = row.lat != null && row.lng != null ? haversineKm(row.lat, row.lng) : 5;
+  return {
+    id: row.id, name: row.name, category: row.category, zone: row.zone, address: row.address ?? '', phone: row.phone ?? '',
+    instagram: row.instagram, website: row.website, about: row.about, rating: row.rating, reviews: row.reviews,
+    price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: imgSrc(row.photo_url), km,
+    badge: row.rating >= 4.9 ? 'Top rated' : 'Verificado',
+  };
+}
+
+function benefitIcon(category: string): BenefitVM['icon'] {
+  const c = category.toLowerCase();
+  if (/baño|estétic/.test(c)) return 'droplet';
+  if (/aliment|accesorio|juguete/.test(c)) return 'store';
+  if (/consulta|cirug/.test(c)) return 'cross';
+  return 'tag';
+}
+type BenefitRow = { id: string; name: string; category: string; discount: string };
+function mapBenefit(row: BenefitRow): BenefitVM {
+  return { id: row.id, name: row.name, category: row.category, discount: row.discount, icon: benefitIcon(row.category) };
+}
+
+type AnswerRow = { text: string; likes: number; best: boolean; created_at: string; profiles: { full_name: string } | { full_name: string }[] | null };
+type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; profiles: { full_name: string } | { full_name: string }[] | null; community_answers: AnswerRow[] };
+function authorName(p: { full_name: string } | { full_name: string }[] | null): string {
+  const row = Array.isArray(p) ? p[0] : p;
+  return row?.full_name?.split(' ')[0] ?? 'Socio';
+}
+function mapPost(row: PostRow): ForumPost {
+  return {
+    id: row.id,
+    cat: row.category,
+    trend: row.likes >= 20,
+    author: authorName(row.profiles),
+    meta: `${row.zone ?? 'General'} · ${relTime(row.created_at)}`,
+    title: row.title,
+    body: row.body,
+    replies: row.replies,
+    likes: row.likes,
+    answers: (row.community_answers ?? []).map((a) => ({ author: authorName(a.profiles), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best })),
+  };
+}
+
+const REINT_STATUS: Record<string, Reint['status']> = { en_revision: 'En revisión', aprobado: 'Aprobado', rechazado: 'Rechazado', acreditado: 'Acreditado' };
+type ReintRow = { id: string; provider_name: string; concept: string; amount: number; refund: number; status: string; requested_on: string };
+function mapReint(row: ReintRow): Reint {
+  return {
+    id: row.id,
+    place: row.provider_name,
+    detail: `${row.concept} · ${fmtDate(row.requested_on)}`,
+    spent: row.amount,
+    refund: row.refund,
+    status: REINT_STATUS[row.status] ?? 'En revisión',
+  };
+}
+
+export default async function Page() {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) redirect(LANDING);
+
+  const { data: profileRow } = await supabase
+    .from('profiles')
+    .select('member_no, full_name, email, phone, address, dni, plans(name, base_price)')
+    .eq('id', auth.user.id)
+    .single();
+  if (!profileRow) redirect(LANDING);
+
+  const plan = Array.isArray(profileRow.plans) ? profileRow.plans[0] : profileRow.plans;
+  const profile: Profile = {
+    id: auth.user.id,
+    firstName: profileRow.full_name.split(' ')[0] ?? profileRow.full_name,
+    fullName: profileRow.full_name,
+    memberNo: profileRow.member_no,
+    planName: plan?.name ?? '—',
+    planPrice: plan?.base_price ?? 0,
+    email: profileRow.email,
+    phone: profileRow.phone,
+    address: profileRow.address,
+    dni: profileRow.dni,
+  };
+
+  const { data: petsRows } = await supabase
+    .from('pets')
+    .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, status, applied_on, due_on)')
+    .eq('owner_id', auth.user.id);
+  const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(r as PetRow, profile.memberNo, profile.planName));
+
+  const { data: reintRows } = await supabase
+    .from('reimbursements')
+    .select('id, provider_name, concept, amount, refund, status, requested_on')
+    .eq('member_id', auth.user.id)
+    .order('requested_on', { ascending: false });
+  const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
+
+  const { data: contactRows } = await supabase
+    .from('emergency_contacts')
+    .select('id, name, phone, type, address, hours')
+    .eq('owner_id', auth.user.id);
+  const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));
+
+  const { data: providerRows } = await supabase
+    .from('providers')
+    .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, lat, lng')
+    .eq('status', 'verificado');
+  const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow));
+
+  const { data: benefitRows } = await supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo');
+  const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow));
+
+  const { data: postRows } = await supabase
+    .from('community_posts')
+    .select('id, category, title, body, zone, replies, likes, created_at, profiles(full_name), community_answers(text, likes, best, created_at, profiles(full_name))')
+    .order('created_at', { ascending: false });
+  const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow));
+
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} />;
+}

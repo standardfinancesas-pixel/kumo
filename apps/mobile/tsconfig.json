@@ -1,0 +1,27 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-native",
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    // Solo los @types de esta app: la raíz tiene @types/react 19 (para las
+    // apps web con Next 15) y mezclarlo con el 18 de React Native rompe
+    // ReactNode.
+    "typeRoots": [
+      "./node_modules/@types"
+    ],
+    "paths": {
+      "@kumo/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@kumo/shared/*": [
+        "../../packages/shared/src/*"
+      ]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx"
+  ]
+}
