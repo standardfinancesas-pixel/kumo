@@ -1015,3 +1015,4 @@ const styles = StyleSheet.create({
   tabbar: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.violet[200], backgroundColor: '#fff', paddingTop: 8, paddingBottom: 10 },
   tabitem: { flex: 1, alignItems: 'center' },
 });
+
