@@ -42,7 +42,7 @@ export default async function Page() {
   // ── Socios (para KPIs, distribución y la tabla) ──
   const { data: profileRows } = await supabase
     .from('profiles')
-    .select('member_no, full_name, status, joined_on, plans(name, base_price), pets(name)')
+    .select('id, member_no, full_name, status, joined_on, plans(name, base_price), pets(name)')
     .eq('role', 'socio');
   const socioList = profileRows ?? [];
   const planOf = (p: (typeof socioList)[number]) => (Array.isArray(p.plans) ? p.plans[0] : p.plans);
@@ -69,7 +69,7 @@ export default async function Page() {
     .sort((a, b) => PLAN_ORDER.indexOf(a.plan) - PLAN_ORDER.indexOf(b.plan));
 
   const socios: SocioRow[] = socioList.map((s) => ({
-    n: `#${s.member_no}`, nombre: s.full_name, mascota: (s.pets ?? []).map((p: { name: string }) => p.name).join(' + ') || '—',
+    id: s.id, n: `#${s.member_no}`, nombre: s.full_name, mascota: (s.pets ?? []).map((p: { name: string }) => p.name).join(' + ') || '—',
     plan: planOf(s)?.name ?? '—', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
   }));
 
@@ -100,8 +100,10 @@ export default async function Page() {
   const benefits: BenefitAdminVM[] = (benefitRows ?? []).map((b) => ({ id: b.id, name: b.name, category: b.category, discount: b.discount, planRequirement: b.plan_requirement, status: b.status }));
 
   // ── Planes ──
-  const { data: planRows } = await supabase.from('plans').select('id, name, tagline, base_price, perks, featured');
-  const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perksCount: (p.perks ?? []).length, featured: p.featured }));
+  // Por precio: da AMIGO → FAMILIA → VIP. Sin orden explícito, editar un plan
+  // lo manda al final de la lista (Postgres reubica la fila al hacer update).
+  const { data: planRows } = await supabase.from('plans').select('id, name, tagline, base_price, perks, featured').order('base_price');
+  const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perks: p.perks ?? [], featured: p.featured }));
 
   // ── FAQ ──
   const { data: faqRows } = await supabase.from('faqs').select('id, question, answer').order('order', { ascending: true });

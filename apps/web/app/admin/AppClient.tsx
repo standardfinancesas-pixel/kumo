@@ -17,11 +17,11 @@ const money = (n: number) => '$' + n.toLocaleString('es-AR');
 export type AdminProfile = { id: string; fullName: string };
 export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number };
 export type DistRow = { plan: string; socios: number; pct: number };
-export type SocioRow = { n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string };
+export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string };
 export type ColaRow = { id: string; socio: string; prestador: string; concepto: string; fecha: string; gastado: number; reintegro: number; flag?: string; receiptPath: string | null };
 export type HistRow = { socio: string; prestador: string; concepto: string; gastado: number; reintegro: number; estado: string };
 export type BenefitAdminVM = { id: string; name: string; category: string; discount: string; planRequirement: string; status: string };
-export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perksCount: number; featured: boolean };
+export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perks: string[]; featured: boolean };
 export type FaqVM = { id: string; question: string; answer: string };
 export type SettingsVM = { whatsapp: string; email: string };
 export type ProviderAdminRow = { id: string; nombre: string; rubro: string; zona: string; rating: string; estado: string; solicitado: string };
@@ -77,6 +77,28 @@ const estadoBadge = (e: string) => e === 'Al día' || e === 'Verificado' || e ==
   ? badge('rgb(251,243,226)', 'rgb(184,134,11)')
   : badge('rgb(251,232,239)', 'rgb(193,77,122)');
 
+/* ── Modal ─────────────────────────────────────────────────────── */
+const fieldLabel: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 6, display: 'block' };
+const btnPrimary: CSSProperties = { background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '12px 18px', borderRadius: 11, cursor: 'pointer' };
+const btnGhost: CSSProperties = { background: '#fff', border: '1px solid #e6e3f0', color: '#5b5670', fontWeight: 600, fontSize: 14, padding: '12px 18px', borderRadius: 11, cursor: 'pointer' };
+
+function Modal({ title, sub: subtitle, onClose, children, width = 520 }: { title: string; sub?: string; onClose: () => void; children: ReactNode; width?: number }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(33,30,51,0.6)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, padding: 22, maxWidth: width, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 18 }}>
+          <div>
+            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20 }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 13, color: '#8781a0', marginTop: 2 }}>{subtitle}</div>}
+          </div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: '#f4f2f9', border: 'none', borderRadius: 9, width: 30, height: 30, cursor: 'pointer', color: '#5b5670', fontSize: 16, flex: '0 0 auto' }}>×</button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /* ── Dashboard ─────────────────────────────────────────────────── */
 function Dashboard({ go, kpi, dist }: { go: (s: Screen) => void; kpi: KpiVM; dist: DistRow[] }) {
   const kpis = [
@@ -127,13 +149,120 @@ function Dashboard({ go, kpi, dist }: { go: (s: Screen) => void; kpi: KpiVM; dis
 }
 
 /* ── Socios ────────────────────────────────────────────────────── */
+type FichaData = {
+  email: string; phone: string | null; address: string | null; dni: string | null; joinedOn: string | null;
+  planName: string | null; planPrice: number | null;
+  pets: { id: string; name: string; type: string; breed: string | null; ageYears: number | null; microchip: string | null }[];
+  reintegros: { id: string; providerName: string; concept: string; amount: number; refund: number; status: string }[];
+};
+
+/** El detalle se pide al abrir la ficha, no con la tabla: son datos que solo se
+ *  miran de a un socio y así la lista carga liviana. */
+function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => void }) {
+  const [data, setData] = useState<FichaData | null>(null);
+  const [estado, setEstado] = useState<'cargando' | 'listo' | 'error'>('cargando');
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const [perfil, mascotas, reint] = await Promise.all([
+        supabase.from('profiles').select('email, phone, address, dni, joined_on, plans(name, base_price)').eq('id', socio.id).single(),
+        supabase.from('pets').select('id, name, type, breed, age_years, microchip').eq('owner_id', socio.id),
+        supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status').eq('member_id', socio.id).order('requested_on', { ascending: false }),
+      ]);
+      if (!vivo) return;
+      if (perfil.error || !perfil.data) { setEstado('error'); return; }
+      const p = perfil.data;
+      const plan = Array.isArray(p.plans) ? p.plans[0] : p.plans;
+      setData({
+        email: p.email, phone: p.phone, address: p.address, dni: p.dni, joinedOn: p.joined_on,
+        planName: plan?.name ?? null, planPrice: plan?.base_price ?? null,
+        pets: (mascotas.data ?? []).map((m) => ({ id: m.id, name: m.name, type: m.type, breed: m.breed, ageYears: m.age_years, microchip: m.microchip })),
+        reintegros: (reint.data ?? []).map((r) => ({ id: r.id, providerName: r.provider_name, concept: r.concept, amount: r.amount, refund: r.refund, status: r.status })),
+      });
+      setEstado('listo');
+    })();
+    return () => { vivo = false; };
+  }, [socio.id]);
+
+  const dato = (k: string, v: string) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #eeecf5', gap: 12 }}>
+      <span style={{ fontSize: 13, color: '#8781a0' }}>{k}</span>
+      <span style={{ fontSize: 13.5, fontWeight: 600, textAlign: 'right' }}>{v}</span>
+    </div>
+  );
+  const acreditado = (data?.reintegros ?? []).filter((r) => r.status === 'acreditado').reduce((a, r) => a + r.refund, 0);
+
+  return (
+    <Modal title={socio.nombre} sub={`${socio.n} · socio desde ${socio.desde}`} onClose={onClose} width={580}>
+      {estado === 'cargando' && <div style={{ padding: 36, textAlign: 'center', color: '#8781a0', fontSize: 14 }}>Cargando la ficha…</div>}
+      {estado === 'error' && <div style={{ padding: 30, textAlign: 'center', color: '#8781a0', fontSize: 14 }}>No pudimos cargar la ficha.</div>}
+      {estado === 'listo' && data && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={estadoBadge(socio.estado)}>{socio.estado}</span>
+            {data.planName && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>Plan {data.planName}{data.planPrice ? ` · ${money(data.planPrice)}/mes` : ''}</span>}
+          </div>
+          <div>
+            <div style={fieldLabel}>DATOS PERSONALES</div>
+            {dato('Email', data.email)}
+            {dato('Teléfono', data.phone || '—')}
+            {dato('DNI', data.dni || '—')}
+            {dato('Domicilio', data.address || '—')}
+          </div>
+          <div>
+            <div style={fieldLabel}>MASCOTAS ({data.pets.length})</div>
+            {data.pets.length === 0
+              ? <div style={{ fontSize: 13.5, color: '#8781a0' }}>Todavía no cargó ninguna.</div>
+              : data.pets.map((m) => (
+                  <div key={m.id} style={{ padding: '10px 0', borderBottom: '1px solid #eeecf5' }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name} <span style={{ fontWeight: 400, color: '#8781a0', fontSize: 13 }}>· {m.type}</span></div>
+                    <div style={{ fontSize: 12.5, color: '#8781a0' }}>
+                      {[m.breed, m.ageYears != null ? `${m.ageYears} años` : null, m.microchip ? `chip ${m.microchip}` : null].filter(Boolean).join(' · ') || 'sin datos'}
+                    </div>
+                  </div>
+                ))}
+          </div>
+          <div>
+            <div style={fieldLabel}>REINTEGROS ({data.reintegros.length})</div>
+            {data.reintegros.length === 0
+              ? <div style={{ fontSize: 13.5, color: '#8781a0' }}>Nunca pidió uno.</div>
+              : (
+                <>
+                  {data.reintegros.map((r) => (
+                    <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #eeecf5', gap: 12 }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.providerName}</div>
+                        <div style={{ fontSize: 12.5, color: '#8781a0' }}>{r.concept} · gastó {money(r.amount)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13.5, color: 'rgb(93,84,145)' }}>{money(r.refund)}</div>
+                        <div style={{ fontSize: 11.5, color: '#8781a0' }}>{r.status === 'en_revision' ? 'en revisión' : r.status}</div>
+                      </div>
+                    </div>
+                  ))}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, fontWeight: 700, fontSize: 14 }}>
+                    <span>Total acreditado</span>
+                    <span style={{ color: 'rgb(93,84,145)' }}>{money(acreditado)}</span>
+                  </div>
+                </>
+              )}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 function Socios({ socios }: { socios: SocioRow[] }) {
   const [plan, setPlan] = useState('Todos');
   const [estado, setEstado] = useState('Todos');
+  const [ficha, setFicha] = useState<SocioRow | null>(null);
   const list = socios.filter((s) => (plan === 'Todos' || s.plan === plan) && (estado === 'Todos' || s.estado === estado));
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
     <div>
+      {ficha && <FichaSocioModal socio={ficha} onClose={() => setFicha(null)} />}
       <h1 className="adm-h1" style={h1}>Socios</h1>
       <p style={sub}>{socios.length.toLocaleString('es-AR')} socios · hacé clic en un socio para ver su ficha</p>
       <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -151,7 +280,7 @@ function Socios({ socios }: { socios: SocioRow[] }) {
           <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'ESTADO'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
           <tbody>
             {list.map((s) => (
-              <tr key={s.n} className="adm-row" style={{ cursor: 'pointer' }}>
+              <tr key={s.n} className="adm-row" onClick={() => setFicha(s)} style={{ cursor: 'pointer' }}>
                 <td style={{ ...td, color: '#8781a0', fontWeight: 600 }}>{s.n}</td>
                 <td style={{ ...td, fontWeight: 600 }}>{s.nombre}</td>
                 <td style={td}>{s.mascota}</td>
@@ -281,9 +410,80 @@ function Reintegros({ cola, hist }: { cola: ColaRow[]; hist: HistRow[] }) {
 }
 
 /* ── Beneficios ────────────────────────────────────────────────── */
+/** Categorías y alcances que ya usa el catálogo, para no inventar variantes. */
+const BENEFIT_CATEGORIAS = ['Consultas y estudios', 'Cirugías y guardias', 'Alimentos y accesorios', 'Alimentos premium', 'Baño y estética'];
+const BENEFIT_PLANES = ['Todos los planes', 'Amigo, Familia, VIP', 'Familia, VIP', 'VIP'];
+
+function NuevoBeneficioModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState('');
+  const [category, setCategory] = useState(BENEFIT_CATEGORIAS[0]!);
+  const [discount, setDiscount] = useState('');
+  const [planRequirement, setPlanRequirement] = useState(BENEFIT_PLANES[0]!);
+  const [description, setDescription] = useState('');
+  const [zone, setZone] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const guardar = async () => {
+    if (!name.trim()) { setError('Poné el nombre del comercio.'); return; }
+    if (!discount.trim()) { setError('Poné el descuento (ej: -20%).'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('benefits').insert({
+      name: name.trim(), category, discount: discount.trim(), plan_requirement: planRequirement,
+      description: description.trim(), zone: zone.trim(), status: 'activo',
+    });
+    if (e) { setError('No pudimos guardarlo. Probá de nuevo.'); setBusy(false); return; }
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <Modal title="Nuevo beneficio" sub="Se publica activo y ya se ve en la app de los socios." onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div>
+          <label style={fieldLabel}>COMERCIO</label>
+          <input value={name} onChange={(e) => { setName(e.target.value); setError(''); }} style={inp} placeholder="Veterinaria del Parque" />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={fieldLabel}>CATEGORÍA</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} style={inp}>
+              {BENEFIT_CATEGORIAS.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={fieldLabel}>DESCUENTO</label>
+            <input value={discount} onChange={(e) => { setDiscount(e.target.value); setError(''); }} style={inp} placeholder="-20%" />
+          </div>
+        </div>
+        <div>
+          <label style={fieldLabel}>PARA QUÉ PLANES</label>
+          <select value={planRequirement} onChange={(e) => setPlanRequirement(e.target.value)} style={inp}>
+            {BENEFIT_PLANES.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={fieldLabel}>ZONA</label>
+          <input value={zone} onChange={(e) => setZone(e.target.value)} style={inp} placeholder="Palermo" />
+        </div>
+        <div>
+          <label style={fieldLabel}>DETALLE</label>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder="Qué incluye el beneficio." />
+        </div>
+        {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button onClick={onClose} style={btnGhost}>Cancelar</button>
+          <button disabled={busy} onClick={guardar} style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Crear beneficio'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [nuevoOpen, setNuevoOpen] = useState(false);
   const toggle = async (id: string, status: string) => {
     setBusyId(id);
     await supabase.from('benefits').update({ status: status === 'activo' ? 'pausado' : 'activo' }).eq('id', id);
@@ -292,9 +492,10 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
   };
   return (
     <div>
+      {nuevoOpen && <NuevoBeneficioModal onClose={() => setNuevoOpen(false)} onSaved={() => router.refresh()} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div><h1 className="adm-h1" style={{ ...h1, margin: 0 }}>Beneficios</h1><p style={{ ...sub, margin: '4px 0 0' }}>Comercios y descuentos de la red.</p></div>
-        <button style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '11px 18px', borderRadius: 12, cursor: 'pointer' }}>+ Nuevo beneficio</button>
+        <button onClick={() => setNuevoOpen(true)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '11px 18px', borderRadius: 12, cursor: 'pointer' }}>+ Nuevo beneficio</button>
       </div>
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -318,9 +519,68 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
 }
 
 /* ── Planes ────────────────────────────────────────────────────── */
+function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClose: () => void; onSaved: () => void }) {
+  const [price, setPrice] = useState(String(plan.basePrice));
+  const [tagline, setTagline] = useState(plan.tagline);
+  // Un beneficio por línea: es la forma más simple de editar un array de textos.
+  const [perks, setPerks] = useState(plan.perks.join('\n'));
+  const [featured, setFeatured] = useState(plan.featured);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const guardar = async () => {
+    const n = Number(price.replace(/\D/g, ''));
+    if (!n) { setError('El precio tiene que ser un número.'); return; }
+    setBusy(true); setError('');
+    const lista = perks.split('\n').map((l) => l.trim()).filter(Boolean);
+    const { error: e } = await supabase.from('plans')
+      .update({ base_price: n, tagline: tagline.trim(), perks: lista, featured })
+      .eq('id', plan.id);
+    if (e) { setError('No pudimos guardar los cambios.'); setBusy(false); return; }
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <Modal title={`Plan ${plan.name}`} sub="Los cambios se ven en la web y en la app enseguida." onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={fieldLabel}>PRECIO POR MES (ARS)</label>
+            <input value={price} onChange={(e) => { setPrice(e.target.value); setError(''); }} style={inp} inputMode="numeric" />
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#5b5670', cursor: 'pointer', paddingBottom: 11 }}>
+              <input type="checkbox" checked={featured} onChange={(e) => setFeatured(e.target.checked)} />
+              Destacado
+            </label>
+          </div>
+        </div>
+        <div>
+          <label style={fieldLabel}>BAJADA</label>
+          <input value={tagline} onChange={(e) => setTagline(e.target.value)} style={inp} placeholder="El favorito de los socios" />
+        </div>
+        <div>
+          <label style={fieldLabel}>BENEFICIOS · UNO POR LÍNEA</label>
+          <textarea value={perks} onChange={(e) => setPerks(e.target.value)} rows={7} style={{ ...inp, resize: 'vertical', fontFamily: '"DM Sans"', lineHeight: 1.6 }} />
+          <p style={{ fontSize: 12, color: '#a29dba', margin: '6px 0 0' }}>{perks.split('\n').filter((l) => l.trim()).length} beneficios</p>
+        </div>
+        {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button onClick={onClose} style={btnGhost}>Cancelar</button>
+          <button disabled={busy} onClick={guardar} style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function Planes({ plans }: { plans: PlanAdminVM[] }) {
+  const router = useRouter();
+  const [editando, setEditando] = useState<PlanAdminVM | null>(null);
   return (
     <div>
+      {editando && <EditarPlanModal plan={editando} onClose={() => setEditando(null)} onSaved={() => router.refresh()} />}
       <h1 className="adm-h1" style={h1}>Planes</h1>
       <p style={sub}>Editá precios, descripciones y beneficios. Los cambios se reflejan en la landing.</p>
       <div className="adm-3col" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
@@ -329,8 +589,8 @@ function Planes({ plans }: { plans: PlanAdminVM[] }) {
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18, color: 'rgb(93,84,145)' }}>{p.name}</div>
             <div style={{ fontSize: 13, color: '#8781a0', marginBottom: 12 }}>{p.tagline}</div>
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 30 }}>{money(p.basePrice)}</div>
-            <div style={{ fontSize: 12.5, color: '#8781a0', marginBottom: 16 }}>por mes · {p.perksCount} beneficios</div>
-            <button style={{ width: '100%', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 11, borderRadius: 11, cursor: 'pointer' }}>Editar plan</button>
+            <div style={{ fontSize: 12.5, color: '#8781a0', marginBottom: 16 }}>por mes · {p.perks.length} beneficios</div>
+            <button onClick={() => setEditando(p)} style={{ width: '100%', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 11, borderRadius: 11, cursor: 'pointer' }}>Editar plan</button>
           </div>
         ))}
       </div>
