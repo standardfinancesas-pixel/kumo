@@ -17,7 +17,8 @@
     "@supabase/supabase-js": "^2.45.4",
     "next": "15.5.23",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "resend": "^6.19.0"
   },
   "devDependencies": {
     "@fontsource/baloo-2": "5",

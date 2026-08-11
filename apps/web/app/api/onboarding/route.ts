@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
+import { sendBienvenida } from '@/lib/mail';
 
 /**
  * Alta real de socio. Corre en el servidor con la service-role key:
@@ -107,6 +108,17 @@ export async function POST(req: Request) {
     await db.auth.admin.deleteUser(userId);
     return NextResponse.json({ error: 'No se pudo crear la mascota.' }, { status: 500 });
   }
+
+  // El alta ya está hecha; el mail es un extra. Si falla no se revierte nada ni
+  // se le devuelve error al socio: quedaría afuera del club por un problema de
+  // mails, que sería peor.
+  await sendBienvenida({
+    to: socio.email,
+    firstName: socio.nombre.split(' ')[0] || socio.nombre,
+    petName: pet.nombre,
+    memberNo: profileRow.member_no,
+    planName: plan,
+  });
 
   return NextResponse.json({ memberNo: profileRow.member_no });
 }

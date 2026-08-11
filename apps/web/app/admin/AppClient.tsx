@@ -352,17 +352,39 @@ function Reintegros({ cola, hist }: { cola: ColaRow[]; hist: HistRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<ColaRow | null>(null);
+  const [aviso, setAviso] = useState('');
+
+  // Pasa por el endpoint (no por supabase directo) porque además de resolver le
+  // manda el mail al socio, y la API key de Resend es solo de servidor.
   const act = async (id: string, status: 'acreditado' | 'rechazado') => {
     setBusyId(id);
-    await supabase.from('reimbursements').update({ status }).eq('id', id);
+    setAviso('');
+    try {
+      const res = await fetch('/api/reintegros/resolver', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      const data = await res.json();
+      if (!res.ok) setAviso(data.error ?? 'No pudimos resolver la solicitud.');
+      else if (!data.mailEnviado) setAviso('Se resolvió, pero no salió el mail al socio. Avisale por otro canal.');
+    } catch {
+      setAviso('No pudimos resolver la solicitud. Revisá la conexión.');
+    }
     router.refresh();
     setBusyId(null);
   };
+
   return (
     <div>
       {detalle && <ComprobanteModal row={detalle} onClose={() => setDetalle(null)} />}
       <h1 className="adm-h1" style={h1}>Cola de reintegros</h1>
       <p style={sub}>Revisá y acreditá las solicitudes de los socios</p>
+      {aviso && (
+        <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', border: '1px solid rgb(240,226,190)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, fontWeight: 600, marginBottom: 16 }}>
+          {aviso}
+        </div>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 28 }}>
         {cola.map((c) => (
           <div key={c.id} className="adm-queue-card" style={{ ...card, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
