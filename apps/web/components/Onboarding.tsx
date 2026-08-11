@@ -2,7 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
-import { data, urls } from '@kumo/shared';
+import { data, urls, FOTO_TIPOS, FOTO_MAX } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /*
@@ -87,11 +87,37 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [done, setDone] = useState(false);
   const [memberNo, setMemberNo] = useState<number | null>(null);
+  const [avisoFoto, setAvisoFoto] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
   // paso 1
   const [pet, setPet] = useState({ nombre: initialPet ?? '', especie: initialType === 'gato' ? 'Gato' : 'Perro', sexo: 'Macho', castrado: 'Sí', raza: '', edad: '', peso: '', microchip: '', vet: '', foto: '' });
   const [petPhotoFile, setPetPhotoFile] = useState<File | null>(null);
+  const [fotoError, setFotoError] = useState('');
+
+  /** Se valida acá y no solo en el servidor: si el tipo no entra, antes el alta
+   *  respondía "listo" y la foto se perdía sin que nadie se enterara. */
+  const elegirFoto = (f?: File) => {
+    if (!f) return;
+    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) {
+      setFotoError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP. Si es una foto de iPhone, mandala desde "Fotos" y se convierte sola.`);
+      return;
+    }
+    if (f.size > FOTO_MAX) {
+      setFotoError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB. Probá con una más chica.`);
+      return;
+    }
+    setFotoError('');
+    setPet((p) => ({ ...p, foto: URL.createObjectURL(f) }));
+    setPetPhotoFile(f);
+  };
+
+  const usarEjemplo = (src: string) => {
+    if (petPhotoFile && !confirm('Si elegís una foto de ejemplo se descarta la que subiste. ¿Seguro?')) return;
+    setFotoError('');
+    setPet((p) => ({ ...p, foto: src }));
+    setPetPhotoFile(null);
+  };
   // paso 2
   const [socio, setSocio] = useState({ nombre: '', dni: '', fnac: '', domicilio: '', localidad: '', provincia: '', tel: '', email: '', password: '' });
   // paso 3
@@ -141,6 +167,7 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
       if (!res.ok) throw new Error(json.error || 'No se pudo completar el alta.');
       await supabase.auth.signInWithPassword({ email: socio.email, password: socio.password });
       setMemberNo(json.memberNo);
+      setAvisoFoto(json.photoError ?? null);
       setConfirmOpen(false);
       setDone(true);
     } catch (e) {
@@ -174,22 +201,32 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
           <div>
             <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, margin: '0 0 4px' }}>Tu mascota</h2>
             <p style={{ color: '#8781a0', fontSize: 15, margin: '0 0 22px' }}>Contanos sobre quién vas a cuidar.</p>
-            {/* Subí una foto (con fotos de ejemplo, igual al prototipo) */}
+            {/* Foto: la propia o una de ejemplo. Antes elegir un ejemplo
+                descartaba la foto subida en silencio y el socio se enteraba
+                recién al ver su carnet sin su mascota. Ahora siempre se dice
+                cuál de las dos está en uso, y se avisa al reemplazarla. */}
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Foto</label>
               <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-                <label style={{ width: 84, height: 84, borderRadius: 16, border: '1.5px dashed #c9c3e3', background: '#faf9fd', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flex: '0 0 auto' }}>
+                <label style={{ width: 84, height: 84, borderRadius: 16, border: petPhotoFile ? '2.5px solid #5D5491' : '1.5px dashed #c9c3e3', background: '#faf9fd', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flex: '0 0 auto' }}>
                   {pet.foto
                     ? <img src={pet.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     : <><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5" /><circle cx="12" cy="12" r="3.2" /><path d="M8 5l1.5-2h5L16 5" /></svg><span style={{ fontSize: 10.5, color: '#8781a0', marginTop: 6 }}>Subí una foto</span></>}
-                  <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) { setPet({ ...pet, foto: URL.createObjectURL(f) }); setPetPhotoFile(f); } }} />
+                  <input type="file" accept={FOTO_TIPOS.join(',')} style={{ display: 'none' }} onChange={(e) => elegirFoto(e.target.files?.[0])} />
                 </label>
                 {['/img/happy-dog.webp', '/img/plan-cat.webp', '/img/plan-dalmata-cut.webp'].map((src) => (
-                  <button key={src} type="button" onClick={() => { setPet({ ...pet, foto: src }); setPetPhotoFile(null); }} style={{ width: 62, height: 62, borderRadius: 14, overflow: 'hidden', border: pet.foto === src ? '2.5px solid #5D5491' : '2px solid #e6e3f0', padding: 0, cursor: 'pointer', background: '#fff', flex: '0 0 auto' }}>
+                  <button key={src} type="button" onClick={() => usarEjemplo(src)} style={{ width: 62, height: 62, borderRadius: 14, overflow: 'hidden', border: !petPhotoFile && pet.foto === src ? '2.5px solid #5D5491' : '2px solid #e6e3f0', padding: 0, cursor: 'pointer', background: '#fff', flex: '0 0 auto' }}>
                     <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </button>
                 ))}
               </div>
+              {fotoError
+                ? <p style={{ fontSize: 12.5, color: '#b0483f', fontWeight: 600, margin: '8px 0 0' }}>{fotoError}</p>
+                : petPhotoFile
+                ? <p style={{ fontSize: 12.5, color: '#2f8f5b', fontWeight: 600, margin: '8px 0 0' }}>Vas a usar tu foto: {petPhotoFile.name}</p>
+                : pet.foto
+                ? <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Estás usando una foto de ejemplo. Tocá el recuadro para subir la de tu mascota.</p>
+                : <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Subí una foto de tu mascota, o elegí una de ejemplo por ahora.</p>}
             </div>
             {field('Nombre', <input value={pet.nombre} onChange={(e) => setPet({ ...pet, nombre: e.target.value })} placeholder="Ej. Manchas" style={input} />)}
             {field('Especie', <Segmented options={['Perro', 'Gato', 'Otro']} value={pet.especie} onChange={(v) => setPet({ ...pet, especie: v })} />)}
@@ -344,7 +381,12 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
               <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
             </div>
             <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 27, margin: '0 0 8px' }}>¡Bienvenido al club!</h2>
-            <p style={{ color: '#5b5670', fontSize: 15, lineHeight: 1.55, margin: '0 auto 26px', maxWidth: 420 }}>Ya generamos el carnet digital de <strong>{pet.nombre || 'tu mascota'}</strong>. Tu N° de socio es <strong style={{ color: '#5D5491' }}>#{memberNo}</strong>.</p>
+            <p style={{ color: '#5b5670', fontSize: 15, lineHeight: 1.55, margin: '0 auto 18px', maxWidth: 420 }}>Ya generamos el carnet digital de <strong>{pet.nombre || 'tu mascota'}</strong>. Tu N° de socio es <strong style={{ color: '#5D5491' }}>#{memberNo}</strong>.</p>
+            {avisoFoto && (
+              <div style={{ background: '#fbf3e2', border: '1px solid #f0e0be', color: '#92690a', fontSize: 13.5, lineHeight: 1.5, borderRadius: 12, padding: '11px 14px', margin: '0 auto 22px', maxWidth: 420, textAlign: 'left' }}>
+                {avisoFoto}
+              </div>
+            )}
             <div style={{ background: '#5D5491', borderRadius: 20, padding: 22, textAlign: 'left' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <span style={{ color: '#c9c3e3', fontWeight: 700, fontSize: 12, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Carnet digital</span>

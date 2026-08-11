@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
+import { FOTO_TIPOS, FOTO_MAX } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
 /**
@@ -41,14 +42,25 @@ export async function POST(req: Request) {
   const db = getServiceClient();
 
   let uploadedPhotoUrl: string | null = null;
+  // Si la foto no se puede guardar, el alta sigue igual (sería peor dejar a
+  // alguien afuera del club por una imagen) pero se avisa en la respuesta: antes
+  // devolvía "listo" y el socio descubría el problema al ver su carnet vacío.
+  let photoError: string | null = null;
   if (photoFile instanceof File && photoFile.size > 0) {
-    const ext = photoFile.name.split('.').pop() || 'jpg';
-    const path = `${crypto.randomUUID()}.${ext}`;
-    const { error: uploadErr } = await db.storage.from('pet-photos').upload(path, await photoFile.arrayBuffer(), { contentType: photoFile.type || 'image/jpeg' });
-    if (!uploadErr) {
-      uploadedPhotoUrl = db.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+    if (!FOTO_TIPOS.includes(photoFile.type as (typeof FOTO_TIPOS)[number])) {
+      photoError = `No pudimos guardar la foto: el formato ${photoFile.type || 'del archivo'} no está soportado.`;
+    } else if (photoFile.size > FOTO_MAX) {
+      photoError = 'No pudimos guardar la foto porque pesa más de 5 MB.';
     } else {
-      console.error('[onboarding] photo upload failed', uploadErr);
+      const ext = photoFile.name.split('.').pop() || 'jpg';
+      const path = `${crypto.randomUUID()}.${ext}`;
+      const { error: uploadErr } = await db.storage.from('pet-photos').upload(path, await photoFile.arrayBuffer(), { contentType: photoFile.type });
+      if (!uploadErr) {
+        uploadedPhotoUrl = db.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+      } else {
+        console.error('[onboarding] photo upload failed', uploadErr);
+        photoError = 'No pudimos guardar la foto. Podés cargarla después desde el carnet.';
+      }
     }
   }
 
@@ -120,5 +132,5 @@ export async function POST(req: Request) {
     planName: plan,
   });
 
-  return NextResponse.json({ memberNo: profileRow.member_no });
+  return NextResponse.json({ memberNo: profileRow.member_no, photoError });
 }

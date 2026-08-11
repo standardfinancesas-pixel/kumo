@@ -3,7 +3,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { urls } from '@kumo/shared';
+import { urls, FOTO_TIPOS, FOTO_MAX } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /** Parsea fechas libres como "30 ago 2026" a ISO ("2026-08-30"). Si no matchea, devuelve null. */
@@ -224,7 +224,45 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
   const [cn, setCn] = useState('');
   const [cp, setCp] = useState('');
   const [busy, setBusy] = useState(false);
+  const [fotoBusy, setFotoBusy] = useState(false);
+  const [fotoError, setFotoError] = useState('');
   const allVacs = pet?.vaccines ?? [];
+
+  /** Cambiar la foto de la mascota. Antes no se podía desde ninguna pantalla:
+   *  si en el alta salía mal, había que tocar la base a mano. */
+  const cambiarFoto = async (f?: File) => {
+    if (!f || !pet) return;
+    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) {
+      setFotoError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`);
+      return;
+    }
+    if (f.size > FOTO_MAX) {
+      setFotoError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`);
+      return;
+    }
+    setFotoBusy(true);
+    setFotoError('');
+    const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
+    // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
+    const path = `${profile.id}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
+    if (upErr) {
+      setFotoError('No pudimos subir la foto. Probá de nuevo.');
+      setFotoBusy(false);
+      return;
+    }
+    const url = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+    const { error: dbErr } = await supabase.from('pets').update({ photo_url: url }).eq('id', pet.id);
+    if (dbErr) {
+      // No dejamos la imagen huérfana si no se pudo asociar a la mascota.
+      await supabase.storage.from('pet-photos').remove([path]);
+      setFotoError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.');
+      setFotoBusy(false);
+      return;
+    }
+    router.refresh();
+    setFotoBusy(false);
+  };
 
   const markApplied = async (vacId: string) => {
     setBusy(true);
@@ -282,10 +320,17 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
         <div style={{ position: 'absolute', right: -14, top: -14, opacity: 0.1 }}><svg width="104" height="104" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>{paw}</svg></div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, position: 'relative' }}>
           <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-            <div style={{ width: 60, height: 60, borderRadius: 18, overflow: 'hidden', flex: '0 0 auto', background: `url(${pet.photo}) center/cover, rgb(230,227,240)` }} />
+            {/* La foto es el disparador para cambiarla: es donde el socio la busca. */}
+            <label title="Cambiar la foto" style={{ width: 60, height: 60, borderRadius: 18, overflow: 'hidden', flex: '0 0 auto', background: `url(${pet.photo}) center/cover, rgb(230,227,240)`, cursor: fotoBusy ? 'default' : 'pointer', position: 'relative', display: 'block' }}>
+              <span className="scpu" style={{ position: 'absolute', inset: 0, background: 'rgba(33,30,51,0.55)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', opacity: fotoBusy ? 1 : 0, transition: 'opacity 0.15s', lineHeight: 1.2 }}>
+                {fotoBusy ? 'Subiendo…' : 'Cambiar foto'}
+              </span>
+              <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarFoto(e.target.files?.[0])} />
+            </label>
             <div>
               <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 22 }}>{pet.name}</div>
               <div style={{ color: 'rgb(201,195,227)', fontSize: 12 }}>{pet.breed}</div>
+              {fotoError && <div style={{ color: 'rgb(225,251,98)', fontSize: 11.5, fontWeight: 600, marginTop: 4, maxWidth: 220, lineHeight: 1.35 }}>{fotoError}</div>}
             </div>
           </div>
           <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100 }}>ACTIVO</span>
