@@ -28,9 +28,16 @@ de cada pantalla.
       webapp y el celular, el admin lo ve en "Ver detalle" con URL firmada a 5
       minutos. Verificado: ni un anónimo ni otro socio autenticado pueden leer
       un comprobante ajeno.
-- [ ] **Mail transaccional** (Resend o similar): bienvenida al alta y aviso de
-      reintegro aprobado/rechazado.
-- [ ] **Login con Google**: el botón existe en el modal pero está deshabilitado.
+- [x] **Mail transaccional con Resend**: bienvenida al alta y aviso de reintegro
+      aprobado/rechazado, con templates propios. Si el mail falla la operación no
+      se revierte: el panel avisa para que el admin use otro canal.
+      **Falta config**: verificar `kumo.pet` en Resend (hoy el remitente de
+      prueba solo entrega a hello@cambalache.studio) y cambiar `RESEND_FROM`.
+- [x] **Login con Google**, solo para entrar: quien no es socio recibe un aviso
+      y se le cierra la sesión, porque el alta pide plan, mascota y medio de pago.
+      **Falta config**: crear las credenciales en Google Cloud (redirect
+      `https://oabkyafennfsrmnaroao.supabase.co/auth/v1/callback`) y pegarlas en
+      Supabase → Authentication → Providers → Google.
 - [x] **ABM del admin**: "+ Nuevo beneficio" (inserta en `benefits`), "Editar
       plan" (precio, bajada, destacado y perks) y la ficha del socio (datos,
       mascotas y reintegros, pedidos al abrir el modal). El "Ver detalle" de la
