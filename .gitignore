@@ -17,3 +17,5 @@ supabase/.temp
 
 # Foto original del perro de la dueña: ya está copiada en apps/landing/public/img/socio-perro4.jpg
 WhatsApp Image*.jpeg
+
+.vercel
