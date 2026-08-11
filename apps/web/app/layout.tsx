@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 // Fuentes self-hosted (Baloo 2 + DM Sans) vía @fontsource — sin depender de Google Fonts en runtime.
 import '@fontsource/baloo-2/500.css';
@@ -15,7 +16,7 @@ export const metadata: Metadata = {
   description: 'Cuidar a tu mascota, por fin simple y más barato. Descuentos, consultas online, carnet digital y reintegros.',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="es">
       <body>{children}</body>

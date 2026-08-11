@@ -1,4 +1,5 @@
 'use client';
+import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -25,7 +26,7 @@ function parseFreeDate(s: string): string | null {
 const LANDING = urls.landing;
 
 /* ── Iconos ────────────────────────────────────────────────────── */
-const ic = (inner: React.ReactNode, filled = false, size = 19) => (
+const ic = (inner: ReactNode, filled = false, size = 19) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>{inner}</svg>
 );
 const paw = <><circle cx="5.5" cy="10" r="1.7" /><circle cx="9.7" cy="6.4" r="1.8" /><circle cx="14.3" cy="6.4" r="1.8" /><circle cx="18.5" cy="10" r="1.7" /><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" /></>;
@@ -40,7 +41,7 @@ const pillPath = <><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7z
 
 type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil';
 
-const NAV: { key: Screen; label: string; icon: React.ReactNode }[] = [
+const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'inicio', label: 'Inicio', icon: ic(house) },
   { key: 'carnet', label: 'Carnet', icon: ic(plusCircle) },
   { key: 'servicios', label: 'Servicios', icon: ic(paw, true) },
@@ -90,7 +91,7 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile }: { go: (s: Screen) => v
     return () => clearInterval(t);
   }, []);
 
-  const quick: { label: string; icon: React.ReactNode; to: Screen }[] = [
+  const quick: { label: string; icon: ReactNode; to: Screen }[] = [
     { label: 'Carnet', icon: ic(idCard, false, 22), to: 'carnet' },
     { label: 'Foros', icon: ic(chat, false, 22), to: 'foros' },
     { label: 'Reintegro', icon: ic(wallet, false, 22), to: 'reintegros' },
@@ -229,7 +230,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     router.refresh();
     setBusy(false);
   };
-  const addVac = async (e: React.FormEvent) => {
+  const addVac = async (e: FormEvent) => {
     e.preventDefault();
     if (!nv.trim() || !pet) return;
     setBusy(true);
@@ -238,7 +239,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     router.refresh();
     setBusy(false);
   };
-  const addContact = async (e: React.FormEvent) => {
+  const addContact = async (e: FormEvent) => {
     e.preventDefault();
     if (!cn.trim()) return;
     setBusy(true);
@@ -456,7 +457,7 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
         <span style={{ fontSize: 13, fontWeight: 800, color: 'rgb(93,84,145)' }}>{radio} km</span>
       </div>
       <div style={{ padding: '4px 2px 6px', marginBottom: 14 }}>
-        <input type="range" min={1} max={25} step={1} value={radio} onChange={(e) => setRadio(Number(e.target.value))} style={{ width: '100%', display: 'block', appearance: 'none', height: 6, borderRadius: 100, outline: 'none', cursor: 'pointer', background: `linear-gradient(to right, rgb(93,84,145) 0%, rgb(93,84,145) ${pct}%, rgb(238,236,245) ${pct}%, rgb(238,236,245) 100%)` } as React.CSSProperties} />
+        <input type="range" min={1} max={25} step={1} value={radio} onChange={(e) => setRadio(Number(e.target.value))} style={{ width: '100%', display: 'block', appearance: 'none', height: 6, borderRadius: 100, outline: 'none', cursor: 'pointer', background: `linear-gradient(to right, rgb(93,84,145) 0%, rgb(93,84,145) ${pct}%, rgb(238,236,245) ${pct}%, rgb(238,236,245) 100%)` } as CSSProperties} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
           <span style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>1 km</span>
           <span style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>25 km</span>
@@ -475,7 +476,7 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
         {list.slice(0, 3).map((p, i) => {
           const pin = catPin(p.category);
           return (
-            <div key={p.id} style={{ position: 'absolute', left: pinSlots[i]!.left, top: pinSlots[i]!.top, transform: 'translate(-50%, -100%)', zIndex: 2, animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both' } as React.CSSProperties}>
+            <div key={p.id} style={{ position: 'absolute', left: pinSlots[i]!.left, top: pinSlots[i]!.top, transform: 'translate(-50%, -100%)', zIndex: 2, animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both' } as CSSProperties}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <div style={{ background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 10, padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap', boxShadow: '0 3px 8px rgba(0,0,0,0.2)', marginBottom: 3 }}>{p.name}</div>
                 <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)' }}>
@@ -554,7 +555,7 @@ function Reintegros({ initialReintegros, planName, memberId }: { initialReintegr
   const [error, setError] = useState('');
   const total = items.filter((i) => i.status === 'Acreditado').reduce((a, i) => a + i.refund, 0);
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) { setError('Adjuntá la foto de la factura.'); return; }
     const s = Number(spent) || 0;
@@ -654,7 +655,7 @@ const crossIcon = <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M
 const storeIcon = <><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>;
 const tagIcon = <><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.2" /></>;
 const dropletIcon = <path d="M12 3s6 5.7 6 10a6 6 0 0 1-12 0c0-4.3 6-10 6-10z" />;
-const benefitIcons: Record<BenefitVM['icon'], React.ReactNode> = { cross: crossIcon, store: storeIcon, tag: tagIcon, droplet: dropletIcon };
+const benefitIcons: Record<BenefitVM['icon'], ReactNode> = { cross: crossIcon, store: storeIcon, tag: tagIcon, droplet: dropletIcon };
 const benefPins = [{ left: '38%', top: '30%' }, { left: '78%', top: '26%' }, { left: '28%', top: '52%' }, { left: '58%', top: '52%' }, { left: '86%', top: '52%' }];
 
 function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
@@ -675,7 +676,7 @@ function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
           <path d="M0 90 H320 M0 98 H320" stroke="#cfd3de" strokeWidth="8" /><path d="M112 0 V200 M206 0 V200" stroke="#cfd3de" strokeWidth="8" /><path d="M0 94 H320" stroke="#fff" strokeWidth="1" strokeDasharray="6 6" />
         </svg>
         {benefPins.map((slot, i) => (
-          <div key={i} style={{ position: 'absolute', left: slot.left, top: slot.top, transform: 'translate(-50%, -100%)', zIndex: 2, animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both' } as React.CSSProperties}>
+          <div key={i} style={{ position: 'absolute', left: slot.left, top: slot.top, transform: 'translate(-50%, -100%)', zIndex: 2, animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both' } as CSSProperties}>
             <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)' }}>
               <span style={{ transform: 'rotate(-45deg)', color: 'rgb(225,251,98)', fontWeight: 800, fontSize: 13 }}>%</span>
             </div>
@@ -726,7 +727,7 @@ function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
 /* ── Pantalla: Foros / Comunidad ───────────────────────────────── */
 const heartFill = <path d="M12 20s-7-4.3-9.2-8.6C1.3 8.3 2.6 5 6 5c2 0 3.3 1.2 4 2.3C10.7 6.2 12 5 14 5c3.4 0 4.7 3.3 3.2 6.4C19 15.7 12 20 12 20z" />;
 const capPath = <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></>;
-const catCfg: Record<string, { iconBg: string; icon: React.ReactNode; tagBg: string; tagFg: string }> = {
+const catCfg: Record<string, { iconBg: string; icon: ReactNode; tagBg: string; tagFg: string }> = {
   Paseadores: { iconBg: 'rgb(34,160,107)', icon: paw, tagBg: 'rgb(226,245,234)', tagFg: 'rgb(31,125,80)' },
   Salud: { iconBg: 'rgb(93,84,145)', icon: plusCircle, tagBg: 'rgb(240,237,249)', tagFg: 'rgb(93,84,145)' },
   Guarderías: { iconBg: 'rgb(217,138,43)', icon: house, tagBg: 'rgb(251,243,226)', tagFg: 'rgb(176,111,24)' },
@@ -755,7 +756,7 @@ function Foros({ initialPosts, profile }: { initialPosts: ForumPost[]; profile: 
     return true;
   });
 
-  const publish = async (e: React.FormEvent) => {
+  const publish = async (e: FormEvent) => {
     e.preventDefault();
     if (!nt.trim()) return;
     setBusy(true);
@@ -860,7 +861,7 @@ function Negocio({ go }: { go: (s: Screen) => void }) {
   const [showAlta, setShowAlta] = useState(false);
   const [rubro, setRubro] = useState('Paseador');
   const [zona, setZona] = useState('');
-  const enviarAlta = (e: React.FormEvent) => {
+  const enviarAlta = (e: FormEvent) => {
     e.preventDefault();
     setShowAlta(false);
     setState('revision');
@@ -1005,7 +1006,7 @@ function Perfil({ go, profile, pets, reintegradoTotal }: { go: (s: Screen) => vo
   const [datos, setDatos] = useState({ dom: profile.address ?? '—', tel: profile.phone ?? '—', email: profile.email });
   const [card, setCard] = useState('4287');
   const [editCard, setEditCard] = useState(false);
-  const addPet = async (e: React.FormEvent) => {
+  const addPet = async (e: FormEvent) => {
     e.preventDefault();
     if (!pn.trim()) return;
     setBusy(true);
@@ -1014,7 +1015,7 @@ function Perfil({ go, profile, pets, reintegradoTotal }: { go: (s: Screen) => vo
     router.refresh();
     setBusy(false);
   };
-  const row = (title: string, sub: string, action: React.ReactNode, onClick?: () => void) => (
+  const row = (title: string, sub: string, action: ReactNode, onClick?: () => void) => (
     <button onClick={onClick} className="wa-card" style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px', cursor: onClick ? 'pointer' : 'default', width: '100%' }}>
       <div style={{ flex: '1 1 0%', minWidth: 0 }}>
         <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>

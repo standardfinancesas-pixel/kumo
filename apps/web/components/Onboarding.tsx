@@ -1,4 +1,5 @@
 'use client';
+import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
 import { data, urls } from '@kumo/shared';
@@ -47,7 +48,7 @@ const PLAN_META: Record<string, { desc: string; perks: string[] }> = {
   },
 };
 
-const PAY_METHODS: { key: 'tarjeta' | 'cbu'; label: string; icon: React.ReactNode }[] = [
+const PAY_METHODS: { key: 'tarjeta' | 'cbu'; label: string; icon: ReactNode }[] = [
   { key: 'tarjeta', label: 'Tarjeta de crédito/débito', icon: <><rect x="2" y="5" width="20" height="14" rx="2.5" /><line x1="2" y1="10" x2="22" y2="10" /></> },
   { key: 'cbu', label: 'Débito por CBU/CVU', icon: <><path d="M3 10.5 12 4l9 6.5" /><path d="M5 10v9h14v-9" /><line x1="9" y1="13" x2="9" y2="19" /><line x1="15" y1="13" x2="15" y2="19" /></> },
 ];
@@ -59,10 +60,10 @@ const formatTel = (raw: string) => {
 };
 const todayShort = () => { const d = new Date(); return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; };
 
-const input: React.CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: '#211E33', outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
-const label: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
-const field = (l: React.ReactNode, node: React.ReactNode) => (<div style={{ marginBottom: 14 }}><label style={label}>{l}</label>{node}</div>);
-const Ic = ({ d, size = 20, color = '#5D5491' }: { d: React.ReactNode; size?: number; color?: string }) => (
+const input: CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: '#211E33', outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
+const label: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
+const field = (l: ReactNode, node: ReactNode) => (<div style={{ marginBottom: 14 }}><label style={label}>{l}</label>{node}</div>);
+const Ic = ({ d, size = 20, color = '#5D5491' }: { d: ReactNode; size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
 );
 const Radio = ({ on }: { on: boolean }) => (

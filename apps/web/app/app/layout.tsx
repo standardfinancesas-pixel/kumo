@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -5,6 +6,6 @@ export const metadata: Metadata = {
   description: 'Tu carnet, reintegros y beneficios.',
 };
 
-export default function WebappLayout({ children }: { children: React.ReactNode }) {
+export default function WebappLayout({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }

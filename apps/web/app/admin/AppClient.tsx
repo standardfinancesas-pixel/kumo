@@ -1,4 +1,5 @@
 'use client';
+import type { CSSProperties, ReactNode } from 'react';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -29,7 +30,7 @@ export type AudienceVM = { label: string; n: number };
 export type SentPushVM = { title: string; audience: string; when: string };
 
 /* ── Iconos del sidebar ────────────────────────────────────────── */
-const I = (inner: React.ReactNode) => (
+const I = (inner: ReactNode) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>{inner}</svg>
 );
 const icons = {
@@ -48,7 +49,7 @@ const icons = {
 };
 
 type Screen = 'dashboard' | 'socios' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'negocios' | 'moderacion';
-const NAV: { k: Screen; label: string; icon: React.ReactNode }[] = [
+const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
   { k: 'socios', label: 'Socios', icon: icons.socios },
   { k: 'reintegros', label: 'Reintegros', icon: icons.reintegros },
@@ -63,13 +64,13 @@ const NAV: { k: Screen; label: string; icon: React.ReactNode }[] = [
 ];
 
 /* ── Estilos reutilizables ─────────────────────────────────────── */
-const card: React.CSSProperties = { background: '#fff', border: '1px solid #e6e3f0', borderRadius: 16, padding: 18 };
-const h1: React.CSSProperties = { fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, margin: '0 0 4px' };
-const sub: React.CSSProperties = { color: '#8781a0', fontSize: 15, margin: '0 0 24px' };
-const th: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', textAlign: 'left', padding: '10px 14px', textTransform: 'uppercase' };
-const td: React.CSSProperties = { fontSize: 14, color: '#211e33', padding: '13px 14px', borderTop: '1px solid #eeecf5' };
-const inp: React.CSSProperties = { width: '100%', padding: '11px 13px', border: '1.5px solid #e6e3f0', borderRadius: 10, fontSize: 14, fontFamily: '"DM Sans"', outline: 'none', boxSizing: 'border-box', background: '#fff' };
-const badge = (bg: string, fg: string): React.CSSProperties => ({ background: bg, color: fg, fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 100, display: 'inline-block' });
+const card: CSSProperties = { background: '#fff', border: '1px solid #e6e3f0', borderRadius: 16, padding: 18 };
+const h1: CSSProperties = { fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, margin: '0 0 4px' };
+const sub: CSSProperties = { color: '#8781a0', fontSize: 15, margin: '0 0 24px' };
+const th: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', textAlign: 'left', padding: '10px 14px', textTransform: 'uppercase' };
+const td: CSSProperties = { fontSize: 14, color: '#211e33', padding: '13px 14px', borderTop: '1px solid #eeecf5' };
+const inp: CSSProperties = { width: '100%', padding: '11px 13px', border: '1.5px solid #e6e3f0', borderRadius: 10, fontSize: 14, fontFamily: '"DM Sans"', outline: 'none', boxSizing: 'border-box', background: '#fff' };
+const badge = (bg: string, fg: string): CSSProperties => ({ background: bg, color: fg, fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 100, display: 'inline-block' });
 const estadoBadge = (e: string) => e === 'Al día' || e === 'Verificado' || e === 'Validado' || e === 'Acreditado' || e === 'Activo'
   ? badge('rgb(226,245,234)', 'rgb(47,143,91)')
   : e === 'En mora' || e === 'Pendiente' || e === 'En revisión' || e === 'Pausado'
@@ -130,7 +131,7 @@ function Socios({ socios }: { socios: SocioRow[] }) {
   const [plan, setPlan] = useState('Todos');
   const [estado, setEstado] = useState('Todos');
   const list = socios.filter((s) => (plan === 'Todos' || s.plan === plan) && (estado === 'Todos' || s.estado === estado));
-  const chip = (active: boolean): React.CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
+  const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
     <div>
       <h1 className="adm-h1" style={h1}>Socios</h1>
@@ -450,7 +451,7 @@ function Ajustes({ settings }: { settings: SettingsVM }) {
   const [mail, setMail] = useState(settings.email);
   const [savedWa, setSavedWa] = useState(true);
   const [savedMail, setSavedMail] = useState(true);
-  const inpWide: React.CSSProperties = { ...inp, maxWidth: 420 };
+  const inpWide: CSSProperties = { ...inp, maxWidth: 420 };
   const gLabel = (t: string, saved: boolean) => <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}><span style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em' }}>{t}</span>{saved && <span style={{ fontSize: 12, color: 'rgb(47,143,91)', fontWeight: 600 }}>✓ Guardado</span>}</div>;
   const saveWa = async () => { await supabase.from('club_settings').update({ whatsapp: wa }).eq('id', 1); setSavedWa(true); router.refresh(); };
   const saveMail = async () => { await supabase.from('club_settings').update({ email: mail }).eq('id', 1); setSavedMail(true); router.refresh(); };

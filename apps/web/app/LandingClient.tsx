@@ -1,4 +1,5 @@
 'use client';
+import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { createContext, useContext, useState, useEffect } from 'react';
 import { data, urls } from '@kumo/shared';
@@ -34,8 +35,8 @@ const AUTH_COPY: Record<AuthMode, { title: string; subtitle: string; cta: string
   login: { title: '¡Hola de nuevo!', subtitle: 'Ingresá para ver tu carnet, beneficios y reintegros.', cta: 'Ingresar' },
   register: { title: 'Creá tu cuenta', subtitle: 'Sumate al club y empezá a cuidar mejor a tu mascota.', cta: 'Crear cuenta' },
 };
-const authLabel: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
-const authInput: React.CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: '#211E33', outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
+const authLabel: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
+const authInput: CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: '#211E33', outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
 
 function AuthModal({ mode, onClose }: { mode: AuthMode | null; onClose: () => void }) {
   const openAuth = useAuth();
@@ -46,9 +47,9 @@ function AuthModal({ mode, onClose }: { mode: AuthMode | null; onClose: () => vo
   useEffect(() => { if (mode) { setEmail(''); setPassword(''); setError(''); } }, [mode]);
   if (!mode) return null;
   const copy = AUTH_COPY.login;
-  const seg = (active: boolean): React.CSSProperties => ({ flex: 1, border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '8px 18px', borderRadius: 9, transition: 'all 0.15s', ...(active ? { background: '#5D5491', color: '#fff', boxShadow: '0 2px 8px rgba(93,84,145,0.3)' } : { background: 'transparent', color: '#c9c3e3' }) });
+  const seg = (active: boolean): CSSProperties => ({ flex: 1, border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '8px 18px', borderRadius: 9, transition: 'all 0.15s', ...(active ? { background: '#5D5491', color: '#fff', boxShadow: '0 2px 8px rgba(93,84,145,0.3)' } : { background: 'transparent', color: '#c9c3e3' }) });
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError('');
@@ -371,7 +372,7 @@ function Membership() {
 }
 
 /* ── Servicios de la app ───────────────────────────────────────── */
-const svcIcon = (inner: React.ReactNode, filled = false) => (
+const svcIcon = (inner: ReactNode, filled = false) => (
   <svg width="56" height="56" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>{inner}</svg>
 );
 const services = [
@@ -438,7 +439,7 @@ function FamiliaKumo() {
 }
 
 /* ── Prestadores ───────────────────────────────────────────────── */
-const catIconInner: Record<string, { inner: React.ReactNode; filled?: boolean }> = {
+const catIconInner: Record<string, { inner: ReactNode; filled?: boolean }> = {
   paseadores: { inner: paw, filled: true },
   guarderias: { inner: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></> },
   adiestradores: { inner: <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></> },
@@ -623,7 +624,7 @@ function FinalCta() {
           <svg width="180" height="180" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>{paw}</svg>
         </div>
         <div style={{ flex: '1 1 300px', position: 'relative', zIndex: 2, minWidth: 0 }}>
-          <h2 className="r-h2" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 40, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#fff', margin: '0 0 12px', maxWidth: 380, textWrap: 'balance' } as React.CSSProperties}>Sumá a tu mascota al club</h2>
+          <h2 className="r-h2" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 40, lineHeight: 1.1, letterSpacing: '-0.02em', color: '#fff', margin: '0 0 12px', maxWidth: 380, textWrap: 'balance' } as CSSProperties}>Sumá a tu mascota al club</h2>
           <p style={{ color: 'rgb(179,171,214)', fontSize: 16.5, lineHeight: 1.5, margin: '0 0 24px', maxWidth: 400 }}>Desde $18.000/mes. Sin permanencia. Con derecho de arrepentimiento de 10 días.</p>
           <button onClick={() => openAuth('register')} className="scpg" style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 17, padding: '16px 34px', borderRadius: 14, display: 'inline-block', transition: 'background 0.15s', cursor: 'pointer' }}>Unirme ahora →</button>
         </div>

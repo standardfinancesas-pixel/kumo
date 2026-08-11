@@ -1,4 +1,5 @@
 'use client';
+import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
 
@@ -13,11 +14,11 @@ const BRAND = '#5D5491';
 const LIME = '#E1FB62';
 const INK = '#211E33';
 
-const baloo = (size: number, color = INK): React.CSSProperties => ({ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: size, color, margin: 0, letterSpacing: '-0.01em' });
-const label: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
-const input: React.CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: INK, outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
+const baloo = (size: number, color = INK): CSSProperties => ({ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: size, color, margin: 0, letterSpacing: '-0.01em' });
+const label: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
+const input: CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: INK, outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
 
-const S = ({ d, size = 22, color = BRAND }: { d: React.ReactNode; size?: number; color?: string }) => (
+const S = ({ d, size = 22, color = BRAND }: { d: ReactNode; size?: number; color?: string }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
 );
 const IC = {
@@ -111,7 +112,7 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 export function PrestadoresPage({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [reg, setReg] = useState(false);
   if (!open) return null;
-  const limeBtn: React.CSSProperties = { background: LIME, color: INK, border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: '15px 28px', borderRadius: 14, cursor: 'pointer', display: 'inline-block' };
+  const limeBtn: CSSProperties = { background: LIME, color: INK, border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: '15px 28px', borderRadius: 14, cursor: 'pointer', display: 'inline-block' };
   const check = <S d={<path d="M4 12l5 5L20 6" />} size={16} color="#6f9a1f" />;
 
   return (

@@ -1,10 +1,11 @@
+import type { CSSProperties } from 'react';
 /*
  * Página legal (contenido placeholder hasta tener los textos definitivos).
  * Destino de los links del footer: /legal#terminos, #privacidad, #arrepentimiento.
  */
 
-const h2: React.CSSProperties = { fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', color: 'rgb(33,30,51)', margin: '0 0 12px', scrollMarginTop: 90 };
-const p: React.CSSProperties = { color: 'rgb(91,86,112)', fontSize: 15, lineHeight: 1.65, margin: '0 0 12px' };
+const h2: CSSProperties = { fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', color: 'rgb(33,30,51)', margin: '0 0 12px', scrollMarginTop: 90 };
+const p: CSSProperties = { color: 'rgb(91,86,112)', fontSize: 15, lineHeight: 1.65, margin: '0 0 12px' };
 
 export default function Legal() {
   return (
