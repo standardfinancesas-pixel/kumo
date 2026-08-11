@@ -38,11 +38,18 @@ de cada pantalla.
 - [ ] **Contactos de emergencia en mobile** (la webapp ya los tiene).
 
 ## Fase 3 — Deploy y operación
-- [ ] 3 proyectos en Vercel (landing, admin, webapp) desde este repo.
-- [ ] Dominios: kumoclub.com.ar, admin.kumoclub.com.ar, app.kumoclub.com.ar.
-- [ ] Variables de entorno de producción (ojo: `SUPABASE_SERVICE_ROLE_KEY` solo
-      en la landing, que es la única que la usa en el route handler).
-- [ ] Reemplazar las URLs `localhost:300x` hardcodeadas por variables de entorno.
+- [x] **Un solo proyecto en Vercel** (equipo `kumo`), con las tres secciones en
+      `apps/web`: `/`, `/app` y `/admin`. Publicado y andando en
+      https://kumo-landing.vercel.app (el subdominio quedó con el nombre viejo
+      del proyecto; se reemplaza cuando se conecte el dominio propio).
+- [x] Variables de entorno de producción, declaradas también en `turbo.json`
+      (si no, no llegan al build). La `SUPABASE_SERVICE_ROLE_KEY` está
+      encriptada y es la única sensible.
+- [x] URLs entre secciones por `urls` de `@kumo/shared`, sin `localhost`.
+- [ ] **Autorizar la GitHub App de Vercel en la organización** para tener
+      deploys automáticos y preview URLs. Lo tiene que hacer un owner de la org
+      del cliente; hoy cada deploy sale a mano desde el CLI.
+- [ ] Dominio propio: kumoclub.com.ar.
 - [ ] Analítica y monitoreo de errores.
 
 ## Fase 4 — Mapas, push y comunidad
