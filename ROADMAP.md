@@ -31,8 +31,10 @@ de cada pantalla.
 - [ ] **Mail transaccional** (Resend o similar): bienvenida al alta y aviso de
       reintegro aprobado/rechazado.
 - [ ] **Login con Google**: el botón existe en el modal pero está deshabilitado.
-- [ ] **ABM que quedó sin acción en el admin**: "+ Nuevo beneficio",
-      "Editar plan", ficha del socio.
+- [x] **ABM del admin**: "+ Nuevo beneficio" (inserta en `benefits`), "Editar
+      plan" (precio, bajada, destacado y perks) y la ficha del socio (datos,
+      mascotas y reintegros, pedidos al abrir el modal). El "Ver detalle" de la
+      cola de reintegros ya muestra el comprobante.
 - [ ] **Alta real de prestador**: "Prestar servicio" / "Mi negocio" hoy no
       escriben en `providers` (mobile todavía usa el toggle DEMO del prototipo).
 - [ ] **Contactos de emergencia en mobile** (la webapp ya los tiene).
