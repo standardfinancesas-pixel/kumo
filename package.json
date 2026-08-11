@@ -11,9 +11,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "dev:landing": "pnpm --filter @kumo/landing dev",
-    "dev:admin": "pnpm --filter @kumo/admin dev",
-    "dev:webapp": "pnpm --filter @kumo/webapp dev",
+    "dev:web": "pnpm --filter @kumo/web dev",
     "dev:mobile": "pnpm --filter @kumo/mobile start",
     "db:reset": "supabase db reset",
     "db:push": "supabase db push"

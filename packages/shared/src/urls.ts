@@ -1,15 +1,13 @@
 /**
- * URLs de las tres superficies web.
+ * Rutas de las tres secciones del sitio.
  *
- * En dev cada app corre en su puerto de localhost; en producción son dominios
- * distintos. Se resuelven por variable de entorno con el puerto local como
- * fallback, así el flujo landing → webapp → admin no queda atado a localhost.
- *
- * Tienen que ser `NEXT_PUBLIC_*` porque se usan en componentes de cliente
- * (redirects después del login, "Cerrar sesión", etc.).
+ * Las tres viven en la misma app (`apps/web`), así que son rutas relativas: el
+ * socio entra por `/app` y el admin por `/admin`. Al ser un solo origen, la
+ * sesión de Supabase se comparte sin configurar nada — que es justamente el
+ * problema que había cuando cada una corría en su propio puerto.
  */
 export const urls = {
-  landing: process.env.NEXT_PUBLIC_LANDING_URL || 'http://localhost:3000',
-  admin: process.env.NEXT_PUBLIC_ADMIN_URL || 'http://localhost:3001',
-  webapp: process.env.NEXT_PUBLIC_WEBAPP_URL || 'http://localhost:3002',
+  landing: '/',
+  admin: '/admin',
+  webapp: '/app',
 } as const;

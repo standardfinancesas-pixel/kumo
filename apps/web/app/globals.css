@@ -1,0 +1,220 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Estilos globales de la landing.
+ * Reproducen 1:1 el prototipo (reference/kumo-prototype.html): base, keyframes,
+ * estados hover y breakpoints responsive. Las fuentes (Baloo 2 + DM Sans) se
+ * cargan self-hosted vía @fontsource en app/layout.tsx.
+ */
+
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+html, body {
+  margin: 0;
+  background: #f5f4f8;
+  color: #211e33;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: #5d5491; text-decoration: none; }
+a:hover { color: #443d6e; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #d9d6e6; border-radius: 8px; }
+
+/* Keyframes del prototipo */
+@keyframes kfloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+@keyframes kfade { 0% { opacity: 0; transform: scale(1.04); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes kpop { 0% { transform: scale(.96); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+@keyframes kmarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+@keyframes kpulse { 0% { box-shadow: 0 0 0 0 rgba(225,251,98,.7); } 70% { box-shadow: 0 0 0 7px rgba(225,251,98,0); } 100% { box-shadow: 0 0 0 0 rgba(225,251,98,0); } }
+
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none; width: 22px; height: 22px; border-radius: 50%;
+  background: #fff; border: 3px solid #5d5491;
+  box-shadow: 0 2px 8px rgba(93,84,145,.35); cursor: grab;
+}
+input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: scale(1.1); }
+
+/* Estados hover (nombres del prototipo) */
+.scp9:hover { background: #f0edf9 !important; }
+.scpa:hover { background: #4a4380 !important; }
+.scpb:hover { background: #544a87 !important; }
+.scpc:hover { background: #e1fb62 !important; color: #211e33 !important; box-shadow: 0 12px 28px rgba(225,251,98,.35) !important; }
+.scpd:hover { background: #5d5491 !important; color: #fff !important; transform: translateY(-2px) !important; }
+.scpe:hover { transform: scale(1.045) !important; box-shadow: 0 28px 56px rgba(93,84,145,.34) !important; }
+.scpf:hover { filter: brightness(.92) !important; }
+.scpg:hover { background: #d4e946 !important; }
+.scph:hover { background: #3a3652 !important; }
+.scpi:hover { box-shadow: 0 20px 44px rgba(93,84,145,.18) !important; border-color: #e1fb62 !important; }
+.scpj:hover { background: #e1fb62 !important; color: #5d5491 !important; transform: translateY(-4px) !important; }
+.scpk:hover { animation-play-state: paused !important; }
+.scpl:hover { transform: rotate(0deg) scale(1.03) !important; }
+.scpm:hover { transform: translateY(-2px) !important; }
+.scpn:hover { transform: rotate(0deg) translateY(-3px) scale(1.02) !important; box-shadow: 0 20px 44px rgba(93,84,145,.18) !important; }
+.scpo:hover { transform: scale(1.08) !important; box-shadow: 0 12px 32px rgba(37,211,102,.55) !important; }
+.scpp:hover { background: #5d5491 !important; color: #fff !important; }
+
+/* Breakpoints responsive del prototipo */
+@media (max-width: 900px) {
+  .r-hero-row { flex-direction: column !important; align-items: stretch !important; }
+  .r-hero-img-wrap { width: 100% !important; max-width: 100% !important; height: 260px !important; align-self: center !important; }
+  .r-hero-circle { right: 50% !important; transform: translate(50%, -50%) !important; width: 240px !important; height: 240px !important; }
+  .r-cta-final { padding: 36px 26px !important; text-align: center !important; justify-content: center !important; }
+  .r-cta-img { margin: 0 auto !important; object-position: center center !important; height: 180px !important; }
+  .r-foot-grid { grid-template-columns: 1fr !important; gap: 28px !important; }
+  .r-foot-legal { text-align: left !important; }
+}
+/* Auth (ingresar / registro) — layout de marca a dos columnas */
+.auth-wrap { display: flex; min-height: 100vh; }
+.auth-brand { position: relative; flex: 0 0 46%; max-width: 560px; background: linear-gradient(160deg, #4a4177 0%, #5d5491 100%); overflow: hidden; display: flex; flex-direction: column; padding: 40px 44px; color: #fff; }
+.auth-form-col { flex: 1 1 0%; display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+@media (max-width: 880px) {
+  .auth-wrap { flex-direction: column; }
+  .auth-brand { flex: 0 0 auto; max-width: 100%; padding: 28px 24px 20px; }
+  .auth-brand-img { display: none !important; }
+  .auth-brand-copy { max-width: 100% !important; }
+  .auth-form-col { padding: 28px 20px 48px; }
+}
+
+@media (max-width: 760px) {
+  .r-hero { min-height: auto !important; padding-top: 32px !important; padding-bottom: 38px !important; }
+  .r-h1 { font-size: 38px !important; }
+  .r-chip-hide { display: none !important; }
+  .r-grid6 { grid-template-columns: repeat(2, 1fr) !important; }
+  .r-grid5 { grid-template-columns: repeat(2, 1fr) !important; }
+  .r-grid4 { grid-template-columns: repeat(2, 1fr) !important; }
+  .r-grid3 { grid-template-columns: 1fr !important; }
+  .r-grid2 { grid-template-columns: 1fr !important; }
+  .r-h2 { font-size: 29px !important; }
+  .r-sec { padding-left: 18px !important; padding-right: 18px !important; }
+  .r-banner { padding: 32px 26px !important; }
+  .r-hidemob { display: none !important; }
+  .r-rubro-img { height: 240px !important; }
+  .r-nav { padding-left: 16px !important; padding-right: 16px !important; gap: 8px !important; }
+  .r-nav-logo { font-size: 24px !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+ * Sección /app — la cuenta del socio
+ * Antes vivía en apps/webapp/app/globals.css. Las clases ya venían
+ * prefijadas con .wa-, así que no chocan con el resto del sitio.
+ * ════════════════════════════════════════════════════════════════ */
+@keyframes kshine { 0% { transform: translateX(-130%) skewX(-18deg); } 55%, 100% { transform: translateX(320%) skewX(-18deg); } }
+
+/* hover del carnet foto */
+.scpu:hover { opacity: 1 !important; }
+.wa-navitem:hover { background: #f0edf9 !important; }
+.wa-card:hover { border-color: #d8d3e8 !important; box-shadow: 0 4px 12px rgba(93,84,145,.1); }
+
+/* Desktop: sidebar fijo. Abajo de 1024px, drawer desde la barra superior. */
+.wa-topbar { display: none; }
+.wa-scrim { display: none; }
+
+@media (max-width: 1023px) {
+  .wa-side {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    height: 100%;
+    background: #fff;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+  .wa-side-open { transform: translateX(0); }
+  .wa-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(33,30,51,0.45);
+    z-index: 50;
+    border: none;
+    cursor: pointer;
+  }
+  .wa-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #fff;
+    border-bottom: 1px solid rgb(238,236,245);
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 54px;
+    z-index: 40;
+  }
+  .wa-content { padding-top: 62px !important; max-height: none !important; }
+  .wa-grid2 { grid-template-columns: 1fr !important; }
+  .wa-cards { grid-template-columns: repeat(2, 1fr) !important; }
+  .wa-quick { grid-template-columns: repeat(4, 1fr) !important; }
+}
+
+@media (max-width: 560px) {
+  .wa-cards { grid-template-columns: 1fr !important; }
+  .wa-pad { padding-left: 16px !important; padding-right: 16px !important; }
+  .wa-row-wrap { flex-wrap: wrap !important; }
+}
+
+/* ════════════════════════════════════════════════════════════════
+ * Sección /admin — el panel del club
+ * Antes vivía en apps/admin/app/globals.css. El fondo propio del panel
+ * (#f7f6fa) se aplica en app/admin/layout.tsx, no acá.
+ * ════════════════════════════════════════════════════════════════ */
+.adm-nav:hover { background: rgba(255,255,255,0.06) !important; }
+.adm-row:hover { background: #faf9fd !important; }
+
+.adm-topbar { display: none; }
+.adm-scrim { display: none; }
+.adm-tablewrap { overflow-x: auto; }
+.adm-tablewrap table { min-width: 680px; }
+
+@media (max-width: 1023px) {
+  .adm-side {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    height: 100% !important;
+    z-index: 60;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+  .adm-side-open { transform: translateX(0); }
+  .adm-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(33,30,51,0.5);
+    z-index: 50;
+    border: none;
+    cursor: pointer;
+  }
+  /* Fija arriba y fuera del flujo, para que no cuente como columna del flex. */
+  .adm-topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgb(33,30,51);
+    color: #fff;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 52px;
+    z-index: 40;
+  }
+  .adm-main { padding: 76px 16px 48px !important; }
+  .adm-kpis { grid-template-columns: repeat(2, 1fr) !important; }
+  .adm-2col, .adm-3col, .adm-push { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 560px) {
+  .adm-kpis { grid-template-columns: 1fr !important; }
+  .adm-main { padding: 72px 14px 40px !important; }
+  .adm-h1 { font-size: 23px !important; }
+  /* La card de la cola de reintegros: apilada y a lo ancho. */
+  .adm-queue-card { align-items: stretch !important; }
+  .adm-queue-card > * { text-align: left !important; }
+  .adm-queue-actions { width: 100%; }
+  .adm-queue-actions button { flex: 1 1 0; }
+}
