@@ -11,8 +11,16 @@ import { urls } from '@kumo/shared';
  */
 const KEY = process.env.RESEND_API_KEY;
 const FROM = process.env.RESEND_FROM || 'Kumo <onboarding@resend.dev>';
-/** Para armar links absolutos: en el mail no sirven las rutas relativas. */
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+/**
+ * Para armar links absolutos: en el mail no sirven las rutas relativas.
+ *
+ * El fallback a VERCEL_URL (que Vercel define solo en cada deploy) está para que
+ * un olvido de NEXT_PUBLIC_SITE_URL no termine mandando mails con links a
+ * localhost. Peor que un link al dominio de vercel.app es uno que no abre.
+ */
+const SITE =
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
 const BRAND = '#5d5491';
 const INK = '#211e33';
