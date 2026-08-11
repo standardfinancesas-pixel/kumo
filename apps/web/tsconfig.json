@@ -10,8 +10,12 @@
     "module": "ESNext",
     "allowJs": true,
     "typeRoots": [
-      "./node_modules/@types",
-      "../../node_modules/@types"
+      "./node_modules/@types"
+    ],
+    "types": [
+      "node",
+      "react",
+      "react-dom"
     ],
     "paths": {
       "@/*": [
