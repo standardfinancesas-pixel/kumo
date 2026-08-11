@@ -27,7 +27,11 @@ export type KumoData = {
   reintegros: ReintVM[];
   reintTotal: number;
   posts: ForumPost[];
+  /** El negocio propio, si dio de alta uno. Puede estar pendiente o rechazado, así que no sale del listado de verificados. */
+  negocio: MiNegocio | null;
 };
+
+export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; status: string; rating: number; reviews: number };
 
 /* ── Helpers de formato ────────────────────────────────────────── */
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -100,13 +104,14 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async () => {
     if (!userId) { setData(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status, requested_on').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, replies, likes, created_at, profiles(full_name)').order('created_at', { ascending: false }).limit(20),
+      supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews').eq('owner_id', userId).maybeSingle(),
     ]);
 
     const p = profileRes.data;
@@ -170,7 +175,12 @@ export function useKumoData(userId: string | null) {
       };
     });
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts });
+    const n = negocioRes.data;
+    const negocio: MiNegocio | null = n
+      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews }
+      : null;
+
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio });
     setLoading(false);
   }, [userId]);
 

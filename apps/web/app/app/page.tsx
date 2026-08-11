@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { urls } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
-import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost } from './AppClient';
+import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
 /** Landing: ahí está el login si no hay sesión. */
 const LANDING = urls.landing;
@@ -189,6 +189,22 @@ export default async function Page() {
     .eq('status', 'verificado');
   const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow));
 
+  // El negocio propio del socio, si dio de alta uno. Va aparte de `providers`
+  // porque ese listado solo trae los verificados y acá interesa verlo aunque
+  // esté pendiente o lo hayan rechazado.
+  const { data: negocioRow } = await supabase
+    .from('providers')
+    .select('id, name, category, zone, phone, about, status, rating, reviews')
+    .eq('owner_id', auth.user.id)
+    .maybeSingle();
+  const negocio: MiNegocio | null = negocioRow
+    ? {
+        id: negocioRow.id, name: negocioRow.name, category: negocioRow.category, zone: negocioRow.zone,
+        phone: negocioRow.phone, about: negocioRow.about, status: negocioRow.status,
+        rating: negocioRow.rating, reviews: negocioRow.reviews,
+      }
+    : null;
+
   const { data: benefitRows } = await supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo');
   const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow));
 
@@ -198,5 +214,5 @@ export default async function Page() {
     .order('created_at', { ascending: false });
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} />;
 }

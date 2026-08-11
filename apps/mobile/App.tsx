@@ -7,7 +7,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import { colors } from '@kumo/shared';
 import { supabase } from './lib/supabase';
-import { useKumoData, type Pet, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost } from './lib/useKumoData';
+import { useKumoData, type Pet, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
 /* Familias (Baloo 2 títulos, DM Sans cuerpo) — igual que la web. */
@@ -666,41 +666,116 @@ function Guardados() {
 }
 
 /* ── Sub-pantalla: Mi negocio ──────────────────────────────────── */
-function Negocio() {
-  const [demo, setDemo] = useState(0);
-  const demos = ['Sin negocio', 'En revisión', 'Activo'];
+const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'];
+
+function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null; userId: string; phone: string; reload: () => void }) {
+  const [showAlta, setShowAlta] = useState(false);
+  const [nombre, setNombre] = useState('');
+  const [rubro, setRubro] = useState(RUBROS[0]!);
+  const [zona, setZona] = useState('');
+  const [tel, setTel] = useState(phone === '—' ? '' : phone);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // El estado sale del negocio real, no de un selector de demo.
+  const state: 'sin' | 'revision' | 'activo' | 'rechazado' =
+    !negocio ? 'sin' : negocio.status === 'verificado' ? 'activo' : negocio.status === 'rechazado' ? 'rechazado' : 'revision';
+
+  const enviarAlta = async () => {
+    if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
+    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('providers').insert({
+      owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      phone: tel.trim() || null, status: 'pendiente',
+    });
+    if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    setShowAlta(false);
+    await reload();
+    setBusy(false);
+  };
+
+  const darDeBaja = async () => {
+    if (!negocio) return;
+    setBusy(true);
+    await supabase.from('providers').delete().eq('id', negocio.id);
+    await reload();
+    setBusy(false);
+  };
+
+  const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <H1>Mi negocio</H1>
       <Sub>Ofrecé tus servicios a la comunidad de Kumo.</Sub>
-      {/* Control DEMO */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f0edf9', borderRadius: 12, padding: 5, marginBottom: 18 }}>
-        <Text style={{ fontSize: 10, fontWeight: '800', color: colors.violet[400], marginLeft: 6 }}>DEMO</Text>
-        {demos.map((d, i) => (
-          <TouchableOpacity key={d} onPress={() => setDemo(i)} style={{ flex: 1, backgroundColor: demo === i ? BRAND : 'transparent', borderRadius: 9, paddingVertical: 7, alignItems: 'center' }}>
-            <Text style={{ fontSize: 11.5, fontWeight: '700', color: demo === i ? '#fff' : MUTED }}>{d}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-      {demo === 0 && (
+      {state === 'sin' && (
         <View style={{ backgroundColor: BRAND, borderRadius: 20, padding: 22, marginBottom: 18, overflow: 'hidden' }}>
           <View style={{ position: 'absolute', right: -20, top: -20, opacity: 0.15 }}><Ic d="store" size={120} color="#fff" /></View>
           <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}><Ic d="store" size={26} color="#fff" /></View>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: '#fff', lineHeight: 27 }}>¿Ofrecés un servicio para mascotas?</Text>
           <Text style={{ color: colors.violet[300], fontSize: 13.5, lineHeight: 20, marginTop: 10, marginBottom: 18 }}>Dá de alta tu negocio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</Text>
-          <TouchableOpacity style={{ backgroundColor: LIME, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}><Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>Dar de alta mi negocio →</Text></TouchableOpacity>
+          {showAlta ? (
+            <View style={{ gap: 10 }}>
+              <TextInput value={nombre} onChangeText={(t) => { setNombre(t); setError(''); }} placeholder="Nombre de tu negocio" placeholderTextColor={colors.violet[400]} style={field} />
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+                {RUBROS.map((r) => (
+                  <TouchableOpacity key={r} onPress={() => setRubro(r)} style={{ backgroundColor: rubro === r ? LIME : 'rgba(255,255,255,0.15)', borderRadius: 100, paddingVertical: 8, paddingHorizontal: 13 }}>
+                    <Text style={{ color: rubro === r ? INK : '#fff', fontWeight: '700', fontSize: 12.5 }}>{r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TextInput value={zona} onChangeText={(t) => { setZona(t); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" placeholderTextColor={colors.violet[400]} style={field} />
+              <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
+              {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
+              <View style={{ flexDirection: 'row', gap: 10 }}>
+                <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity disabled={busy} onPress={enviarAlta} style={{ flex: 1, backgroundColor: LIME, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+                  <Text style={{ color: INK, fontWeight: '700', fontSize: 14 }}>{busy ? 'Enviando…' : 'Enviar'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => setShowAlta(true)} style={{ backgroundColor: LIME, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+              <Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>Dar de alta mi negocio →</Text>
+            </TouchableOpacity>
+          )}
         </View>
       )}
-      {demo === 1 && (
+      {state === 'revision' && (
         <View style={{ backgroundColor: '#fbf3e2', borderWidth: 1, borderColor: '#f0d98a', borderRadius: 20, padding: 22, marginBottom: 18 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: '#b8860b' }}>Tu alta está en revisión</Text>
-          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Nuestro equipo está validando tus datos. Te avisamos en 2-5 días hábiles cuando tu negocio quede activo.</Text>
+          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Nuestro equipo está validando tus datos. Te avisamos cuando tu negocio quede activo.</Text>
+          <Text style={{ color: INK, fontWeight: '700', fontSize: 15, marginTop: 14 }}>{negocio?.name}</Text>
+          <Text style={{ color: MUTED, fontSize: 13 }}>{negocio?.category} · {negocio?.zone}</Text>
+          <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
+            <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Borrando…' : 'Borrar la solicitud'}</Text>
+          </TouchableOpacity>
         </View>
       )}
-      {demo === 2 && (
+      {state === 'activo' && (
         <View style={{ backgroundColor: colors.success.bg, borderWidth: 1, borderColor: '#a8dcc0', borderRadius: 20, padding: 22, marginBottom: 18 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: colors.success.fg }}>Tu negocio está activo ✓</Text>
-          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Ya sos visible para los socios. Gestioná tus reseñas y contactos desde acá.</Text>
+          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Ya sos visible para los socios en Servicios.</Text>
+          <Text style={{ color: INK, fontWeight: '700', fontSize: 16, marginTop: 14 }}>{negocio?.name}</Text>
+          <Text style={{ color: MUTED, fontSize: 13 }}>{negocio?.category} · {negocio?.zone}</Text>
+          <Text style={{ color: MUTED, fontSize: 13, marginTop: 8 }}>
+            {negocio && negocio.reviews > 0 ? `★ ${negocio.rating.toFixed(1)} · ${negocio.reviews} reseñas` : 'Todavía sin reseñas'}
+          </Text>
+          <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
+            <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Dando de baja…' : 'Dar de baja mi negocio'}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+      {state === 'rechazado' && (
+        <View style={{ backgroundColor: '#fbe8ef', borderWidth: 1, borderColor: '#f0c8d7', borderRadius: 20, padding: 22, marginBottom: 18 }}>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: '#b0483f' }}>No pudimos aprobar tu negocio</Text>
+          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Escribinos y lo revisamos con vos. Podés borrar la solicitud y volver a empezar cuando quieras.</Text>
+          <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
+            <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Borrando…' : 'Borrar la solicitud'}</Text>
+          </TouchableOpacity>
         </View>
       )}
       {([['person', 'Miles de socios buscando tu servicio'], ['shield', 'Sello "Verificado por Kumo"'], ['chat', 'Reseñas y contactos en un solo lugar']] as [IconName, string][]).map(([icon, t]) => (
@@ -979,7 +1054,7 @@ export default function App() {
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
           {screen === 'mismascotas' && <MisMascotas pets={pets} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados />}
-          {screen === 'minegocio' && <Negocio />}
+          {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
         </View>
         <View style={styles.tabbar}>
           {TABS.map((t) => {

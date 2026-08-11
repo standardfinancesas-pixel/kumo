@@ -58,6 +58,8 @@ export type Pet = { id: string; name: string; plan: string; socio: string; photo
 export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
 export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; badge?: string };
 export type BenefitVM = { id: string; name: string; category: string; discount: string; icon: 'cross' | 'store' | 'tag' | 'droplet' };
+/** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
+export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number };
 export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: { author: string; when: string; text: string; likes: number; best: boolean }[] };
 
 /** Datos del socio logueado, resueltos en el Server Component (app/page.tsx). */
@@ -855,47 +857,71 @@ function Foros({ initialPosts, profile }: { initialPosts: ForumPost[]; profile: 
   );
 }
 
-/* ── Pantalla: Mi negocio (3 estados demo) ─────────────────────── */
-function Negocio({ go }: { go: (s: Screen) => void }) {
-  const [state, setState] = useState<'sin' | 'revision' | 'activo'>('sin');
+/* ── Pantalla: Mi negocio ──────────────────────────────────────── */
+const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'];
+
+function Negocio({ go, negocio, profile }: { go: (s: Screen) => void; negocio: MiNegocio | null; profile: Profile }) {
+  const router = useRouter();
   const [showAlta, setShowAlta] = useState(false);
-  const [rubro, setRubro] = useState('Paseador');
+  const [nombre, setNombre] = useState('');
+  const [rubro, setRubro] = useState(RUBROS[0]!);
   const [zona, setZona] = useState('');
-  const enviarAlta = (e: FormEvent) => {
+  const [tel, setTel] = useState(profile.phone ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  // El estado sale del negocio real, no de un switch: sin negocio, esperando la
+  // validación del club, publicado, o rechazado.
+  const state: 'sin' | 'revision' | 'activo' | 'rechazado' =
+    !negocio ? 'sin' : negocio.status === 'verificado' ? 'activo' : negocio.status === 'rechazado' ? 'rechazado' : 'revision';
+
+  const enviarAlta = async (e: FormEvent) => {
     e.preventDefault();
+    if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
+    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
+    setBusy(true); setError('');
+    const { error: e2 } = await supabase.from('providers').insert({
+      owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      phone: tel.trim() || null, status: 'pendiente',
+    });
+    if (e2) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     setShowAlta(false);
-    setState('revision');
+    router.refresh();
+    setBusy(false);
   };
-  const demo: { k: typeof state; label: string }[] = [
-    { k: 'sin', label: 'Sin negocio' }, { k: 'revision', label: 'En revisión' }, { k: 'activo', label: 'Activo' },
-  ];
-  const negCard = (
+
+  const darDeBaja = async () => {
+    if (!negocio) return;
+    setBusy(true);
+    await supabase.from('providers').delete().eq('id', negocio.id);
+    router.refresh();
+    setBusy(false);
+  };
+
+  /** Ficha del negocio. Con `soloContacto` se usa junto a una tarjeta que ya
+   *  muestra el nombre, para no repetirlo. */
+  const negCard = (soloContacto = false) => negocio && (
     <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, marginBottom: 14 }}>
-      <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginBottom: 2 }}>Tu negocio</div>
-      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 18 }}>Paseador · CABA</div>
-      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-        {[['WhatsApp', '+54 11 …'], ['Email', 'tuempresa@email.com']].map(([k, v]) => (
-          <div key={k} style={{ flex: '1 1 0%', background: '#fff', border: '1px solid rgb(238,236,245)', borderRadius: 10, padding: '9px 11px' }}>
-            <div style={{ fontSize: 10, color: 'rgb(162,157,186)' }}>{k}</div>
-            <div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div>
-          </div>
-        ))}
-      </div>
+      {!soloContacto && (
+        <>
+          <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginBottom: 2 }}>Tu negocio</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 18 }}>{negocio.name}</div>
+          <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{negocio.category} · {negocio.zone}</div>
+        </>
+      )}
+      {negocio.phone && (
+        <div>
+          <div style={{ fontSize: 10, color: 'rgb(162,157,186)', marginTop: soloContacto ? 0 : 12 }}>WHATSAPP DE CONTACTO</div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>{negocio.phone}</div>
+        </div>
+      )}
     </div>
   );
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Mi negocio</div>
-      <div style={{ color: 'rgb(135,129,160)', fontSize: 14, marginBottom: 14 }}>Ofrecé tus servicios a la comunidad de Kumo.</div>
-
-      {/* Switcher DEMO */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 18 }}>
-        <span style={{ fontSize: 10, fontWeight: 800, color: 'rgb(162,157,186)', letterSpacing: '0.08em' }}>DEMO</span>
-        {demo.map((d) => (
-          <button key={d.k} onClick={() => setState(d.k)} style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 100, background: state === d.k ? 'rgb(93,84,145)' : 'rgb(240,237,249)', color: state === d.k ? '#fff' : 'rgb(93,84,145)' }}>{d.label}</button>
-        ))}
-      </div>
+      <div style={{ color: 'rgb(135,129,160)', fontSize: 14, marginBottom: 18 }}>Ofrecé tus servicios a la comunidad de Kumo.</div>
 
       {state === 'sin' && (
         <div>
@@ -908,12 +934,14 @@ function Negocio({ go }: { go: (s: Screen) => void }) {
             <button onClick={() => setShowAlta((s) => !s)} style={{ display: 'inline-block', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 14, cursor: 'pointer' }}>Dar de alta mi negocio →</button>
             {showAlta && (
               <form onSubmit={enviarAlta} style={{ marginTop: 18, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 10, animation: 'kpop 0.2s ease' }}>
+                <input value={nombre} onChange={(e) => { setNombre(e.target.value); setError(''); }} placeholder="Nombre de tu negocio" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
                 <select value={rubro} onChange={(e) => setRubro(e.target.value)} style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }}>
-                  {['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'].map((r) => <option key={r}>{r}</option>)}
+                  {RUBROS.map((r) => <option key={r}>{r}</option>)}
                 </select>
-                <input value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <input placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <button type="submit" style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: 'pointer' }}>Enviar solicitud</button>
+                <input value={zona} onChange={(e) => { setZona(e.target.value); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
+                <button type="submit" disabled={busy} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
               </form>
             )}
           </div>
@@ -936,7 +964,7 @@ function Negocio({ go }: { go: (s: Screen) => void }) {
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: 'rgb(184,134,11)' }}>En revisión</div>
             <div style={{ fontSize: 13, color: 'rgb(140,110,40)', marginTop: 2 }}>El club está validando los datos de tu negocio. Te avisamos en 48 hs hábiles.</div>
           </div>
-          {negCard}
+          {negCard()}
           <div style={{ fontWeight: 700, fontSize: 15, margin: '18px 0 12px' }}>Estado de tu solicitud</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {[
@@ -969,25 +997,36 @@ function Negocio({ go }: { go: (s: Screen) => void }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div>
                 <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>Tu negocio</div>
-                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 18 }}>Paseador · CABA</div>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 18 }}>{negocio?.name}</div>
+                <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{negocio?.category} · {negocio?.zone}</div>
               </div>
-              <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100 }}>Publicado</span>
+              <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100, flex: '0 0 auto' }}>Publicado</span>
             </div>
+            {/* Solo lo que la base realmente registra. Vistas y contactos no se
+                miden todavía, así que no se muestran números inventados. */}
             <div style={{ display: 'flex', gap: 8 }}>
-              {[['128', 'vistas'], ['9', 'contactos'], ['4.8★', 'rating']].map(([n, l]) => (
-                <div key={l} style={{ flex: '1 1 0%', background: '#fff', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
-                  <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, color: 'rgb(93,84,145)' }}>{n}</div>
-                  <div style={{ fontSize: 11, color: 'rgb(135,129,160)' }}>{l}</div>
-                </div>
-              ))}
+              <div style={{ flex: '1 1 0%', background: '#fff', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, color: 'rgb(93,84,145)' }}>{negocio && negocio.reviews > 0 ? `${negocio.rating.toFixed(1)}★` : '—'}</div>
+                <div style={{ fontSize: 11, color: 'rgb(135,129,160)' }}>{negocio && negocio.reviews > 0 ? `${negocio.reviews} reseñas` : 'sin reseñas'}</div>
+              </div>
             </div>
           </div>
-          {negCard}
+          {negCard(true)}
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: 'pointer' }}>Editar datos</button>
             <button onClick={() => go('servicios')} style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: 'pointer' }}>Ver perfil público</button>
-            <button onClick={() => setState('sin')} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: 'pointer' }}>Dar de baja mi negocio</button>
+            <button onClick={darDeBaja} disabled={busy} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Dando de baja…' : 'Dar de baja mi negocio'}</button>
           </div>
+        </div>
+      )}
+
+      {state === 'rechazado' && (
+        <div>
+          <div style={{ background: 'rgb(251,232,239)', border: '1px solid rgb(240,200,215)', borderRadius: 16, padding: 16, marginBottom: 14 }}>
+            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: 'rgb(176,72,63)' }}>No pudimos aprobar tu negocio</div>
+            <div style={{ fontSize: 13, color: 'rgb(150,70,70)', marginTop: 2 }}>Escribinos y lo revisamos con vos. Podés dar de baja la solicitud y volver a empezar cuando quieras.</div>
+          </div>
+          {negCard()}
+          <button onClick={darDeBaja} disabled={busy} style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: busy ? 'default' : 'pointer', width: '100%', opacity: busy ? 0.6 : 1 }}>{busy ? 'Borrando…' : 'Borrar la solicitud'}</button>
         </div>
       )}
     </div>
@@ -1144,7 +1183,7 @@ function EnConstruccion({ titulo }: { titulo: string }) {
 }
 
 /* ── Shell ─────────────────────────────────────────────────────── */
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[] }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -1183,7 +1222,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} />}
-          {screen === 'negocio' && <Negocio go={go} />}
+          {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} />}
         </div>
       </div>
