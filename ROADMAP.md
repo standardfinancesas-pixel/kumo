@@ -35,8 +35,10 @@ de cada pantalla.
       plan" (precio, bajada, destacado y perks) y la ficha del socio (datos,
       mascotas y reintegros, pedidos al abrir el modal). El "Ver detalle" de la
       cola de reintegros ya muestra el comprobante.
-- [ ] **Alta real de prestador**: "Prestar servicio" / "Mi negocio" hoy no
-      escriben en `providers` (mobile todavía usa el toggle DEMO del prototipo).
+- [x] **Alta real de prestador**: el socio se da de alta en "Mi negocio" (queda
+      pendiente), el admin lo valida en Negocios y aparece en Servicios. El
+      estado sale de la base, no del selector DEMO del prototipo, que se
+      eliminó de la web y de mobile.
 - [ ] **Contactos de emergencia en mobile** (la webapp ya los tiene).
 
 ## Fase 3 — Deploy y operación
