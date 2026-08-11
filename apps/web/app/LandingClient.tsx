@@ -38,11 +38,12 @@ const AUTH_COPY: Record<AuthMode, { title: string; subtitle: string; cta: string
 const authLabel: CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: '#5b5670', marginBottom: 6 };
 const authInput: CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: '#211E33', outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
 
-function AuthModal({ mode, onClose }: { mode: AuthMode | null; onClose: () => void }) {
+function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: () => void; aviso?: string }) {
   const openAuth = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => { if (mode) { setEmail(''); setPassword(''); setError(''); } }, [mode]);
   if (!mode) return null;
@@ -62,6 +63,24 @@ function AuthModal({ mode, onClose }: { mode: AuthMode | null; onClose: () => vo
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', signInData.user.id).single();
     setLoading(false);
     window.location.href = profile?.role === 'admin' ? ADMIN : WEBAPP;
+  };
+
+  /** Google sirve para entrar, no para asociarse: /auth/callback verifica que la
+   *  cuenta sea de un socio y, si no, la rebota con un aviso. */
+  const entrarConGoogle = async () => {
+    setGoogleLoading(true);
+    setError('');
+    const { error: e } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    });
+    if (e) {
+      setGoogleLoading(false);
+      setError(/provider is not enabled/i.test(e.message)
+        ? 'El ingreso con Google todavía no está configurado.'
+        : 'No pudimos abrir el ingreso con Google.');
+    }
+    // Si sale bien, el navegador se va a Google: no hace falta apagar el loading.
   };
 
   return (
@@ -92,6 +111,7 @@ function AuthModal({ mode, onClose }: { mode: AuthMode | null; onClose: () => vo
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={authInput} />
           </div>
           <div style={{ textAlign: 'right', marginBottom: 14 }}><a href="#" style={{ fontSize: 13, color: '#5D5491', fontWeight: 600, textDecoration: 'none' }}>¿Olvidaste tu contraseña?</a></div>
+          {aviso && !error && <div style={{ background: '#fbf3e2', color: '#92690a', fontSize: 13, lineHeight: 1.5, borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>{aviso}</div>}
           {error && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13, borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>{error}</div>}
           <button type="submit" disabled={loading} className="scpa" style={{ width: '100%', display: 'block', textAlign: 'center', background: '#5D5491', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: 15, borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'background 0.15s' }}>{loading ? 'Ingresando…' : copy.cta}</button>
         </form>
@@ -99,9 +119,9 @@ function AuthModal({ mode, onClose }: { mode: AuthMode | null; onClose: () => vo
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0' }}>
           <div style={{ flex: 1, height: 1, background: '#eeecf5' }} /><span style={{ fontSize: 12, color: '#a29dba' }}>o</span><div style={{ flex: 1, height: 1, background: '#eeecf5' }} />
         </div>
-        <button type="button" disabled className="scp6" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#fff', border: '1.5px solid #e6e3f0', borderRadius: 14, padding: 13, cursor: 'not-allowed', opacity: 0.55, fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 15, color: '#211E33', transition: '0.15s' }}>
+        <button type="button" onClick={entrarConGoogle} disabled={googleLoading} className="scp6" style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: '#fff', border: '1.5px solid #e6e3f0', borderRadius: 14, padding: 13, cursor: googleLoading ? 'default' : 'pointer', opacity: googleLoading ? 0.6 : 1, fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 15, color: '#211E33', transition: '0.15s' }}>
           <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.5 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2-1.9 3.3-4.7 3.3-7.8z" /><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.5-2.7c-1 .7-2.3 1.1-3.8 1.1-2.9 0-5.4-2-6.3-4.6H2v2.8A11 11 0 0 0 12 23z" /><path fill="#FBBC05" d="M5.7 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2a11 11 0 0 0 0 9.8z" /><path fill="#EA4335" d="M12 5.4c1.6 0 3 .6 4.2 1.7l3.1-3.1A11 11 0 0 0 2 7.1l3.7 2.8C6.6 7.3 9.1 5.4 12 5.4z" /></svg>
-          Continuar con Google
+          {googleLoading ? 'Abriendo Google…' : 'Continuar con Google'}
         </button>
       </div>
     </div>
@@ -734,9 +754,29 @@ function Footer() {
   );
 }
 
+const AVISOS_LOGIN: Record<string, string> = {
+  'no-socio': 'Esa cuenta de Google todavía no es socia de Kumo. Asociate primero y después podés entrar con Google.',
+  cancelado: 'Cancelaste el ingreso con Google.',
+  error: 'No pudimos completar el ingreso con Google. Probá de nuevo.',
+};
+
 export default function LandingClient({ content }: { content: LandingContent }) {
   // 'login' → modal de login; 'register' → onboarding de socio; 'prestador' → landing de prestadores
   const [view, setView] = useState<View | null>(null);
+  const [avisoLogin, setAvisoLogin] = useState('');
+
+  // Cuando /auth/callback rebota (por ejemplo, una cuenta de Google que no es
+  // socia) vuelve con ?login=… : se abre el modal para explicarlo ahí mismo.
+  // Se lee de window en vez de useSearchParams para no forzar el render en
+  // cliente de una página que es estática.
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('login');
+    if (!p) return;
+    setAvisoLogin(AVISOS_LOGIN[p] ?? AVISOS_LOGIN.error!);
+    setView('login');
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
+
   return (
     <ContentCtx.Provider value={content}>
     <AuthCtx.Provider value={(m) => setView(m)}>
@@ -756,7 +796,7 @@ export default function LandingClient({ content }: { content: LandingContent }) 
         <WhatsApp />
         <Footer />
       </main>
-      <AuthModal mode={view === 'login' ? 'login' : null} onClose={() => setView(null)} />
+      <AuthModal mode={view === 'login' ? 'login' : null} onClose={() => { setView(null); setAvisoLogin(''); }} aviso={avisoLogin} />
       <Onboarding open={view === 'register'} onClose={() => setView(null)} plans={content.plans} />
       <PrestadoresPage open={view === 'prestador'} onClose={() => setView(null)} />
     </AuthCtx.Provider>
