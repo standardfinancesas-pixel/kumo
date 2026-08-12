@@ -2,7 +2,7 @@
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { data, urls } from '@kumo/shared';
+import { data, urls, waLink } from '@kumo/shared';
 import type { Faq, Plan } from '@kumo/shared';
 import { Onboarding } from '@/components/Onboarding';
 import { PrestadoresPage } from '@/components/PrestadoresPage';
@@ -679,7 +679,7 @@ function Faqs() {
 function WhatsApp() {
   const { whatsapp } = useContent();
   return (
-    <a href={`https://wa.me/${whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener" aria-label="WhatsApp" className="scpo" style={{ position: 'fixed', right: 24, bottom: 96, zIndex: 150, width: 58, height: 58, borderRadius: '50%', background: 'rgb(37,211,102)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(37,211,102,0.4)', textDecoration: 'none', transition: 'transform 0.18s, box-shadow 0.18s' }}>
+    <a href={waLink(whatsapp)} target="_blank" rel="noopener" aria-label="WhatsApp" className="scpo" style={{ position: 'fixed', right: 24, bottom: 96, zIndex: 150, width: 58, height: 58, borderRadius: '50%', background: 'rgb(37,211,102)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(37,211,102,0.4)', textDecoration: 'none', transition: 'transform 0.18s, box-shadow 0.18s' }}>
       <svg width="31" height="31" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>
         <path d="M17.5 14.4c-.3-.2-1.7-.9-2-1-.3-.1-.5-.2-.7.1-.2.3-.7 1-.9 1.2-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.5-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.2-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.2 3.4 5.3 4.7.7.3 1.3.5 1.8.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.2-.3-.2-.6-.4z" />
         <path d="M12 2a10 10 0 0 0-8.5 15.2L2 22l4.9-1.4A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .9.9-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2z" />

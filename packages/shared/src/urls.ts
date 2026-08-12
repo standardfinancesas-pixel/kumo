@@ -13,6 +13,16 @@ export const urls = {
 } as const;
 
 /**
+ * Link de WhatsApp a partir del número que el admin carga en `club_settings`.
+ *
+ * wa.me solo acepta dígitos, y el número se guarda con el formato legible
+ * ("+54 9 11 2516-8802") porque es el que se muestra. Está acá para que la
+ * landing y los mails armen el mismo link: es el único canal de contacto del
+ * club que se puede contestar (el remitente de los mails no recibe).
+ */
+export const waLink = (numero: string) => `https://wa.me/${numero.replace(/\D/g, '')}`;
+
+/**
  * Formatos y tamaño que acepta el bucket `pet-photos` de Supabase.
  *
  * Están acá para que el navegador valide lo mismo que el servidor: si no

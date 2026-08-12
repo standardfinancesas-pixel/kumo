@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
-import { urls } from '@kumo/shared';
+import { data, urls, waLink } from '@kumo/shared';
+import { createClient } from './supabase-public';
 
 /**
  * Mails transaccionales (Resend). SOLO servidor: la API key no puede llegar al
@@ -29,9 +30,35 @@ const MUTED = '#8781a0';
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 
+/**
+ * El WhatsApp del club: es a dónde se manda a quien quiera contestar un mail.
+ *
+ * El remitente no recibe. Un dominio verificado en Resend sirve para mandar, no
+ * para recibir: sin MX, `hola@kumo.pet` no es una casilla y toda respuesta
+ * rebota. Así que "respondé este mail" era una promesa que el producto no podía
+ * cumplir, y el único canal que sí existe es el WhatsApp que el admin carga en
+ * `club_settings`.
+ *
+ * Se lee en cada envío y no se cachea: son mails puntuales, y si el club cambia
+ * el número, mandar el viejo es peor que la consulta de más. La tabla es pública
+ * (la landing la lee igual), así que alcanza el cliente anon.
+ */
+async function whatsappDelClub(): Promise<string> {
+  try {
+    const { data: row } = await createClient()
+      .from('club_settings')
+      .select('whatsapp')
+      .eq('id', 1)
+      .single();
+    return row?.whatsapp || data.clubSettings.whatsapp;
+  } catch {
+    return data.clubSettings.whatsapp;
+  }
+}
+
 /** Envoltorio común: tablas y estilos en línea, que es lo que los clientes de
  *  mail renderizan de forma consistente. */
-function layout(titulo: string, cuerpo: string, cta?: { label: string; href: string }): string {
+function layout(titulo: string, cuerpo: string, wa: string, cta?: { label: string; href: string }): string {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>${titulo}</title></head>
@@ -53,7 +80,7 @@ function layout(titulo: string, cuerpo: string, cta?: { label: string; href: str
         <tr><td style="padding:18px 26px 24px;border-top:1px solid #eeecf5;">
           <p style="margin:0;font-size:12px;color:${MUTED};line-height:1.6;">
             Te escribimos porque tenés una cuenta en Kumo.<br>
-            ¿Dudas? Respondé este mail y te contestamos.
+            ¿Dudas? Escribinos por <a href="${waLink(wa)}" style="color:${BRAND};font-weight:700;text-decoration:none;">WhatsApp</a> y te contestamos.
           </p>
         </td></tr>
       </table>
@@ -82,8 +109,9 @@ async function enviar(to: string, subject: string, html: string, text: string) {
 }
 
 /** Bienvenida al alta de un socio. */
-export function sendBienvenida(opts: { to: string; firstName: string; petName: string; memberNo: number; planName: string }) {
+export async function sendBienvenida(opts: { to: string; firstName: string; petName: string; memberNo: number; planName: string }) {
   const { to, firstName, petName, memberNo, planName } = opts;
+  const wa = await whatsappDelClub();
   const cuerpo = `
     <h1 style="margin:0 0 10px;font-size:23px;font-weight:700;">¡Bienvenida al club, ${firstName}!</h1>
     <p style="margin:0 0 18px;font-size:15px;line-height:1.65;color:#3f3a55;">
@@ -99,15 +127,16 @@ export function sendBienvenida(opts: { to: string; firstName: string; petName: s
       en el veterinario y usar los descuentos de la red.
     </p>`;
   const text = `¡Bienvenida al club, ${firstName}!\n\nYa sos socia de Kumo y ${petName} tiene su carnet digital.\nTu número de socia: #${memberNo}\nPlan ${planName}\n\nEntrá a tu cuenta: ${SITE}${urls.webapp}`;
-  return enviar(to, `¡Bienvenida a Kumo! Sos la socia #${memberNo}`, layout('Bienvenida a Kumo', cuerpo, { label: 'Ver mi carnet', href: `${SITE}${urls.webapp}` }), text);
+  return enviar(to, `¡Bienvenida a Kumo! Sos la socia #${memberNo}`, layout('Bienvenida a Kumo', cuerpo, wa, { label: 'Ver mi carnet', href: `${SITE}${urls.webapp}` }), text);
 }
 
 /** Aviso de reintegro resuelto (acreditado o rechazado). */
-export function sendReintegroResuelto(opts: {
+export async function sendReintegroResuelto(opts: {
   to: string; firstName: string; acreditado: boolean;
   providerName: string; concept: string; amount: number; refund: number;
 }) {
   const { to, firstName, acreditado, providerName, concept, amount, refund } = opts;
+  const wa = await whatsappDelClub();
   const detalle = `
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#faf9fd;border-radius:12px;padding:16px;margin:0 0 18px;">
       <tr><td style="font-size:14px;color:#3f3a55;padding-bottom:6px;"><strong>${providerName}</strong></td></tr>
@@ -129,17 +158,17 @@ export function sendReintegroResuelto(opts: {
        </p>
        ${detalle}
        <p style="margin:0;font-size:15px;line-height:1.65;color:#3f3a55;">
-         Si creés que hubo un error, respondé este mail y lo revisamos con vos.
+         Si creés que hubo un error, <a href="${waLink(wa)}" style="color:${BRAND};font-weight:700;text-decoration:none;">escribinos por WhatsApp</a> y lo revisamos con vos.
        </p>`;
 
   const text = acreditado
     ? `${firstName}, aprobamos tu reintegro.\n\n${providerName} · ${concept}\nGastaste ${money(amount)} · te acreditamos ${money(refund)}\n\nSe acredita en los próximos días hábiles.`
-    : `${firstName}, esta vez no pudimos aprobar tu reintegro de ${providerName} (${concept}, ${money(amount)}).\n\nSi creés que hubo un error, respondé este mail.`;
+    : `${firstName}, esta vez no pudimos aprobar tu reintegro de ${providerName} (${concept}, ${money(amount)}).\n\nSi creés que hubo un error, escribinos por WhatsApp: ${waLink(wa)}`;
 
   return enviar(
     to,
     acreditado ? `Aprobamos tu reintegro de ${money(refund)}` : 'Sobre tu pedido de reintegro',
-    layout(acreditado ? 'Reintegro aprobado' : 'Reintegro no aprobado', cuerpo, { label: 'Ver mis reintegros', href: `${SITE}${urls.webapp}` }),
+    layout(acreditado ? 'Reintegro aprobado' : 'Reintegro no aprobado', cuerpo, wa, { label: 'Ver mis reintegros', href: `${SITE}${urls.webapp}` }),
     text
   );
 }
