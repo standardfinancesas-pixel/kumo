@@ -1,9 +1,9 @@
 'use client';
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { urls, FOTO_TIPOS, FOTO_MAX } from '@kumo/shared';
+import { urls, FOTO_TIPOS, FOTO_MAX, buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /** Parsea fechas libres como "30 ago 2026" a ISO ("2026-08-30"). Si no matchea, devuelve null. */
@@ -38,8 +38,10 @@ const chat = <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2
 const person = <><circle cx="12" cy="8" r="3.4" /><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" /></>;
 const shieldPath = <path d="M12 3 5 6v5c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6z" />;
 const pillPath = <><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7z" /><line x1="8.5" y1="8.5" x2="15.5" y2="15.5" /></>;
+const bellPath = <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>;
 
-type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil';
+/** `notif` no va en el sidebar: se llega por la campanita, como en el prototipo. */
+type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif';
 
 const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'inicio', label: 'Inicio', icon: ic(house) },
@@ -87,9 +89,8 @@ function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => v
 }
 
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
-function Inicio({ go, petIdx, setPetIdx, pets, profile }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile }) {
+function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; noLeidas: number }) {
   const [promoIdx, setPromoIdx] = useState(0);
-  const [notifOpen, setNotifOpen] = useState(false);
   const pet = pets[petIdx] ?? pets[0];
   const promo = promos[promoIdx] ?? promos[0]!;
   useEffect(() => {
@@ -111,22 +112,10 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile }: { go: (s: Screen) => v
           <div style={{ fontSize: 13, color: 'rgb(162,157,186)' }}>Hola de nuevo</div>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 23 }}>{profile.firstName}</div>
         </div>
-        <button onClick={() => setNotifOpen((o) => !o)} style={{ width: 44, height: 44, borderRadius: 14, background: 'rgb(240,237,249)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }} aria-label="Notificaciones">
-          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#5D5491" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></svg>
-          <span style={{ position: 'absolute', top: 9, right: 10, width: 8, height: 8, borderRadius: '50%', background: 'rgb(225,251,98)', border: '2px solid rgb(240,237,249)' }} />
+        <button onClick={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, background: 'rgb(240,237,249)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }} aria-label={noLeidas > 0 ? `Notificaciones (${noLeidas} sin leer)` : 'Notificaciones'}>
+          <span style={{ color: '#5D5491' }}>{ic(bellPath, false, 21)}</span>
+          {noLeidas > 0 && <span style={{ position: 'absolute', top: 9, right: 10, width: 8, height: 8, borderRadius: '50%', background: 'rgb(225,251,98)', border: '2px solid rgb(240,237,249)' }} />}
         </button>
-        {notifOpen && (
-          <div style={{ position: 'absolute', right: 0, top: 52, zIndex: 30, width: 320, background: '#fff', border: '1px solid rgb(238,236,245)', borderRadius: 16, boxShadow: '0 16px 40px rgba(93,84,145,0.18)', padding: 12, display: 'flex', flexDirection: 'column', gap: 8, animation: 'kpop 0.2s ease' }}>
-            <div style={{ fontWeight: 700, fontSize: 13.5, padding: '2px 4px' }}>Notificaciones</div>
-            {[
-              { t: '⏰ Desparasitación de Manchas vence en 3 días', to: 'carnet' as Screen },
-              { t: '💳 Tu reintegro de Clínica San Roque está en revisión', to: 'reintegros' as Screen },
-              { t: '🏷️ Nuevo beneficio: Groomers Bowie -30%', to: 'beneficios' as Screen },
-            ].map((n) => (
-              <button key={n.t} onClick={() => { setNotifOpen(false); go(n.to); }} style={{ textAlign: 'left', fontSize: 13, color: 'rgb(91,86,112)', background: 'rgb(247,246,250)', border: 'none', borderRadius: 10, padding: '10px 12px', lineHeight: 1.4, cursor: 'pointer' }}>{n.t}</button>
-            ))}
-          </div>
-        )}
       </div>
 
       <PetChips idx={petIdx} setIdx={setPetIdx} pets={pets} />
@@ -1225,6 +1214,64 @@ function Perfil({ go, profile, pets, reintegradoTotal }: { go: (s: Screen) => vo
 }
 
 /* ── Placeholder ───────────────────────────────────────────────── */
+/* ── Pantalla: Notificaciones ──────────────────────────────────── */
+const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath } as const;
+/** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
+const NOTIF_DESTINO: Record<'carnet' | 'reintegros' | 'minegocio', Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio' };
+
+function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void }) {
+  const vistoMs = visto ? new Date(visto).getTime() : 0;
+  return (
+    <div style={{ padding: '8px 20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22 }}>Notificaciones</div>
+        {groups.length > 0 && <button onClick={marcarLeidas} style={{ background: 'none', border: 'none', color: '#5D5491', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>Marcar leídas</button>}
+      </div>
+
+      {groups.length === 0 ? (
+        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 26, textAlign: 'center' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, background: 'rgb(240,237,249)', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D5491' }}>{ic(bellPath, false, 22)}</div>
+          <div style={{ fontWeight: 600, fontSize: 14.5 }}>No tenés notificaciones</div>
+          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 4, lineHeight: 1.45 }}>Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu negocio.</div>
+        </div>
+      ) : groups.map((g) => (
+        <div key={g.label} style={{ marginBottom: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: '#a29dba', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 10 }}>{g.label}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {g.items.map((n) => {
+              const st = NOTIF_STYLE[n.kind];
+              const unread = new Date(n.date).getTime() > vistoMs;
+              return (
+                <button key={n.id} onClick={() => go(NOTIF_DESTINO[n.to])} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: '13px 14px', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: '"DM Sans"', background: unread ? '#faf9fd' : '#fff', border: unread ? '1px solid #e6e1f2' : '1px solid #eeecf5' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 12, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: st.chip, color: st.color }}>{ic(NOTIF_IC[st.ic], false, 20)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: '#211E33', marginBottom: 2 }}>{n.title}</div>
+                    <div style={{ fontSize: 12.5, color: '#8781a0', lineHeight: 1.45 }}>{n.body}</div>
+                    <div style={{ fontSize: 11, color: '#bdb8cf', marginTop: 5 }}>{n.timeLabel ?? notifTiempo(n.date)}</div>
+                  </div>
+                  {unread && <span style={{ width: 9, height: 9, borderRadius: '50%', background: '#5D5491', flex: 'none', marginTop: 5 }} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Del prototipo. El push todavía no está implementado, así que el switch
+          es decorativo: no hay nada que apagar. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f7f6fa', border: '1px solid #eeecf5', borderRadius: 16, padding: '14px 16px', marginTop: 4 }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: 14 }}>Push y recordatorios</div>
+          <div style={{ fontSize: 12, color: '#a29dba' }}>Vacunas, reintegros y beneficios</div>
+        </div>
+        <div style={{ width: 44, height: 26, borderRadius: 100, background: '#5D5491', position: 'relative', flex: 'none' }}>
+          <span style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff' }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EnConstruccion({ titulo }: { titulo: string }) {
   return (
     <div style={{ padding: '8px 20px 24px' }}>
@@ -1235,13 +1282,25 @@ function EnConstruccion({ titulo }: { titulo: string }) {
 }
 
 /* ── Shell ─────────────────────────────────────────────────────── */
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null }) {
+/** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
+const VISTO_KEY = 'kumo:notif-visto';
+
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
   const go = (s: Screen) => { setScreen(s); setNavOpen(false); };
   const reintegradoTotal = reintegros.filter((r) => r.status === 'Acreditado').reduce((a, r) => a + r.refund, 0);
   const current = NAV.find((n) => n.key === screen);
+
+  const notifGroups = useMemo(() => buildNotifs(notifInput), [notifInput]);
+  // El "visto" vive en localStorage, así que solo se conoce después de montar:
+  // hasta entonces no se pinta el punto, si no el HTML del server no coincide.
+  const [visto, setVisto] = useState<string | null>(null);
+  const [vistoListo, setVistoListo] = useState(false);
+  useEffect(() => { setVisto(localStorage.getItem(VISTO_KEY)); setVistoListo(true); }, []);
+  const noLeidas = vistoListo ? contarNoLeidas(notifGroups, visto) : 0;
+  const marcarLeidas = () => { const ahora = new Date().toISOString(); localStorage.setItem(VISTO_KEY, ahora); setVisto(ahora); };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#fff' }}>
@@ -1251,7 +1310,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" style={{ display: 'block' }}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
         </button>
         <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, color: 'rgb(93,84,145)' }}>Kumo</span>
-        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{current?.label}</span>
+        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{screen === 'notif' ? 'Notificaciones' : current?.label}</span>
       </div>
       {navOpen && <button className="wa-scrim" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
       <div className={navOpen ? 'wa-side wa-side-open' : 'wa-side'} style={{ width: 220, flex: '0 0 auto', borderRight: '1px solid rgb(238,236,245)', padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1268,7 +1327,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
       </div>
       <div className="wa-content" style={{ flex: '1 1 0%', overflowY: 'auto', maxHeight: '100vh' }}>
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
-          {screen === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} />}
+          {screen === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} />}
           {screen === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {screen === 'servicios' && <Servicios go={go} providers={providers} />}
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} />}
@@ -1276,6 +1335,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} />}
+          {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>
     </div>

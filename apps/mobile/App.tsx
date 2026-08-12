@@ -5,7 +5,8 @@ import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
-import { colors } from '@kumo/shared';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { colors, buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { useKumoData, type Pet, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
@@ -58,7 +59,7 @@ const PROMOS = [
   { title: 'Encontrá un cuidador', sub: 'Alguien de confianza', bg: '#5D5491', fg: '#fff', subFg: '#d8d3ec', photo: 'woman-cat.webp' },
 ];
 
-type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio';
+type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio' | 'notif';
 type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'foros';
 const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '').replace(/\D/g, ''));
 
@@ -661,6 +662,70 @@ function Guardados() {
   );
 }
 
+/* ── Sub-pantalla: Notificaciones ──────────────────────────────── */
+/** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
+const NOTIF_DESTINO: Record<'carnet' | 'reintegros' | 'minegocio', Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio' };
+
+function Notificaciones({ groups, visto, marcarLeidas, go }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void }) {
+  const vistoMs = visto ? new Date(visto).getTime() : 0;
+  return (
+    <ScrollView contentContainerStyle={styles.screen}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>Notificaciones</Text>
+        {groups.length > 0 && (
+          <TouchableOpacity onPress={marcarLeidas}>
+            <Text style={{ color: BRAND, fontWeight: '600', fontSize: 13 }}>Marcar leídas</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {groups.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingVertical: 50 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Ic d="bell" size={30} color={colors.violet[400]} />
+          </View>
+          <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 24, lineHeight: 20 }}>Todavía no tenés notificaciones. Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu negocio.</Text>
+        </View>
+      ) : groups.map((g) => (
+        <View key={g.label} style={{ marginBottom: 18 }}>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: '#a29dba', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>{g.label}</Text>
+          <View style={{ gap: 10 }}>
+            {g.items.map((n) => {
+              const st = NOTIF_STYLE[n.kind];
+              const unread = new Date(n.date).getTime() > vistoMs;
+              return (
+                <TouchableOpacity key={n.id} onPress={() => go(NOTIF_DESTINO[n.to])} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: st.chip }}>
+                    <Ic d={st.ic} size={20} color={st.color} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 14, color: INK, marginBottom: 2 }}>{n.title}</Text>
+                    <Text style={{ fontSize: 12.5, color: '#8781a0', lineHeight: 18 }}>{n.body}</Text>
+                    <Text style={{ fontSize: 11, color: '#bdb8cf', marginTop: 5 }}>{n.timeLabel ?? notifTiempo(n.date)}</Text>
+                  </View>
+                  {unread && <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: BRAND, marginTop: 5 }} />}
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
+      ))}
+
+      {/* Del prototipo. El push todavía no está implementado, así que el switch
+          es decorativo: no hay nada que apagar. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginTop: 4 }}>
+        <View>
+          <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>Push y recordatorios</Text>
+          <Text style={{ fontSize: 12, color: '#a29dba' }}>Vacunas, reintegros y beneficios</Text>
+        </View>
+        <View style={{ width: 44, height: 26, borderRadius: 100, backgroundColor: BRAND, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 3 }}>
+          <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' }} />
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
 /* ── Sub-pantalla: Mi negocio ──────────────────────────────────── */
 const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'];
 
@@ -997,12 +1062,16 @@ const TABS: { k: Tab; label: string; icon: IconName }[] = [
   { k: 'foros', label: 'Foros', icon: 'chat' },
 ];
 
+/** Última vez que el socio miró las notificaciones. No hace falta tabla: alcanza con el dispositivo. */
+const VISTO_KEY = 'kumo:notif-visto';
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [masOpen, setMasOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [visto, setVisto] = useState<string | null>(null);
   const [fontsLoaded] = useFonts({ Baloo2_700Bold, Baloo2_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
   const { data, loading, reload } = useKumoData(userId);
 
@@ -1015,11 +1084,19 @@ export default function App() {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  useEffect(() => { AsyncStorage.getItem(VISTO_KEY).then(setVisto); }, []);
+
   if (!fontsLoaded || !authReady) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
 
   const go = (t: Screen) => { setMasOpen(false); setScreen(t); };
   const pets = data?.pets ?? [];
   const safeIdx = Math.min(petIdx, Math.max(pets.length - 1, 0));
+
+  // Las notificaciones salen de los mismos datos que la webapp, con la misma
+  // función compartida: si acá se armaran aparte, las dos apps se separarían.
+  const notifGroups = data ? buildNotifs(data.notifInput) : [];
+  const noLeidas = contarNoLeidas(notifGroups, visto);
+  const marcarLeidas = () => { const ahora = new Date().toISOString(); AsyncStorage.setItem(VISTO_KEY, ahora); setVisto(ahora); };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -1049,8 +1126,9 @@ export default function App() {
             <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{data.profile?.firstName ?? 'Socio'}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
-              <Ic d="bell" size={21} />
+            <TouchableOpacity onPress={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: screen === 'notif' ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+              <Ic d="bell" size={21} color={screen === 'notif' ? '#fff' : BRAND} />
+              {noLeidas > 0 && screen !== 'notif' && <View style={{ position: 'absolute', top: 9, right: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: LIME, borderWidth: 2, borderColor: colors.violet[100] }} />}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setMasOpen(true)} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: masOpen ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="menu" size={22} color={masOpen ? '#fff' : BRAND} />
@@ -1068,6 +1146,7 @@ export default function App() {
           {screen === 'mismascotas' && <MisMascotas pets={pets} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
+          {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} />}
         </View>
         <View style={styles.tabbar}>
           {TABS.map((t) => {

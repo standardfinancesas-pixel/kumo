@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls } from '@kumo/shared';
+import { urls, type NotifInput } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
@@ -126,7 +126,7 @@ function mapPost(row: PostRow): ForumPost {
 }
 
 const REINT_STATUS: Record<string, Reint['status']> = { en_revision: 'En revisión', aprobado: 'Aprobado', rechazado: 'Rechazado', acreditado: 'Acreditado' };
-type ReintRow = { id: string; provider_name: string; concept: string; amount: number; refund: number; status: string; requested_on: string };
+type ReintRow = { id: string; provider_name: string; concept: string; amount: number; refund: number; status: string; requested_on: string; created_at: string };
 function mapReint(row: ReintRow): Reint {
   return {
     id: row.id,
@@ -172,7 +172,7 @@ export default async function Page() {
 
   const { data: reintRows } = await supabase
     .from('reimbursements')
-    .select('id, provider_name, concept, amount, refund, status, requested_on')
+    .select('id, provider_name, concept, amount, refund, status, requested_on, created_at')
     .eq('member_id', auth.user.id)
     .order('requested_on', { ascending: false });
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
@@ -194,7 +194,7 @@ export default async function Page() {
   // esté pendiente o lo hayan rechazado.
   const { data: negocioRow } = await supabase
     .from('providers')
-    .select('id, name, category, zone, phone, about, status, rating, reviews')
+    .select('id, name, category, zone, phone, about, status, rating, reviews, created_at')
     .eq('owner_id', auth.user.id)
     .maybeSingle();
   const negocio: MiNegocio | null = negocioRow
@@ -214,5 +214,19 @@ export default async function Page() {
     .order('created_at', { ascending: false });
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} />;
+  // Las notificaciones se derivan de estas mismas filas (no hay tabla propia).
+  // Se manda la materia prima y no la lista armada: los textos de tiempo
+  // ("Hace 2 h") se calculan en el cliente, donde se ven.
+  const notifInput: NotifInput = {
+    pets: (petsRows ?? []).map((p) => ({
+      name: p.name,
+      vaccines: ((p.vaccinations ?? []) as VaccinationRow[]).map((v) => ({ id: v.id, name: v.name, status: v.status, dueOn: v.due_on })),
+    })),
+    reintegros: ((reintRows ?? []) as ReintRow[]).map((r) => ({
+      id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at,
+    })),
+    negocio: negocioRow ? { name: negocioRow.name, status: negocioRow.status, createdAt: negocioRow.created_at } : null,
+  };
+
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} />;
 }
