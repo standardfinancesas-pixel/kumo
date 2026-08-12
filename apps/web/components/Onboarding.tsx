@@ -142,8 +142,11 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
   const telOk = socio.tel.replace(/\D/g, '').length === 10;
   const fnacOk = /^\d{2}\/\d{2}\/\d{4}$/.test(socio.fnac);
   const passwordOk = socio.password.length >= 6;
+  // Un socio se dio de alta con el mail en el campo del nombre (probablemente
+  // por el autocompletado) y el saludo de su cuenta quedó mostrando el mail.
+  const nombreOk = socio.nombre.trim().length > 1 && !socio.nombre.includes('@');
   const step1Ok = pet.nombre.trim().length > 0;
-  const step2Ok = socio.nombre.trim() && dniOk && fnacOk && socio.domicilio.trim() && socio.localidad.trim() && socio.provincia && telOk && emailOk && passwordOk;
+  const step2Ok = nombreOk && dniOk && fnacOk && socio.domicilio.trim() && socio.localidad.trim() && socio.provincia && telOk && emailOk && passwordOk;
   const step3Ok = !!plan;
   const step4Ok = Object.keys(health).length === HEALTH_Q.length && Object.keys(sanit).length === SANITARIO_Q.length && firma.trim().length > 2 && acepta;
   const step5Ok = cardNum.replace(/\D/g, '').length >= 13 && cardExp.trim().length >= 4 && cardCvv.trim().length >= 3 && acceptaCuota;
@@ -249,21 +252,21 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
           <div>
             <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, margin: '0 0 4px' }}>Tus datos</h2>
             <p style={{ color: '#8781a0', fontSize: 15, margin: '0 0 22px' }}>Datos del socio titular.</p>
-            {field('Apellido y nombre', <input value={socio.nombre} onChange={(e) => setSocio({ ...socio, nombre: e.target.value })} placeholder="Ej. Valentina Ruiz" style={input} />)}
+            {field('Apellido y nombre', <input autoComplete="name" value={socio.nombre} onChange={(e) => setSocio({ ...socio, nombre: e.target.value })} placeholder="Ej. Valentina Ruiz" style={input} />)}
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('DNI', <input value={socio.dni} onChange={(e) => setSocio({ ...socio, dni: formatDni(e.target.value) })} placeholder="00.000.000" style={{ ...input, borderColor: socio.dni && !dniOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
-              <div style={{ flex: 1 }}>{field('Fecha de nac.', <input value={socio.fnac} onChange={(e) => setSocio({ ...socio, fnac: e.target.value })} placeholder="dd/mm/aaaa" style={{ ...input, borderColor: socio.fnac && !fnacOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('DNI', <input autoComplete="off" value={socio.dni} onChange={(e) => setSocio({ ...socio, dni: formatDni(e.target.value) })} placeholder="00.000.000" style={{ ...input, borderColor: socio.dni && !dniOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Fecha de nac.', <input autoComplete="bday" value={socio.fnac} onChange={(e) => setSocio({ ...socio, fnac: e.target.value })} placeholder="dd/mm/aaaa" style={{ ...input, borderColor: socio.fnac && !fnacOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
             </div>
-            {field('Domicilio', <input value={socio.domicilio} onChange={(e) => setSocio({ ...socio, domicilio: e.target.value })} placeholder="Calle y número" style={input} />)}
+            {field('Domicilio', <input autoComplete="street-address" value={socio.domicilio} onChange={(e) => setSocio({ ...socio, domicilio: e.target.value })} placeholder="Calle y número" style={input} />)}
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('Localidad', <input value={socio.localidad} onChange={(e) => setSocio({ ...socio, localidad: e.target.value })} placeholder="Ej. Palermo" style={input} />)}</div>
+              <div style={{ flex: 1 }}>{field('Localidad', <input autoComplete="address-level2" value={socio.localidad} onChange={(e) => setSocio({ ...socio, localidad: e.target.value })} placeholder="Ej. Palermo" style={input} />)}</div>
               <div style={{ flex: 1 }}>{field('Provincia', <select value={socio.provincia} onChange={(e) => setSocio({ ...socio, provincia: e.target.value })} style={input}><option value="">Elegí una provincia</option>{PROVINCIAS.map((p) => <option key={p}>{p}</option>)}</select>)}</div>
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('Teléfono', <input value={socio.tel} onChange={(e) => setSocio({ ...socio, tel: formatTel(e.target.value) })} placeholder="11 5555 2024" style={{ ...input, borderColor: socio.tel && !telOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
-              <div style={{ flex: 1 }}>{field('Email', <input value={socio.email} onChange={(e) => setSocio({ ...socio, email: e.target.value })} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !emailOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Teléfono', <input autoComplete="tel" value={socio.tel} onChange={(e) => setSocio({ ...socio, tel: formatTel(e.target.value) })} placeholder="11 5555 2024" style={{ ...input, borderColor: socio.tel && !telOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Email', <input type="email" autoComplete="email" value={socio.email} onChange={(e) => setSocio({ ...socio, email: e.target.value })} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !emailOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
             </div>
-            {field('Contraseña', <input type="password" value={socio.password} onChange={(e) => setSocio({ ...socio, password: e.target.value })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !passwordOk ? '#c14d7a' : '#e6e3f0' }} />)}
+            {field('Contraseña', <input type="password" autoComplete="new-password" value={socio.password} onChange={(e) => setSocio({ ...socio, password: e.target.value })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !passwordOk ? '#c14d7a' : '#e6e3f0' }} />)}
             <p style={{ fontSize: 12.5, color: '#a29dba', margin: '-8px 0 0' }}>La vas a usar para entrar a la app cuando quieras.</p>
           </div>
         )}
