@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { urls, diasHasta, providerBadge, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
-import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
+import AppClient, { type PlanVM, type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
 /** Landing: ahí está el login si no hay sesión. */
 const LANDING = urls.landing;
@@ -280,5 +280,8 @@ export default async function Page() {
   const { data: favRows } = await supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id);
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} />;
+  const { data: planRows } = await supabase.from('plans').select('id, name, base_price, tagline').order('base_price');
+  const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
+
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} />;
 }

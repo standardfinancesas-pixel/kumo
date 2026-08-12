@@ -69,6 +69,9 @@ export type ForumPost = { id: string; cat: string; trend: boolean; author: strin
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
 export type MisLikes = { posts: string[]; answers: string[] };
 
+/** Los planes del club, para el cambio de membresía. */
+export type PlanVM = { id: string; name: string; price: number; tagline: string };
+
 /** Datos del socio logueado, resueltos en el Server Component (app/page.tsx). */
 export type Profile = { id: string; firstName: string; fullName: string; memberNo: number; planName: string; planPrice: number; email: string; phone: string | null; address: string | null; dni: string | null };
 
@@ -1890,140 +1893,242 @@ function Negocio({ go, negocio, profile }: { go: (s: Screen) => void; negocio: M
 }
 
 /* ── Pantalla: Mi perfil ───────────────────────────────────────── */
-function Perfil({ go, profile, pets, reintegradoTotal }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number }) {
+const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></>;
+
+/* ── Pantalla: Mi perfil ───────────────────────────────────────── */
+/** Datos del socio, mascotas, membresía y baja. Lo que antes era decorativo acá:
+ *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
+ *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
+ *  "Cambiar" plan te sacaba a la landing. */
+function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null }) {
   const router = useRouter();
-  const misMascotas = pets.map((p) => ({ name: p.name, sub: p.breed, photo: p.photo }));
   const [showAddPet, setShowAddPet] = useState(false);
   const [pn, setPn] = useState('');
   const [pr, setPr] = useState('');
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
-  const [datos, setDatos] = useState({ dom: profile.address ?? '—', tel: profile.phone ?? '—', email: profile.email });
-  const [card, setCard] = useState('4287');
-  const [editCard, setEditCard] = useState(false);
+  const [error, setError] = useState('');
+  const [editando, setEditando] = useState(false);
+  const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', tel: profile.phone ?? '', email: profile.email });
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planSel, setPlanSel] = useState(profile.planName);
+  const [bajaOpen, setBajaOpen] = useState(false);
+  const [bajaHecha, setBajaHecha] = useState(false);
+
   const addPet = async (e: FormEvent) => {
     e.preventDefault();
     if (!pn.trim()) return;
     setBusy(true);
-    await supabase.from('pets').insert({ owner_id: profile.id, name: pn, breed: pr || null });
+    await supabase.from('pets').insert({ owner_id: profile.id, name: pn.trim(), breed: pr.trim() || null });
     setPn(''); setPr(''); setShowAddPet(false);
     router.refresh();
     setBusy(false);
   };
-  const row = (title: string, sub: string, action: ReactNode, onClick?: () => void) => (
-    <button onClick={onClick} className="wa-card" style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px', cursor: onClick ? 'pointer' : 'default', width: '100%' }}>
+
+  /** Ahora sí guarda. El nombre también: antes no se podía editar desde ningún lado. */
+  const guardarDatos = async () => {
+    if (!datos.nombre.trim()) { setError('El nombre no puede quedar vacío.'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('profiles').update({
+      full_name: datos.nombre.trim(), dni: datos.dni.trim() || null,
+      address: datos.dom.trim() || null, phone: datos.tel.trim() || null, email: datos.email.trim(),
+    }).eq('id', profile.id);
+    if (e) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    setEditando(false);
+    router.refresh();
+    setBusy(false);
+  };
+
+  /** El cambio de plan es real: mueve `profiles.plan_id`. */
+  const confirmarPlan = async () => {
+    const p = planes.find((x) => x.name === planSel);
+    if (!p || p.name === profile.planName) { setPlanOpen(false); return; }
+    setBusy(true);
+    await supabase.from('profiles').update({ plan_id: p.id }).eq('id', profile.id);
+    setPlanOpen(false);
+    router.refresh();
+    setBusy(false);
+  };
+
+  const confirmarBaja = async () => {
+    setBusy(true);
+    await supabase.from('profiles').update({ status: 'baja' }).eq('id', profile.id);
+    setBajaHecha(true);
+    router.refresh();
+    setBusy(false);
+  };
+
+  const row = (icono: ReactNode, title: string, sub: string, action: ReactNode, onClick?: () => void) => (
+    <button onClick={onClick} className="wa-card" style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px', cursor: onClick ? 'pointer' : 'default', width: '100%', fontFamily: '"DM Sans"' }}>
+      <div style={{ width: 36, height: 36, borderRadius: 10, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#5D5491' }}>{icono}</div>
       <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14 }}>{title}</div>
-        <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)' }}>{sub}</div>
+        <div style={{ fontWeight: 600, fontSize: 14 }}>{title}</div>
+        <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{sub}</div>
       </div>
       {action}
     </button>
   );
   const chevron = <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>;
-  const dato = (k: string, v: string) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid rgb(238,236,245)' }}>
-      <span style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{k}</span>
-      <span style={{ fontSize: 13, fontWeight: 600 }}>{v}</span>
+  const accion = (t: string) => <span style={{ color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 12 }}>{t}</span>;
+  const dato = (k: string, v: string, ultimo = false) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '11px 0', borderBottom: ultimo ? 'none' : '1px solid rgb(238,236,245)', fontSize: 13.5 }}>
+      <span style={{ color: 'rgb(135,129,160)' }}>{k}</span>
+      <span style={{ fontWeight: 600, textAlign: 'right' }}>{v || '—'}</span>
     </div>
   );
-  const pagos = [
-    ['10 jul 2026', '$18.000'], ['10 jun 2026', '$18.000'], ['10 may 2026', '$16.500'], ['10 abr 2026', '$16.500'],
-  ];
+  const inputEdit = { ...sheetInput, padding: '10px 12px', fontSize: 13.5, marginBottom: 8 };
+
+  const negocioHint = !negocio ? 'Ofrecé tu servicio en Kumo'
+    : negocio.status === 'verificado' ? `${negocio.name} · publicado`
+    : negocio.status === 'rechazado' ? `${negocio.name} · no aprobado`
+    : `${negocio.name} · en revisión`;
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
-      {/* Header perfil */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'rgb(93,84,145)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, flex: '0 0 auto' }}>{profile.firstName[0]}</div>
-        <div style={{ flex: '1 1 0%' }}>
-          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20 }}>{profile.fullName}</div>
-          <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>Socio #{profile.memberNo} · Plan {profile.planName}</div>
+      {/* Header */}
+      <div style={{ background: 'linear-gradient(135deg, rgb(93,84,145), rgb(70,63,112))', borderRadius: 22, padding: 22, color: '#fff', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+        <div style={{ width: 60, height: 60, borderRadius: '50%', flex: 'none', border: '2px solid rgba(255,255,255,0.25)', background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: '#5D5491' }}>{profile.firstName.slice(0, 1).toUpperCase()}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21 }}>{profile.fullName}</div>
+          <div style={{ color: 'rgb(201,195,227)', fontSize: 12.5 }}>Socio #{profile.memberNo} · Plan {profile.planName}</div>
         </div>
-        <button onClick={() => setEditing((s) => !s)} style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer' }}>{editing ? 'Listo' : 'Editar'}</button>
+        <button onClick={() => setEditando((s) => !s)} style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontWeight: 600, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', flex: 'none', fontFamily: '"DM Sans"' }}>{editando ? 'Cancelar' : 'Editar'}</button>
       </div>
 
       {/* Mis mascotas */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span style={{ fontWeight: 700, fontSize: 15 }}>Mis mascotas</span>
-        <button onClick={() => setShowAddPet((s) => !s)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>+ Agregar</button>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Mis mascotas</div>
+        <button onClick={() => setShowAddPet((s) => !s)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>{showAddPet ? 'Cancelar' : '+ Agregar'}</button>
       </div>
       {showAddPet && (
-        <form onSubmit={addPet} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12, animation: 'kpop 0.2s ease' }}>
-          <input value={pn} onChange={(e) => setPn(e.target.value)} placeholder="Nombre" style={{ flex: '1 1 120px', padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <input value={pr} onChange={(e) => setPr(e.target.value)} placeholder="Raza y edad" style={{ flex: '1 1 140px', padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <button type="submit" disabled={busy} style={{ flex: '0 0 auto', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5, padding: '11px 18px', borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>Agregar</button>
+        <form onSubmit={addPet} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: 14, marginBottom: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input value={pn} onChange={(e) => setPn(e.target.value)} placeholder="Nombre" style={{ ...sheetInput, flex: '2 1 140px', width: 'auto' }} />
+          <input value={pr} onChange={(e) => setPr(e.target.value)} placeholder="Raza (opcional)" style={{ ...sheetInput, flex: '1 1 130px', width: 'auto' }} />
+          <button type="submit" disabled={busy} style={{ ...sheetBtn(true), flex: '0 0 auto', fontSize: 13.5, padding: '11px 18px', opacity: busy ? 0.6 : 1 }}>Agregar</button>
         </form>
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-        {misMascotas.map((m) => (
-          <button key={m.name} onClick={() => go('carnet')} className="wa-card" style={{ textAlign: 'left', width: '100%', display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: 12, cursor: 'pointer' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: `url(${m.photo}) center/cover, rgb(230,227,240)`, flex: '0 0 auto' }} />
-            <div style={{ flex: '1 1 0%' }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>{m.name}</div>
-              <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>{m.sub}</div>
+        {pets.map((p) => (
+          <button key={p.id} onClick={() => go('carnet')} className="wa-card" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '10px 14px', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: `url(${p.photo}) center/cover, rgb(240,237,249)`, flex: 'none' }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.breed}</div>
             </div>
-            <span style={{ color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13 }}>Ver carnet ›</span>
+            <span style={{ color: 'rgb(93,84,145)', fontSize: 12, fontWeight: 600 }}>Ver carnet ›</span>
           </button>
         ))}
+        {pets.length === 0 && (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 20, textAlign: 'center', fontSize: 13.5, color: 'rgb(135,129,160)' }}>Todavía no cargaste mascotas. Agregá a tu peludo para tener su carnet.</div>
+        )}
       </div>
 
       {/* Mi cuenta */}
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Mi cuenta</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-        {row('Mi negocio', 'Ofrecé tu servicio en Kumo', chevron, () => go('negocio'))}
-        {row('Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros'))}
-        {row('Membresía', `Plan ${profile.planName} · ${m$(profile.planPrice)}/mes · próx. cobro 10/08`, <span style={{ color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 13 }}>Cambiar</span>, () => { window.location.href = `${LANDING}/#planes`; })}
-        {row('Medio de pago', `Visa ····${card}`, <span style={{ color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 13 }}>{editCard ? 'Cerrar' : 'Editar'}</span>, () => setEditCard((s) => !s))}
-        {editCard && (
-          <form onSubmit={(e) => { e.preventDefault(); setEditCard(false); }} style={{ display: 'flex', gap: 10, animation: 'kpop 0.2s ease' }}>
-            <input value={card} onChange={(e) => setCard(e.target.value.replace(/\D/g, '').slice(0, 4))} placeholder="Últimos 4 dígitos" style={{ flex: '1 1 0%', padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-            <button type="submit" style={{ flex: '0 0 auto', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5, padding: '11px 18px', borderRadius: 10, cursor: 'pointer' }}>Guardar</button>
-          </form>
-        )}
+        {row(ic(storeIcon, false, 19), 'Mi negocio', negocioHint, chevron, () => go('negocio'))}
+        {row(ic(wallet, false, 19), 'Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros'))}
+        {row(ic(tagIcon, false, 19), 'Membresía', `Plan ${profile.planName} · ${m$(profile.planPrice)}/mes`, accion('Cambiar'), () => { setPlanSel(profile.planName); setPlanOpen(true); })}
+        {/* El cobro no está conectado, así que no hay tarjeta que mostrar. Antes
+            decía "Visa ····4287", un número fijo escrito en el código. */}
+        {row(ic(cardIcon, false, 19), 'Medio de pago', 'Todavía no configurado', <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>Pendiente</span>)}
       </div>
 
       {/* Datos personales */}
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Datos personales</div>
-      <div style={{ marginBottom: 20 }}>
-        {dato('DNI', profile.dni ?? '—')}
-        {editing ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 0' }}>
-            <input value={datos.dom} onChange={(e) => setDatos((d) => ({ ...d, dom: e.target.value }))} style={{ padding: '10px 12px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 13, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-            <input value={datos.tel} onChange={(e) => setDatos((d) => ({ ...d, tel: e.target.value }))} style={{ padding: '10px 12px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 13, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-            <input value={datos.email} onChange={(e) => setDatos((d) => ({ ...d, email: e.target.value }))} style={{ padding: '10px 12px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 13, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-            <button onClick={() => setEditing(false)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5, padding: 11, borderRadius: 10, cursor: 'pointer' }}>Guardar cambios</button>
+      <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '6px 16px', marginBottom: 20 }}>
+        {editando ? (
+          <div style={{ padding: '12px 0' }}>
+            <label style={sheetLabel} htmlFor="pf-nom">Apellido y nombre</label>
+            <input id="pf-nom" value={datos.nombre} onChange={(e) => { setDatos((d) => ({ ...d, nombre: e.target.value })); setError(''); }} style={inputEdit} />
+            <label style={sheetLabel} htmlFor="pf-dni">DNI</label>
+            <input id="pf-dni" value={datos.dni} onChange={(e) => setDatos((d) => ({ ...d, dni: e.target.value }))} style={inputEdit} />
+            <label style={sheetLabel} htmlFor="pf-dom">Domicilio</label>
+            <input id="pf-dom" value={datos.dom} onChange={(e) => setDatos((d) => ({ ...d, dom: e.target.value }))} style={inputEdit} />
+            <label style={sheetLabel} htmlFor="pf-tel">Teléfono</label>
+            <input id="pf-tel" value={datos.tel} onChange={(e) => setDatos((d) => ({ ...d, tel: e.target.value }))} style={inputEdit} />
+            <label style={sheetLabel} htmlFor="pf-mail">Email</label>
+            <input id="pf-mail" value={datos.email} onChange={(e) => setDatos((d) => ({ ...d, email: e.target.value }))} style={inputEdit} />
+            {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 8 }}>{error}</div>}
+            <button onClick={guardarDatos} disabled={busy} style={{ ...sheetBtn(true), width: '100%', fontSize: 14, padding: 12, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
           </div>
         ) : (
           <>
-            {dato('Domicilio', datos.dom)}
-            {dato('Teléfono', datos.tel)}
-            {dato('Email', datos.email)}
+            {dato('DNI', profile.dni ?? '')}
+            {dato('Domicilio', profile.address ?? '')}
+            {dato('Teléfono', profile.phone ?? '')}
+            {dato('Email', profile.email, true)}
           </>
         )}
       </div>
 
-      {/* Historial de pagos */}
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Historial de pagos</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-        {pagos.map(([d, amt]) => (
-          <div key={d} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: '12px 14px' }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>Cuota mensual · Plan FAMILIA</div>
-              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{d}</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: 700, fontSize: 13.5 }}>{amt}</div>
-              <span style={{ fontSize: 11, color: 'rgb(47,143,91)', fontWeight: 700 }}>Pagado</span>
-            </div>
-          </div>
-        ))}
+      {/* Historial de pagos. Antes eran cuatro cuotas inventadas, todas "Pagado". */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>Historial de pagos</div>
+        <span style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Plan {profile.planName}</span>
+      </div>
+      <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 20, marginBottom: 20, textAlign: 'center' }}>
+        <div style={{ fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>Todavía no hay pagos registrados. El cobro de la cuota no está conectado: cuando se integre la pasarela vas a ver acá cada cuota con su comprobante.</div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <a href="https://wa.me/5491125168802" target="_blank" rel="noopener" style={{ textAlign: 'center', background: 'rgb(37,211,102)', color: '#fff', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: 'pointer', textDecoration: 'none' }}>Ayuda por WhatsApp</a>
-        <button onClick={async () => { await supabase.auth.signOut(); window.location.href = LANDING; }} style={{ textAlign: 'center', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: 'pointer' }}>Cerrar sesión</button>
-        <a href="mailto:hola@kumoclub.com.ar?subject=Quiero darme de baja" style={{ textAlign: 'center', background: 'none', color: 'rgb(176,72,63)', fontWeight: 600, fontSize: 13, padding: 6, cursor: 'pointer', textDecoration: 'none' }}>Darme de baja</a>
+        <a href="https://wa.me/5491125168802" target="_blank" rel="noopener" style={{ textAlign: 'center', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 14, padding: 14, borderRadius: 14, textDecoration: 'none' }}>Ayuda por WhatsApp</a>
+        <button onClick={async () => { await supabase.auth.signOut(); window.location.href = LANDING; }} style={{ background: 'none', color: 'rgb(135,129,160)', border: 'none', fontWeight: 600, fontSize: 13, padding: 10, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Cerrar sesión</button>
+        <button onClick={() => { setBajaHecha(false); setBajaOpen(true); }} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Darme de baja</button>
       </div>
+
+      {/* Cambiar plan */}
+      {planOpen && (
+        <Sheet onClose={() => setPlanOpen(false)}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 2 }}>Cambiar plan</div>
+          <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 16 }}>Elegí tu nueva membresía. El cambio queda registrado y se factura cuando el cobro esté conectado.</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+            {planes.map((p) => {
+              const sel = planSel === p.name;
+              const actual = profile.planName === p.name;
+              return (
+                <button key={p.id} onClick={() => setPlanSel(p.name)} style={{ display: 'flex', alignItems: 'center', gap: 12, background: sel ? 'rgb(240,237,249)' : '#fff', border: `1.5px solid ${sel ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`, borderRadius: 14, padding: 14, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
+                  <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${sel ? 'rgb(93,84,145)' : 'rgb(210,205,228)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                    {sel && <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'rgb(93,84,145)' }} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
+                      {actual && <span style={{ fontSize: 10, fontWeight: 700, color: 'rgb(93,84,145)', background: 'rgb(240,237,249)', padding: '2px 7px', borderRadius: 100 }}>Tu plan</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>{p.tagline}</div>
+                  </div>
+                  <div style={{ textAlign: 'right', flex: 'none' }}>
+                    <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17 }}>{m$(p.price)}</div>
+                    <div style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>/mes</div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={confirmarPlan} disabled={busy} style={{ ...sheetBtn(true), width: '100%', marginBottom: 8, opacity: busy ? 0.6 : 1 }}>{planSel === profile.planName ? 'Ya es tu plan' : `Cambiar a ${planSel}`}</button>
+          <button onClick={() => setPlanOpen(false)} style={{ ...sheetBtn(false), width: '100%' }}>Cancelar</button>
+        </Sheet>
+      )}
+
+      {/* Darme de baja */}
+      {bajaOpen && (
+        <Sheet onClose={() => setBajaOpen(false)}>
+          {bajaHecha ? (
+            <>
+              <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>Listo, tu baja fue registrada</div>
+              <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 18px' }}>Tu cuenta queda como dada de baja. Los reintegros en curso se siguen procesando. Si querés volver, escribinos por WhatsApp.</p>
+              <button onClick={() => setBajaOpen(false)} style={{ ...sheetBtn(true), width: '100%' }}>Entendido</button>
+            </>
+          ) : (
+            <>
+              <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>¿Seguro que querés darte de baja?</div>
+              <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 18px' }}>Perdés el acceso a los beneficios, los reintegros y el carnet digital de {pets.length === 1 ? 'tu mascota' : 'tus mascotas'}. Los reintegros ya pedidos se siguen procesando.</p>
+              <button onClick={confirmarBaja} disabled={busy} style={{ width: '100%', background: 'rgb(251,232,239)', color: 'rgb(176,72,63)', border: 'none', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 14, cursor: 'pointer', marginBottom: 8, fontFamily: '"DM Sans"', opacity: busy ? 0.6 : 1 }}>{busy ? 'Registrando…' : 'Confirmar baja'}</button>
+              <button onClick={() => setBajaOpen(false)} style={{ ...sheetBtn(true), width: '100%' }}>Seguir siendo socio</button>
+            </>
+          )}
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -2269,7 +2374,7 @@ function EnConstruccion({ titulo }: { titulo: string }) {
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[] }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -2319,7 +2424,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
-          {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} />}
+          {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>
