@@ -365,6 +365,12 @@ create policy "faqs admin write"       on faqs      for all using (is_admin()) w
 create policy "ajustes admin write"    on club_settings for all using (is_admin()) with check (is_admin());
 create policy "prestadores admin write" on providers for update using (is_admin());
 create policy "prestadores alta"        on providers for insert with check (owner_id = auth.uid() or is_admin());
+-- El dueño edita y borra su negocio; el estado lo sigue manejando el club (ver
+-- el trigger `providers_status_guard` en las migraciones).
+create policy "prestador edita lo suyo" on providers for update
+  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "prestador borra lo suyo" on providers for delete
+  using (owner_id = auth.uid() or is_admin());
 
 -- ============================================================
 --  REALTIME  (todo se actualiza en vivo)
