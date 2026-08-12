@@ -63,7 +63,7 @@ export type BenefitVM = {
   description: string; zone: string; days: string[]; hours: string; validUntil: string | null; planRequirement: string;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
-export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
 export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: ForumAnswer[] };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
@@ -1719,7 +1719,7 @@ function Foros({ initialPosts, profile, misLikes }: { initialPosts: ForumPost[];
 /* ── Pantalla: Mi negocio ──────────────────────────────────────── */
 const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'];
 
-function Negocio({ go, negocio, profile }: { go: (s: Screen) => void; negocio: MiNegocio | null; profile: Profile }) {
+function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void; negocio: MiNegocio | null; profile: Profile; misReviews: Review[] }) {
   const router = useRouter();
   const [showAlta, setShowAlta] = useState(false);
   const [nombre, setNombre] = useState('');
@@ -1728,6 +1728,31 @@ function Negocio({ go, negocio, profile }: { go: (s: Screen) => void; negocio: M
   const [tel, setTel] = useState(profile.phone ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [bajaOpen, setBajaOpen] = useState(false);
+  // Datos editables del negocio publicado.
+  const [ed, setEd] = useState({
+    name: negocio?.name ?? '', category: negocio?.category ?? RUBROS[0]!, zone: negocio?.zone ?? '',
+    phone: negocio?.phone ?? '', about: negocio?.about ?? '',
+    price: negocio?.price ? String(negocio.price) : '', priceUnit: negocio?.priceUnit ?? '',
+    instagram: negocio?.instagram ?? '', website: negocio?.website ?? '',
+  });
+
+  const guardarEdicion = async () => {
+    if (!negocio) return;
+    if (!ed.name.trim() || !ed.zone.trim()) { setError('El nombre y la zona no pueden quedar vacíos.'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('providers').update({
+      name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),
+      phone: ed.phone.trim() || null, about: ed.about.trim(),
+      price: Number(ed.price.replace(/\D/g, '')) || null, price_unit: ed.priceUnit.trim() || null,
+      instagram: ed.instagram.trim() || null, website: ed.website.trim() || null,
+    }).eq('id', negocio.id);
+    if (e) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    setEditOpen(false);
+    router.refresh();
+    setBusy(false);
+  };
 
   // El estado sale del negocio real, no de un switch: sin negocio, esperando la
   // validación del club, publicado, o rechazado.
@@ -1871,11 +1896,74 @@ function Negocio({ go, negocio, profile }: { go: (s: Screen) => void; negocio: M
             </div>
           </div>
           {negCard(true)}
+
+          {/* Reseñas que le dejaron a su negocio. Son las mismas que ve un socio
+              en la ficha del prestador, leídas de `provider_reviews`. */}
+          <div style={{ fontWeight: 700, fontSize: 15, margin: '18px 0 10px' }}>Reseñas de clientes</div>
+          {misReviews.length === 0 ? (
+            <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 18, fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5, marginBottom: 14 }}>Todavía no te dejaron reseñas. Cuando un socio te contrate y opine, aparecen acá.</div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+              {misReviews.map((r) => (
+                <div key={r.id} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13.5 }}>{r.author}</span>
+                    <span style={{ fontSize: 12, color: '#f5b301' }}>{'★'.repeat(r.rating)}</span>
+                    <span style={{ fontSize: 11, color: 'rgb(162,157,186)', marginLeft: 'auto' }}>{reviewTiempo(r.createdAt)}</span>
+                  </div>
+                  {r.text && <div style={{ fontSize: 13, color: 'rgb(91,86,112)', lineHeight: 1.5 }}>{r.text}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button onClick={() => go('servicios')} style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: 'pointer' }}>Ver perfil público</button>
-            <button onClick={darDeBaja} disabled={busy} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Dando de baja…' : 'Dar de baja mi negocio'}</button>
+            <button onClick={() => setEditOpen(true)} style={{ ...sheetBtn(true), width: '100%', fontSize: 14 }}>Editar datos</button>
+            <button onClick={() => go('servicios')} style={{ ...sheetBtn(false), width: '100%', fontSize: 14 }}>Ver perfil público</button>
+            <button onClick={() => setBajaOpen(true)} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Dar de baja mi negocio</button>
           </div>
         </div>
+      )}
+
+      {/* Editar datos del negocio publicado */}
+      {editOpen && negocio && (
+        <Sheet onClose={() => setEditOpen(false)}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 16 }}>Editar datos</div>
+          <label style={sheetLabel}>Nombre del negocio</label>
+          <input value={ed.name} onChange={(e) => { setEd({ ...ed, name: e.target.value }); setError(''); }} style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel}>Rubro</label>
+          <select value={ed.category} onChange={(e) => setEd({ ...ed, category: e.target.value })} style={{ ...sheetInput, marginBottom: 12 }}>
+            {RUBROS.map((r) => <option key={r}>{r}</option>)}
+          </select>
+          <label style={sheetLabel}>Descripción</label>
+          <textarea value={ed.about} onChange={(e) => setEd({ ...ed, about: e.target.value })} rows={3} placeholder="Qué ofrecés, experiencia, disponibilidad…" style={{ ...sheetInput, resize: 'none', marginBottom: 12 }} />
+          <label style={sheetLabel}>Zona de cobertura</label>
+          <input value={ed.zone} onChange={(e) => { setEd({ ...ed, zone: e.target.value }); setError(''); }} style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel}>Tarifa</label>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <input value={ed.price} onChange={(e) => setEd({ ...ed, price: e.target.value })} inputMode="numeric" placeholder="4500" style={{ ...sheetInput, flex: '1 1 110px', width: 'auto' }} />
+            <input value={ed.priceUnit} onChange={(e) => setEd({ ...ed, priceUnit: e.target.value })} placeholder="/paseo" style={{ ...sheetInput, flex: '1 1 110px', width: 'auto' }} />
+          </div>
+          <label style={sheetLabel}>WhatsApp</label>
+          <input value={ed.phone} onChange={(e) => setEd({ ...ed, phone: e.target.value })} placeholder="+54 11 ..." style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel}>Instagram</label>
+          <input value={ed.instagram} onChange={(e) => setEd({ ...ed, instagram: e.target.value })} placeholder="@tunegocio" style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel}>Sitio web</label>
+          <input value={ed.website} onChange={(e) => setEd({ ...ed, website: e.target.value })} placeholder="tunegocio.com.ar" style={{ ...sheetInput, marginBottom: 16 }} />
+          {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+          <button onClick={guardarEdicion} disabled={busy} style={{ ...sheetBtn(true), width: '100%', marginBottom: 8, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
+          <button onClick={() => setEditOpen(false)} style={{ ...sheetBtn(false), width: '100%' }}>Cancelar</button>
+        </Sheet>
+      )}
+
+      {/* Baja del negocio. Antes borraba de una, sin preguntar. */}
+      {bajaOpen && (
+        <Sheet onClose={() => setBajaOpen(false)}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>¿Dar de baja tu negocio?</div>
+          <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 18px' }}>Deja de aparecer en Servicios y se borran sus reseñas y los guardados que tenga. No se puede deshacer: para volver hay que dar de alta de nuevo.</p>
+          <button onClick={darDeBaja} disabled={busy} style={{ width: '100%', background: 'rgb(251,232,239)', color: 'rgb(176,72,63)', border: 'none', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 14, cursor: 'pointer', marginBottom: 8, fontFamily: '"DM Sans"', opacity: busy ? 0.6 : 1 }}>{busy ? 'Dando de baja…' : 'Sí, dar de baja'}</button>
+          <button onClick={() => setBajaOpen(false)} style={{ ...sheetBtn(true), width: '100%' }}>Cancelar</button>
+        </Sheet>
       )}
 
       {state === 'rechazado' && (
@@ -2549,7 +2637,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
-          {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
+          {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
           {screen === 'mismascotas' && <MisMascotas go={go} profile={profile} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}

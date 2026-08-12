@@ -233,7 +233,7 @@ export default async function Page() {
   // esté pendiente o lo hayan rechazado.
   const { data: negocioRow } = await supabase
     .from('providers')
-    .select('id, name, category, zone, phone, about, status, rating, reviews, created_at')
+    .select('id, name, category, zone, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
     .eq('owner_id', auth.user.id)
     .maybeSingle();
   const negocio: MiNegocio | null = negocioRow
@@ -241,6 +241,7 @@ export default async function Page() {
         id: negocioRow.id, name: negocioRow.name, category: negocioRow.category, zone: negocioRow.zone,
         phone: negocioRow.phone, about: negocioRow.about, status: negocioRow.status,
         rating: negocioRow.rating, reviews: negocioRow.reviews,
+        price: negocioRow.price, priceUnit: negocioRow.price_unit, instagram: negocioRow.instagram, website: negocioRow.website,
       }
     : null;
 
