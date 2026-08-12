@@ -107,14 +107,14 @@ function mapBenefit(row: BenefitRow): BenefitVM {
   };
 }
 
-type AnswerRow = { text: string; likes: number; best: boolean; created_at: string; author_name: string };
+type AnswerRow = { id: string; text: string; likes: number; best: boolean; created_at: string; author_name: string; author_id: string | null };
 type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; author_name: string; community_answers: AnswerRow[] };
 /** El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
  *  todos los autores salían como "Socio". */
 function authorName(nombre: string | null): string {
   return nombre?.trim().split(' ')[0] || 'Socio';
 }
-function mapPost(row: PostRow): ForumPost {
+function mapPost(row: PostRow, userId: string): ForumPost {
   return {
     id: row.id,
     cat: row.category,
@@ -125,7 +125,10 @@ function mapPost(row: PostRow): ForumPost {
     body: row.body,
     replies: row.replies,
     likes: row.likes,
-    answers: (row.community_answers ?? []).map((a) => ({ author: authorName(a.author_name), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best })),
+    answers: (row.community_answers ?? [])
+      .slice()
+      .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
+      .map((a) => ({ id: a.id, author: authorName(a.author_name), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId })),
   };
 }
 
@@ -246,9 +249,19 @@ export default async function Page() {
 
   const { data: postRows } = await supabase
     .from('community_posts')
-    .select('id, category, title, body, zone, replies, likes, created_at, author_name, community_answers(text, likes, best, created_at, author_name)')
+    .select('id, category, title, body, zone, replies, likes, created_at, author_name, community_answers(id, text, likes, best, created_at, author_name, author_id)')
     .order('created_at', { ascending: false });
-  const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow));
+  const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
+
+  // Qué likeó el socio, para pintar el corazón lleno y no dejarlo likear dos veces.
+  const [{ data: postLikeRows }, { data: ansLikeRows }] = await Promise.all([
+    supabase.from('post_likes').select('post_id').eq('member_id', auth.user.id),
+    supabase.from('answer_likes').select('answer_id').eq('member_id', auth.user.id),
+  ]);
+  const misLikes = {
+    posts: (postLikeRows ?? []).map((l) => l.post_id),
+    answers: (ansLikeRows ?? []).map((l) => l.answer_id),
+  };
 
   // Las notificaciones se derivan de estas mismas filas (no hay tabla propia).
   // Se manda la materia prima y no la lista armada: los textos de tiempo
@@ -267,5 +280,5 @@ export default async function Page() {
   const { data: favRows } = await supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id);
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} />;
 }

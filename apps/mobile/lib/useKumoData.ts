@@ -33,7 +33,12 @@ export type ReintVM = {
   pet: string; receiptNo: string | null; receiptPath: string | null;
   bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
 };
-export type ForumPost = { id: string; cat: string; author: string; title: string; replies: number; likes: number };
+export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
+/** El hilo necesita cuerpo, zona y respuestas: antes solo se leía título y contadores. */
+export type ForumPost = {
+  id: string; cat: string; author: string; meta: string; title: string; body: string;
+  replies: number; likes: number; trend: boolean; answers: ForumAnswer[];
+};
 
 export type KumoData = {
   profile: Profile | null;
@@ -51,6 +56,8 @@ export type KumoData = {
   guardados: string[];
   /** Reseñas por prestador, más nuevas primero. */
   reviews: Record<string, Review[]>;
+  /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
+  misLikes: { posts: string[]; answers: string[] };
 };
 
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; status: string; rating: number; reviews: number };
@@ -123,16 +130,18 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async () => {
     if (!userId) { setData(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
-      supabase.from('community_posts').select('id, category, title, replies, likes, created_at, author_name').order('created_at', { ascending: false }).limit(20),
+      supabase.from('community_posts').select('id, category, title, body, zone, replies, likes, created_at, author_name, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
+      supabase.from('post_likes').select('post_id').eq('member_id', userId),
+      supabase.from('answer_likes').select('answer_id').eq('member_id', userId),
     ]);
 
     const p = profileRes.data;
@@ -204,10 +213,19 @@ export function useKumoData(userId: string | null) {
 
     // El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
     // todos los autores salían como "Socio".
+    type AnsRow = { id: string; text: string; likes: number; best: boolean; created_at: string; author_name: string; author_id: string | null };
     const posts: ForumPost[] = (postsRes.data ?? []).map((row) => ({
-      id: row.id, cat: row.category, title: row.title,
-      author: `${row.author_name?.trim().split(' ')[0] || 'Socio'} · ${relTime(row.created_at)}`,
-      replies: row.replies, likes: row.likes,
+      id: row.id, cat: row.category, title: row.title, body: row.body ?? '',
+      author: row.author_name?.trim().split(' ')[0] || 'Socio',
+      meta: `${row.zone || 'General'} · ${relTime(row.created_at)}`,
+      replies: row.replies, likes: row.likes, trend: row.likes >= 20,
+      answers: ((row.community_answers ?? []) as AnsRow[])
+        .slice()
+        .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
+        .map((a) => ({
+          id: a.id, author: a.author_name?.trim().split(' ')[0] || 'Socio', when: relTime(a.created_at),
+          text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId,
+        })),
     }));
 
     const n = negocioRes.data;
@@ -236,7 +254,12 @@ export function useKumoData(userId: string | null) {
       });
     }
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput, guardados, reviews });
+    const misLikes = {
+      posts: (plikeRes.data ?? []).map((l) => l.post_id),
+      answers: (alikeRes.data ?? []).map((l) => l.answer_id),
+    };
+
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput, guardados, reviews, misLikes });
     setLoading(false);
   }, [userId]);
 

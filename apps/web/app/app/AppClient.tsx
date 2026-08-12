@@ -64,7 +64,10 @@ export type BenefitVM = {
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number };
-export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: { author: string; when: string; text: string; likes: number; best: boolean }[] };
+export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
+export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: ForumAnswer[] };
+/** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
+export type MisLikes = { posts: string[]; answers: string[] };
 
 /** Datos del socio logueado, resueltos en el Server Component (app/page.tsx). */
 export type Profile = { id: string; firstName: string; fullName: string; memberNo: number; planName: string; planPrice: number; email: string; phone: string | null; address: string | null; dni: string | null };
@@ -1422,123 +1425,290 @@ const catCfg: Record<string, { iconBg: string; icon: ReactNode; tagBg: string; t
   Adiestramiento: { iconBg: 'rgb(42,120,214)', icon: capPath, tagBg: 'rgb(230,240,251)', tagFg: 'rgb(42,120,214)' },
   Cruzas: { iconBg: 'rgb(193,77,122)', icon: heartFill, tagBg: 'rgb(251,232,239)', tagFg: 'rgb(193,77,122)' },
   Razas: { iconBg: 'rgb(37,150,150)', icon: paw, tagBg: 'rgb(224,244,244)', tagFg: 'rgb(23,120,120)' },
+  // Faltaba: el chip "Alimentación" existía en los filtros pero se caía al tono
+  // de Salud, así que un post de esa categoría se veía con el color equivocado.
+  Alimentación: { iconBg: 'rgb(95,125,16)', icon: storeIcon, tagBg: 'rgb(238,247,214)', tagFg: 'rgb(95,125,16)' },
 };
 const foroChips = ['Todos', 'Paseadores', 'Salud', 'Guarderías', 'Adiestramiento', 'Alimentación', 'Cruzas', 'Razas'];
 
-function Foros({ initialPosts, profile }: { initialPosts: ForumPost[]; profile: Profile }) {
+const sendIcon = <><line x1="12" y1="19" x2="12" y2="5" /><path d="M5 12l7-7 7 7" /></>;
+const fotoIcon = <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></>;
+
+/* ── Hilo del foro ─────────────────────────────────────────────── */
+/** El hilo del prototipo: post original, me gusta, respuestas y la caja para
+ *  responder. Antes el hilo era un acordeón de solo lectura dentro de la tarjeta:
+ *  no se podía responder ni dar me gusta de verdad. */
+function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profile; misLikes: MisLikes; onVolver: () => void }) {
   const router = useRouter();
+  const cfg = catCfg[p.cat] ?? catCfg.Salud!;
+  const [texto, setTexto] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [likes, setLikes] = useState({ post: misLikes.posts.includes(p.id), answers: new Set(misLikes.answers) });
+
+  /** Optimista: el corazón responde al toque y la base va atrás. */
+  const togglePostLike = async () => {
+    const estaba = likes.post;
+    setLikes((s) => ({ ...s, post: !estaba }));
+    const { error } = estaba
+      ? await supabase.from('post_likes').delete().eq('member_id', profile.id).eq('post_id', p.id)
+      : await supabase.from('post_likes').insert({ member_id: profile.id, post_id: p.id });
+    if (error) setLikes((s) => ({ ...s, post: estaba }));
+    else router.refresh();
+  };
+  const toggleAnswerLike = async (id: string) => {
+    const estaba = likes.answers.has(id);
+    setLikes((s) => { const n = new Set(s.answers); estaba ? n.delete(id) : n.add(id); return { ...s, answers: n }; });
+    const { error } = estaba
+      ? await supabase.from('answer_likes').delete().eq('member_id', profile.id).eq('answer_id', id)
+      : await supabase.from('answer_likes').insert({ member_id: profile.id, answer_id: id });
+    if (error) setLikes((s) => { const n = new Set(s.answers); estaba ? n.add(id) : n.delete(id); return { ...s, answers: n }; });
+    else router.refresh();
+  };
+
+  const responder = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!texto.trim()) return;
+    setBusy(true);
+    // El contador `replies` lo actualiza el trigger, no se toca desde acá.
+    await supabase.from('community_answers').insert({
+      post_id: p.id, author_id: profile.id, author_name: profile.firstName, text: texto.trim(),
+    });
+    setTexto('');
+    router.refresh();
+    setBusy(false);
+  };
+
+  const likesPost = p.likes + (likes.post && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likes.post && misLikes.posts.includes(p.id) ? 1 : 0);
+
+  return (
+    <div style={{ padding: '8px 20px 24px' }}>
+      <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 8 }}>← Comunidad</button>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+        <div style={{ width: 38, height: 38, borderRadius: 11, background: cfg.tagBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: cfg.tagFg }}>{ic(person, false, 19)}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 700, fontSize: 14 }}>{p.author}</div>
+          <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.meta}</div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 700, color: cfg.tagFg, background: cfg.tagBg, padding: '3px 9px', borderRadius: 6 }}>{p.cat}</span>
+      </div>
+
+      <h1 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, lineHeight: 1.2, margin: '0 0 10px' }}>{p.title}</h1>
+      <p style={{ fontSize: 14, color: 'rgb(74,69,96)', lineHeight: 1.6, margin: '0 0 14px' }}>{p.body}</p>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
+        <button onClick={togglePostLike} style={{ display: 'flex', alignItems: 'center', gap: 7, background: likes.post ? 'rgb(251,232,239)' : 'rgb(240,237,249)', border: 'none', color: likes.post ? 'rgb(192,72,99)' : 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, padding: '9px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill={likes.post ? '#c04863' : '#5D5491'}>{heartFill}</svg>
+          Me gusta · {likesPost}
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{p.answers.length} {p.answers.length === 1 ? 'respuesta' : 'respuestas'}</div>
+        <div style={{ flex: 1, height: 1, background: 'rgb(238,236,245)' }} />
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {p.answers.map((a) => {
+          const yo = likes.answers.has(a.id);
+          const n = a.likes + (yo && !misLikes.answers.includes(a.id) ? 1 : 0) - (!yo && misLikes.answers.includes(a.id) ? 1 : 0);
+          return (
+            <div key={a.id} style={{ display: 'flex', gap: 10 }}>
+              <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgb(236,233,245)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, color: '#5D5491', flex: 'none' }}>{a.author.slice(0, 1).toUpperCase()}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, borderTopLeftRadius: 4, padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
+                    <span style={{ fontWeight: 700, fontSize: 13.5 }}>{a.propia ? 'Vos' : a.author}</span>
+                    {a.best && <span style={{ fontSize: 10, fontWeight: 700, color: 'rgb(47,143,91)', background: 'rgb(226,245,234)', padding: '2px 7px', borderRadius: 6 }}>★ Mejor respuesta</span>}
+                    <span style={{ fontSize: 11, color: 'rgb(162,157,186)', marginLeft: 'auto' }}>{a.when}</span>
+                  </div>
+                  <div style={{ fontSize: 13.5, color: 'rgb(74,69,96)', lineHeight: 1.55 }}>{a.text}</div>
+                </div>
+                <div style={{ display: 'flex', gap: 14, marginTop: 6, paddingLeft: 4 }}>
+                  <button onClick={() => toggleAnswerLike(a.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: yo ? 'rgb(192,72,99)' : 'rgb(135,129,160)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill={yo ? '#c04863' : 'none'} stroke={yo ? '#c04863' : '#8781a0'} strokeWidth="2">{heartFill}</svg>{n}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {p.answers.length === 0 && (
+          <div style={{ fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>Todavía no hay respuestas. Sé la primera persona en responder.</div>
+        )}
+      </div>
+
+      <form onSubmit={responder} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 18, background: '#fff', border: '1.5px solid rgb(230,227,240)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escribí una respuesta…" style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'none', color: 'rgb(33,30,51)', fontFamily: '"DM Sans"' }} />
+        <button type="submit" disabled={busy || !texto.trim()} aria-label="Enviar respuesta" style={{ width: 38, height: 38, borderRadius: '50%', background: texto.trim() ? 'rgb(93,84,145)' : 'rgb(199,193,222)', border: 'none', cursor: texto.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#fff' }}>
+          {ic(sendIcon, false, 18)}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+/* ── Nueva publicación ─────────────────────────────────────────── */
+/** La pantalla del prototipo: categoría en chips, título, cuerpo, foto opcional
+ *  y el estado "¡Publicado!". Antes era un formulario de dos inputs metido arriba
+ *  del listado, y la categoría salía del filtro activo. */
+function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => void }) {
+  const router = useRouter();
+  const cats = foroChips.filter((c) => c !== 'Todos');
+  const [cat, setCat] = useState(cats[0]!);
+  const [titulo, setTitulo] = useState('');
+  const [cuerpo, setCuerpo] = useState('');
+  const [zona, setZona] = useState(profile.address ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [listo, setListo] = useState(false);
+
+  const publicar = async () => {
+    if (!titulo.trim()) { setError('Ponele un título a tu publicación.'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('community_posts').insert({
+      author_id: profile.id, author_name: profile.firstName, category: cat,
+      title: titulo.trim(), body: cuerpo.trim() || titulo.trim(), zone: zona.trim() || null,
+    });
+    if (e) { setError('No pudimos publicar. Probá de nuevo.'); setBusy(false); return; }
+    setBusy(false);
+    setListo(true);
+    router.refresh();
+  };
+
+  if (listo) {
+    return (
+      <div style={{ padding: '40px 24px', textAlign: 'center' }}>
+        <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgb(225,251,98)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+        </div>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, margin: '0 0 8px' }}>¡Publicado!</div>
+        <p style={{ color: 'rgb(91,86,112)', fontSize: 14, lineHeight: 1.55, margin: '0 auto 24px', maxWidth: 420 }}>Tu publicación ya está en la comunidad. Te avisamos cuando alguien responda.</p>
+        <button onClick={onVolver} style={{ ...sheetBtn(true), width: '100%', maxWidth: 420 }}>Volver a la comunidad</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '8px 20px 24px' }}>
+      <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 6 }}>← Comunidad</button>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 2 }}>Nueva publicación</div>
+      <p style={{ color: 'rgb(135,129,160)', fontSize: 14, margin: '0 0 18px' }}>Compartí tu experiencia o hacé una pregunta a la comunidad.</p>
+
+      <label style={sheetLabel}>Categoría</label>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 8, marginBottom: 16 }}>
+        {cats.map((c) => (
+          <button key={c} onClick={() => setCat(c)} style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, whiteSpace: 'nowrap', background: cat === c ? 'rgb(93,84,145)' : 'rgb(240,237,249)', color: cat === c ? '#fff' : 'rgb(93,84,145)' }}>{c}</button>
+        ))}
+      </div>
+
+      <label style={sheetLabel} htmlFor="fo-tit">Título</label>
+      <input id="fo-tit" value={titulo} onChange={(e) => { setTitulo(e.target.value); setError(''); }} placeholder="Ej: ¿Alguien probó a Lucas de Paseos Palermo?" style={{ ...sheetInput, marginBottom: 12 }} />
+
+      <label style={sheetLabel} htmlFor="fo-body">Contanos más</label>
+      <textarea id="fo-body" value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={5} placeholder="Escribí tu consulta o experiencia…" style={{ ...sheetInput, resize: 'none', marginBottom: 12 }} />
+
+      <label style={sheetLabel} htmlFor="fo-zona">Zona <span style={{ fontWeight: 400, color: 'rgb(162,157,186)' }}>· opcional</span></label>
+      <input id="fo-zona" value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 18 }} />
+
+      {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+      <button onClick={publicar} disabled={busy} style={{ ...sheetBtn(true), width: '100%', boxShadow: '0 8px 20px rgba(93,84,145,0.28)', opacity: busy ? 0.6 : 1 }}>{busy ? 'Publicando…' : 'Publicar'}</button>
+    </div>
+  );
+}
+
+/* ── Pantalla: Foros / Comunidad ───────────────────────────────── */
+function Foros({ initialPosts, profile, misLikes }: { initialPosts: ForumPost[]; profile: Profile; misLikes: MisLikes }) {
   const posts = initialPosts;
-  const [openThread, setOpenThread] = useState<string | null>(null);
+  const [vista, setVista] = useState<'lista' | 'componer'>('lista');
+  const [hiloId, setHiloId] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Todos');
-  const [liked, setLiked] = useState<Record<string, boolean>>({});
-  const [open, setOpen] = useState(false);
-  const [nt, setNt] = useState('');
-  const [nb, setNb] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [zona, setZona] = useState('Todas');
+
+  // Las zonas salen de lo que publicaron los socios, no de una lista fija.
+  const zonas = ['Todas', ...Array.from(new Set(posts.map((p) => p.meta.split(' · ')[0]!).filter((z) => z && z !== 'General')))];
 
   const ql = q.trim().toLowerCase();
   const list = posts.filter((p) => {
     if (cat !== 'Todos' && p.cat !== cat) return false;
+    if (zona !== 'Todas' && !p.meta.startsWith(zona)) return false;
     if (ql && !`${p.title} ${p.body} ${p.author}`.toLowerCase().includes(ql)) return false;
     return true;
   });
 
-  const publish = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!nt.trim()) return;
-    setBusy(true);
-    await supabase.from('community_posts').insert({ author_id: profile.id, author_name: profile.firstName, category: cat === 'Todos' ? 'Salud' : cat, title: nt, body: nb || '—' });
-    setNt(''); setNb(''); setOpen(false);
-    router.refresh();
-    setBusy(false);
-  };
+  const hilo = posts.find((p) => p.id === hiloId);
+  if (hilo) return <Hilo p={hilo} profile={profile} misLikes={misLikes} onVolver={() => setHiloId(null)} />;
+  if (vista === 'componer') return <Componer profile={profile} onVolver={() => setVista('lista')} />;
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22 }}>Comunidad</div>
-        <button onClick={() => setOpen((o) => !o)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '9px 16px', borderRadius: 100, cursor: 'pointer' }}>+ Publicar</button>
+        <button onClick={() => setVista('componer')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>+ Publicar</button>
       </div>
 
-      {open && (
-        <form onSubmit={publish} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input value={nt} onChange={(e) => setNt(e.target.value)} placeholder="Título de tu consulta" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <textarea value={nb} onChange={(e) => setNb(e.target.value)} placeholder="Contanos más…" rows={3} style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', resize: 'vertical' }} />
-          <button type="submit" disabled={busy} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Publicando…' : 'Publicar'}</button>
-        </form>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'rgb(247,246,250)', border: '1.5px solid rgb(238,236,245)', borderRadius: 14, padding: '11px 14px', marginBottom: 14 }}>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" /></svg>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: '#fff', border: '1.5px solid rgb(230,227,240)', borderRadius: 14, padding: '11px 14px', marginBottom: 12 }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a29dba" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}><circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" /></svg>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar en la comunidad…" style={{ flex: '1 1 0%', border: 'none', outline: 'none', background: 'none', fontSize: 14, fontFamily: '"DM Sans"', color: 'rgb(33,30,51)' }} />
+        {q && <button onClick={() => setQ('')} aria-label="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(162,157,186)', fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 12 }}>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 8 }}>
         {foroChips.map((c) => {
           const active = cat === c;
           return <button key={c} onClick={() => setCat(c)} style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, whiteSpace: 'nowrap', background: active ? 'rgb(93,84,145)' : 'rgb(240,237,249)', color: active ? '#fff' : 'rgb(93,84,145)' }}>{c}</button>;
         })}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{list.length} publicaciones</span>
-        <span style={{ fontSize: 13, color: 'rgb(91,86,112)', display: 'flex', alignItems: 'center', gap: 6, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 10, padding: '7px 12px' }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2.2" /></svg>Todas
-        </span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: '4px 0 14px' }}>
+        <span style={{ fontSize: 12.5, color: 'rgb(162,157,186)' }}>{list.length} {list.length === 1 ? 'publicación' : 'publicaciones'}</span>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 100, padding: '7px 12px', cursor: 'pointer', flex: 'none' }}>
+          <span style={{ color: '#5D5491', display: 'flex', flex: 'none' }}>{ic(pinDropPath, false, 14)}</span>
+          <select value={zona} onChange={(e) => setZona(e.target.value)} style={{ border: 'none', background: 'none', fontSize: 13, fontWeight: 600, color: '#5D5491', fontFamily: '"DM Sans"', outline: 'none', cursor: 'pointer' }}>
+            {zonas.map((z) => <option key={z} value={z}>{z}</option>)}
+          </select>
+        </label>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {list.map((p) => {
-          const cfg = catCfg[p.cat] ?? catCfg.Salud!;
-          const isLiked = liked[p.id];
-          const likeInner = cfg.icon;
-          return (
-            <div key={p.id} className="wa-card" style={{ display: 'flex', gap: 14, alignItems: 'flex-start', background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 16 }}>
-              <div style={{ width: 46, height: 46, borderRadius: 14, background: cfg.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill={p.cat === 'Paseadores' || p.cat === 'Cruzas' ? '#fff' : 'none'} stroke={p.cat === 'Paseadores' || p.cat === 'Cruzas' ? 'none' : '#fff'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{likeInner}</svg>
-              </div>
-              <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: cfg.tagFg, background: cfg.tagBg, padding: '3px 9px', borderRadius: 6 }}>{p.cat}</span>
-                  {p.trend && <span style={{ fontSize: 10, fontWeight: 800, color: 'rgb(33,30,51)', background: 'rgb(225,251,98)', padding: '3px 8px', borderRadius: 6, letterSpacing: '0.03em' }}>EN TENDENCIA</span>}
-                  <span style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.author} · {p.meta}</span>
+      {list.length === 0 ? (
+        <div style={{ background: 'rgb(247,246,250)', border: '1px dashed rgb(222,216,240)', borderRadius: 18, padding: '30px 20px', textAlign: 'center' }}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 16, marginBottom: 5 }}>{posts.length === 0 ? 'La comunidad está arrancando' : 'Sin resultados'}</div>
+          <div style={{ fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>{posts.length === 0 ? 'Todavía no hay publicaciones. Hacé la primera pregunta.' : 'Probá con otra búsqueda, categoría o zona.'}</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {list.map((p) => {
+            const cfg = catCfg[p.cat] ?? catCfg.Salud!;
+            const relleno = p.cat === 'Paseadores' || p.cat === 'Cruzas';
+            return (
+              <button key={p.id} className="wa-card" onClick={() => setHiloId(p.id)} style={{ display: 'flex', gap: 13, alignItems: 'flex-start', background: '#fff', border: '1px solid rgb(240,238,247)', borderRadius: 20, padding: 16, cursor: 'pointer', boxShadow: '0 6px 20px rgba(93,84,145,0.07)', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
+                <div style={{ width: 52, height: 52, borderRadius: 15, background: cfg.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill={relleno ? '#fff' : 'none'} stroke={relleno ? 'none' : '#fff'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{cfg.icon}</svg>
                 </div>
-                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 16, lineHeight: 1.25, marginBottom: 6, color: 'rgb(33,30,51)' }}>{p.title}</div>
-                <div style={{ fontSize: 13, color: 'rgb(122,117,146)', lineHeight: 1.5, marginBottom: 12 }}>{p.body}</div>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 12.5, padding: '5px 11px', borderRadius: 100 }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5D5491" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{chat}</svg>{p.replies}
-                  </span>
-                  <button onClick={() => setLiked((s) => ({ ...s, [p.id]: !s[p.id] }))} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 600, fontSize: 12.5, padding: '5px 11px', borderRadius: 100, cursor: 'pointer' }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#c14d7a">{heartFill}</svg>{p.likes + (isLiked ? 1 : 0)}
-                  </button>
-                  <button onClick={() => setOpenThread(openThread === p.id ? null : p.id)} style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0 }}>{openThread === p.id ? 'Cerrar hilo ▴' : 'Ver hilo ›'}</button>
-                </div>
-                {openThread === p.id && (
-                  <div style={{ marginTop: 12, borderTop: '1px solid rgb(238,236,245)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-                    {p.answers.map((a) => (
-                      <div key={a.author + a.when} style={{ background: '#fff', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4, flexWrap: 'wrap' }}>
-                          <span style={{ fontWeight: 700, fontSize: 12.5 }}>{a.author}</span>
-                          <span style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>{a.when}</span>
-                          {a.best && <span style={{ fontSize: 9.5, fontWeight: 800, color: 'rgb(31,125,80)', background: 'rgb(226,245,234)', padding: '2px 7px', borderRadius: 5 }}>MEJOR RESPUESTA</span>}
-                          <span style={{ marginLeft: 'auto', fontSize: 11.5, color: 'rgb(193,77,122)', fontWeight: 600 }}>♥ {a.likes}</span>
-                        </div>
-                        <div style={{ fontSize: 13, color: 'rgb(91,86,112)', lineHeight: 1.5 }}>{a.text}</div>
-                      </div>
-                    ))}
-                    {p.answers.length === 0 && (
-                      <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>Todavía no hay respuestas. ¡Sé la primera persona en responder!</div>
-                    )}
+                <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 7 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.tagFg, background: cfg.tagBg, padding: '3px 10px', borderRadius: 100 }}>{p.cat}</span>
+                    {p.trend && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.03em', whiteSpace: 'nowrap', color: 'rgb(33,30,51)', background: 'rgb(225,251,98)', padding: '3px 9px', borderRadius: 100 }}>EN TENDENCIA</span>}
+                    <span style={{ fontSize: 11.5, color: 'rgb(162,157,186)' }}>{p.author} · {p.meta}</span>
                   </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-        {list.length === 0 && <div style={{ color: 'rgb(135,129,160)', fontSize: 14, padding: '10px 2px' }}>No hay publicaciones con esos filtros.</div>}
-      </div>
+                  <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 16, lineHeight: 1.25, color: 'rgb(33,30,51)', marginBottom: 5 }}>{p.title}</div>
+                  <div style={{ fontSize: 13, color: 'rgb(135,129,160)', lineHeight: 1.5, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as CSSProperties}>{p.body}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 100 }}>
+                      {ic(chat, false, 14)}{p.replies}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgb(251,233,238)', color: 'rgb(192,72,99)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 100 }}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#c04863">{heartFill}</svg>{p.likes}
+                    </span>
+                    <span style={{ marginLeft: 'auto', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12.5 }}>Ver hilo ›</span>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2099,7 +2269,7 @@ function EnConstruccion({ titulo }: { titulo: string }) {
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]> }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -2147,7 +2317,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
-          {screen === 'foros' && <Foros initialPosts={posts} profile={profile} />}
+          {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}

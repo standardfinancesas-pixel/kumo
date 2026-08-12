@@ -233,6 +233,22 @@ create table if not exists provider_favorites (
   primary key (member_id, provider_id)
 );
 
+-- Likes del foro. `community_posts.likes` / `community_answers.likes` y
+-- `community_posts.replies` son cache que mantienen triggers (ver migraciones).
+create table if not exists post_likes (
+  member_id  uuid not null references profiles(id) on delete cascade,
+  post_id    uuid not null references community_posts(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (member_id, post_id)
+);
+
+create table if not exists answer_likes (
+  member_id  uuid not null references profiles(id) on delete cascade,
+  answer_id  uuid not null references community_answers(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (member_id, answer_id)
+);
+
 -- Reseñas de prestadores. `providers.rating` y `providers.reviews` se calculan
 -- de acá con el trigger `provider_reviews_sync` (ver migraciones).
 create table if not exists provider_reviews (
@@ -273,6 +289,8 @@ alter table emergency_contacts enable row level security;
 alter table club_settings      enable row level security;
 alter table provider_favorites enable row level security;
 alter table provider_reviews   enable row level security;
+alter table post_likes         enable row level security;
+alter table answer_likes       enable row level security;
 
 -- Catálogo público (planes, beneficios, faqs, ajustes, prestadores verificados)
 create policy "planes visibles"    on plans      for select using (true);
@@ -309,6 +327,15 @@ create policy "posts borrar"    on community_posts for delete using (author_id =
 create policy "respuestas visibles" on community_answers for select using (true);
 create policy "respuestas crear"    on community_answers for insert with check (author_id = auth.uid());
 create policy "respuestas moderar"  on community_answers for update using (author_id = auth.uid() or is_admin());
+create policy "respuestas borrar"   on community_answers for delete using (author_id = auth.uid() or is_admin());
+
+-- Likes: se cuentan en público, cada socio maneja los suyos
+create policy "likes visibles" on post_likes for select using (true);
+create policy "like propio"    on post_likes for all
+  using (member_id = auth.uid()) with check (member_id = auth.uid());
+create policy "likes de respuesta visibles" on answer_likes for select using (true);
+create policy "like de respuesta propio"    on answer_likes for all
+  using (member_id = auth.uid()) with check (member_id = auth.uid());
 
 -- Contactos de emergencia: del dueño
 create policy "emergencias del dueño" on emergency_contacts for all

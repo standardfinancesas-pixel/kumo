@@ -1822,77 +1822,276 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
 }
 
 /* ── Sub-pantalla: Foros ───────────────────────────────────────── */
+/** Las mismas categorías que la webapp: antes mobile tenía cuatro y la web ocho,
+ *  así que un post publicado en una podía quedar sin chip en la otra. */
+const FORO_CATS = ['Paseadores', 'Salud', 'Guarderías', 'Adiestramiento', 'Alimentación', 'Cruzas', 'Razas'];
 const CAT_TONE: Record<string, { bg: string; fg: string }> = {
-  'Paseadores': { bg: colors.success.bg, fg: colors.success.fg },
-  'Salud': { bg: colors.violet[100], fg: BRAND },
-  'Guarderías': { bg: '#fbf3e2', fg: '#b8860b' },
+  Paseadores: { bg: colors.success.bg, fg: colors.success.fg },
+  Salud: { bg: colors.violet[100], fg: BRAND },
+  Guarderías: { bg: '#fbf3e2', fg: '#b8860b' },
+  Adiestramiento: { bg: '#e6f0fb', fg: '#2a78d6' },
+  Alimentación: { bg: '#eef7d6', fg: '#5f7d10' },
+  Cruzas: { bg: '#fbe8ef', fg: '#c14d7a' },
+  Razas: { bg: '#e0f4f4', fg: '#177878' },
 };
-const FORO_CATS = ['Salud', 'Paseadores', 'Guarderías', 'General'];
-function Foros({ posts, userId, firstName, reload }: { posts: ForumPost[]; userId: string; firstName: string; reload: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [cat, setCat] = useState(FORO_CATS[0]!);
-  const [title, setTitle] = useState('');
-  const [body, setBody] = useState('');
-  const [busy, setBusy] = useState(false);
 
-  const publish = async () => {
-    if (!title.trim() || !body.trim()) return;
+/* ── Hilo del foro ─────────────────────────────────────────────── */
+/** El hilo del prototipo: post original, me gusta, respuestas y la caja para
+ *  responder. Antes la tarjeta no se podía tocar: no había hilo ni respuestas. */
+function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPost; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void; onVolver: () => void }) {
+  const tone = CAT_TONE[p.cat] ?? { bg: colors.violet[100], fg: BRAND };
+  const [texto, setTexto] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [likePost, setLikePost] = useState(misLikes.posts.includes(p.id));
+  const [likeAns, setLikeAns] = useState<string[]>(misLikes.answers);
+
+  /** Optimista: el corazón responde al toque y la base va atrás. */
+  const togglePost = async () => {
+    const estaba = likePost;
+    setLikePost(!estaba);
+    const { error } = estaba
+      ? await supabase.from('post_likes').delete().eq('member_id', userId).eq('post_id', p.id)
+      : await supabase.from('post_likes').insert({ member_id: userId, post_id: p.id });
+    if (error) setLikePost(estaba); else await reload();
+  };
+  const toggleAns = async (id: string) => {
+    const estaba = likeAns.includes(id);
+    setLikeAns(estaba ? likeAns.filter((x) => x !== id) : [...likeAns, id]);
+    const { error } = estaba
+      ? await supabase.from('answer_likes').delete().eq('member_id', userId).eq('answer_id', id)
+      : await supabase.from('answer_likes').insert({ member_id: userId, answer_id: id });
+    if (error) setLikeAns(misLikes.answers); else await reload();
+  };
+
+  const responder = async () => {
+    if (!texto.trim()) return;
     setBusy(true);
-    await supabase.from('community_posts').insert({ author_id: userId, author_name: firstName, category: cat, title: title.trim(), body: body.trim() });
-    setTitle(''); setBody(''); setOpen(false);
+    // El contador `replies` lo actualiza el trigger, no se toca desde acá.
+    await supabase.from('community_answers').insert({ post_id: p.id, author_id: userId, author_name: firstName, text: texto.trim() });
+    setTexto('');
     await reload();
     setBusy(false);
   };
-  const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
+
+  const nPost = p.likes + (likePost && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likePost && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <H1>Foros</H1>
-        <TouchableOpacity onPress={() => setOpen((v) => !v)} style={{ backgroundColor: LIME, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14, marginTop: 4 }}>
-          <Text style={{ color: INK, fontWeight: '700', fontSize: 12.5 }}>{open ? 'Cancelar' : '+ Publicar'}</Text>
+      <BackLink label="Comunidad" onPress={onVolver} />
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+        <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
+          <Ic d="person" size={19} color={tone.fg} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.author}</Text>
+          <Text style={{ fontSize: 12, color: '#a29dba' }}>{p.meta}</Text>
+        </View>
+        <View style={{ backgroundColor: tone.bg, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3 }}>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{p.cat}</Text>
+        </View>
+      </View>
+
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, lineHeight: 25, color: INK, marginBottom: 10 }}>{p.title}</Text>
+      <Text style={{ fontSize: 14, color: '#4a4560', lineHeight: 22, marginBottom: 14 }}>{p.body}</Text>
+
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
+        <TouchableOpacity onPress={togglePost} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: likePost ? '#fbe9ee' : colors.violet[100], borderRadius: 100, paddingHorizontal: 14, paddingVertical: 9 }}>
+          <Ic d="heart" size={15} color={likePost ? '#c04863' : BRAND} fill />
+          <Text style={{ color: likePost ? '#c04863' : BRAND, fontWeight: '600', fontSize: 13 }}>Me gusta · {nPost}</Text>
         </TouchableOpacity>
       </View>
-      <Sub>Preguntá, opiná y encontrá recomendaciones reales.</Sub>
-      {open && (
-        <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 18, padding: 16, marginBottom: 18, gap: 10 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-            {FORO_CATS.map((c) => (
-              <TouchableOpacity key={c} onPress={() => setCat(c)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100, backgroundColor: cat === c ? BRAND : '#fff', borderWidth: 1, borderColor: cat === c ? BRAND : colors.violet[200] }}>
-                <Text style={{ fontWeight: '600', fontSize: 12.5, color: cat === c ? '#fff' : MUTED }}>{c}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TextInput value={title} onChangeText={setTitle} placeholder="Título de tu consulta" placeholderTextColor={colors.violet[400]} style={field} />
-          <TextInput value={body} onChangeText={setBody} placeholder="Contá un poco más…" placeholderTextColor={colors.violet[400]} multiline numberOfLines={3} style={[field, { minHeight: 76, textAlignVertical: 'top' }]} />
-          <TouchableOpacity disabled={busy} onPress={publish} style={{ backgroundColor: BRAND, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14.5 }}>Publicar</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-      <View style={{ gap: 12 }}>
-        {posts.map((p) => {
-          const tone = CAT_TONE[p.cat] ?? { bg: colors.violet[100], fg: BRAND };
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+        <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.answers.length} {p.answers.length === 1 ? 'respuesta' : 'respuestas'}</Text>
+        <View style={{ flex: 1, height: 1, backgroundColor: '#eeecf5' }} />
+      </View>
+
+      <View style={{ gap: 14 }}>
+        {p.answers.map((a) => {
+          const yo = likeAns.includes(a.id);
+          const n = a.likes + (yo && !misLikes.answers.includes(a.id) ? 1 : 0) - (!yo && misLikes.answers.includes(a.id) ? 1 : 0);
           return (
-            <View key={p.id} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 15 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <View style={{ backgroundColor: tone.bg, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3 }}><Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{p.cat}</Text></View>
-                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.author}</Text>
+            <View key={a.id} style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#ece9f5', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontWeight: '700', fontSize: 14, color: BRAND }}>{a.author.slice(0, 1).toUpperCase()}</Text>
               </View>
-              <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 15, color: INK, marginBottom: 10 }}>{p.title}</Text>
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.violet[100], borderRadius: 100, paddingHorizontal: 11, paddingVertical: 5 }}><Ic d="chat" size={13} color={BRAND} /><Text style={{ fontSize: 12.5, fontWeight: '600', color: BRAND }}>{p.replies}</Text></View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.danger.bg, borderRadius: 100, paddingHorizontal: 11, paddingVertical: 5 }}><Ic d="heart" size={13} color={colors.danger.fg} fill /><Text style={{ fontSize: 12.5, fontWeight: '600', color: colors.danger.fg }}>{p.likes}</Text></View>
+              <View style={{ flex: 1 }}>
+                <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <Text style={{ fontWeight: '700', fontSize: 13.5, color: INK }}>{a.propia ? 'Vos' : a.author}</Text>
+                    {a.best ? (
+                      <View style={{ backgroundColor: '#e2f5ea', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '700', color: '#2f8f5b' }}>★ Mejor respuesta</Text>
+                      </View>
+                    ) : null}
+                    <Text style={{ fontSize: 11, color: '#a29dba', marginLeft: 'auto' }}>{a.when}</Text>
+                  </View>
+                  <Text style={{ fontSize: 13.5, color: '#4a4560', lineHeight: 21 }}>{a.text}</Text>
+                </View>
+                <TouchableOpacity onPress={() => toggleAns(a.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, paddingLeft: 4 }}>
+                  <Ic d="heart" size={13} color={yo ? '#c04863' : '#8781a0'} fill={yo} />
+                  <Text style={{ fontSize: 12, color: yo ? '#c04863' : '#8781a0' }}>{n}</Text>
+                </TouchableOpacity>
               </View>
             </View>
           );
         })}
-        {posts.length === 0 && (
-          <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 24, alignItems: 'center' }}>
-            <Text style={{ fontSize: 13.5, color: MUTED, textAlign: 'center' }}>Todavía no hay publicaciones. Sé el primero en preguntar algo.</Text>
-          </View>
-        )}
+        {p.answers.length === 0 ? (
+          <Text style={{ fontSize: 13.5, color: MUTED, lineHeight: 20 }}>Todavía no hay respuestas. Sé la primera persona en responder.</Text>
+        ) : null}
       </View>
+
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 18, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 100, paddingLeft: 16, padding: 5 }}>
+        <TextInput value={texto} onChangeText={setTexto} placeholder="Escribí una respuesta…" placeholderTextColor={colors.violet[400]} style={{ flex: 1, fontSize: 14, color: INK, paddingVertical: 6 }} />
+        <TouchableOpacity disabled={busy || !texto.trim()} onPress={responder} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: texto.trim() ? BRAND : '#c7c1de', alignItems: 'center', justifyContent: 'center' }}>
+          <Svg width={18} height={18} viewBox="0 0 24 24">
+            <Line x1="12" y1="19" x2="12" y2="5" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+            <Path d="M5 12l7-7 7 7" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  );
+}
+
+/* ── Sub-pantalla: Foros ───────────────────────────────────────── */
+function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPost[]; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void }) {
+  const [vista, setVista] = useState<'lista' | 'componer'>('lista');
+  const [hiloId, setHiloId] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [filtro, setFiltro] = useState('Todos');
+  // Compose
+  const [cat, setCat] = useState(FORO_CATS[0]!);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [zona, setZona] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [listo, setListo] = useState(false);
+
+  const ql = q.trim().toLowerCase();
+  const list = posts.filter((p) => (filtro === 'Todos' || p.cat === filtro) && (!ql || `${p.title} ${p.body} ${p.author}`.toLowerCase().includes(ql)));
+
+  const hilo = posts.find((p) => p.id === hiloId);
+  if (hilo) return <Hilo p={hilo} userId={userId} firstName={firstName} misLikes={misLikes} reload={reload} onVolver={() => setHiloId(null)} />;
+
+  const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
+
+  const publicar = async () => {
+    if (!title.trim()) { setError('Ponele un título a tu publicación.'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('community_posts').insert({
+      author_id: userId, author_name: firstName, category: cat,
+      title: title.trim(), body: body.trim() || title.trim(), zone: zona.trim() || null,
+    });
+    if (e) { setError('No pudimos publicar. Probá de nuevo.'); setBusy(false); return; }
+    setTitle(''); setBody(''); setZona('');
+    setBusy(false); setListo(true);
+    await reload();
+  };
+
+  if (vista === 'componer') {
+    if (listo) {
+      return (
+        <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, alignItems: 'center' }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+            <Svg width={34} height={34} viewBox="0 0 24 24"><Path d="M20 6L9 17l-5-5" fill="none" stroke={INK} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+          </View>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>¡Publicado!</Text>
+          <Text style={{ color: MUTED, fontSize: 14, lineHeight: 22, textAlign: 'center', marginBottom: 24 }}>Tu publicación ya está en la comunidad. Te avisamos cuando alguien responda.</Text>
+          <TouchableOpacity onPress={() => { setListo(false); setVista('lista'); }} style={{ alignSelf: 'stretch', backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Volver a la comunidad</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      );
+    }
+    return (
+      <ScrollView contentContainerStyle={styles.screen}>
+        <BackLink label="Comunidad" onPress={() => setVista('lista')} />
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 2 }}>Nueva publicación</Text>
+        <Text style={{ color: '#8781a0', fontSize: 14, marginBottom: 18 }}>Compartí tu experiencia o hacé una pregunta a la comunidad.</Text>
+
+        <SheetLabel>Categoría</SheetLabel>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 8 }} style={{ marginBottom: 16 }}>
+          {FORO_CATS.map((c) => (
+            <TouchableOpacity key={c} onPress={() => setCat(c)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100, backgroundColor: cat === c ? BRAND : colors.violet[100] }}>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: cat === c ? '#fff' : BRAND }}>{c}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        <SheetLabel>Título</SheetLabel>
+        <TextInput value={title} onChangeText={(v) => { setTitle(v); setError(''); }} placeholder="Ej: ¿Alguien probó a Lucas de Paseos Palermo?" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 12 }} />
+
+        <SheetLabel>Contanos más</SheetLabel>
+        <TextInput value={body} onChangeText={setBody} multiline placeholder="Escribí tu consulta o experiencia…" placeholderTextColor={colors.violet[400]} style={{ ...field, height: 120, textAlignVertical: 'top', marginBottom: 12 }} />
+
+        <SheetLabel>Zona · opcional</SheetLabel>
+        <TextInput value={zona} onChangeText={setZona} placeholder="Palermo, CABA" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 18 }} />
+
+        {!!error && <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text>}
+        <TouchableOpacity disabled={busy} onPress={publicar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{busy ? 'Publicando…' : 'Publicar'}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  return (
+    <ScrollView contentContainerStyle={styles.screen}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <H1>Comunidad</H1>
+        <TouchableOpacity onPress={() => setVista('componer')} style={{ backgroundColor: BRAND, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14, marginTop: 4 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12.5 }}>+ Publicar</Text>
+        </TouchableOpacity>
+      </View>
+      <Sub>Preguntá, opiná y encontrá recomendaciones reales.</Sub>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingHorizontal: 14, marginBottom: 12 }}>
+        <Ic d="search" size={17} color="#a29dba" />
+        <TextInput value={q} onChangeText={setQ} placeholder="Buscar en la comunidad…" placeholderTextColor={colors.violet[400]} style={{ flex: 1, paddingVertical: 12, fontSize: 14, color: INK }} />
+        {q ? <TouchableOpacity onPress={() => setQ('')}><Text style={{ color: '#a29dba', fontSize: 18 }}>×</Text></TouchableOpacity> : null}
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }} style={{ marginBottom: 10 }}>
+        {['Todos', ...FORO_CATS].map((c) => (
+          <TouchableOpacity key={c} onPress={() => setFiltro(c)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 100, backgroundColor: filtro === c ? BRAND : colors.violet[100] }}>
+            <Text style={{ fontWeight: '600', fontSize: 13, color: filtro === c ? '#fff' : BRAND }}>{c}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <Text style={{ fontSize: 12.5, color: '#a29dba', marginBottom: 14 }}>{list.length} {list.length === 1 ? 'publicación' : 'publicaciones'}</Text>
+
+      {list.length === 0 ? (
+        <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#ded8f0', borderStyle: 'dashed', borderRadius: 18, paddingHorizontal: 20, paddingVertical: 30, alignItems: 'center' }}>
+          <Text style={{ fontFamily: FH, fontWeight: '700', fontSize: 16, color: INK, marginBottom: 5 }}>{posts.length === 0 ? 'La comunidad está arrancando' : 'Sin resultados'}</Text>
+          <Text style={{ fontSize: 13.5, color: '#8781a0', textAlign: 'center', lineHeight: 20 }}>{posts.length === 0 ? 'Todavía no hay publicaciones. Hacé la primera pregunta.' : 'Probá con otra búsqueda o categoría.'}</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {list.map((p) => {
+            const tone = CAT_TONE[p.cat] ?? { bg: colors.violet[100], fg: BRAND };
+            return (
+              <TouchableOpacity key={p.id} onPress={() => setHiloId(p.id)} style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#f0eef7', borderRadius: 20, padding: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 7, flexWrap: 'wrap' }}>
+                  <View style={{ backgroundColor: tone.bg, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 3 }}><Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{p.cat}</Text></View>
+                  {p.trend ? <View style={{ backgroundColor: LIME, borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 }}><Text style={{ fontSize: 10, fontWeight: '800', color: INK }}>EN TENDENCIA</Text></View> : null}
+                  <Text style={{ fontSize: 11.5, color: '#a29dba' }}>{p.author} · {p.meta}</Text>
+                </View>
+                <Text style={{ fontFamily: FH, fontWeight: '700', fontSize: 16, lineHeight: 20, color: INK, marginBottom: 5 }}>{p.title}</Text>
+                <Text numberOfLines={2} style={{ fontSize: 13, color: '#8781a0', lineHeight: 19, marginBottom: 12 }}>{p.body}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.violet[100], borderRadius: 100, paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="chat" size={14} color={BRAND} /><Text style={{ fontSize: 12, fontWeight: '700', color: BRAND }}>{p.replies}</Text></View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fbe9ee', borderRadius: 100, paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="heart" size={14} color="#c04863" fill /><Text style={{ fontSize: 12, fontWeight: '700', color: '#c04863' }}>{p.likes}</Text></View>
+                  <Text style={{ marginLeft: 'auto', color: BRAND, fontWeight: '700', fontSize: 12.5 }}>Ver hilo ›</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -2004,7 +2203,7 @@ export default function App() {
           {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {screen === 'beneficios' && <Beneficios benefits={data.benefits} go={go} />}
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
-          {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
+          {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
           {screen === 'mismascotas' && <MisMascotas pets={pets} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}

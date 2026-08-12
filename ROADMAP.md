@@ -101,9 +101,15 @@ de cada pantalla.
 - [x] **Favoritos** (`provider_favorites`): el corazón de la ficha, la tarjeta
       "Guardados" de Servicios y "Mis guardados" del menú, compartidos entre la
       webapp y la app.
-- [ ] Likes de foro persistentes, y **responder en el foro**: hoy las respuestas
-      solo se leen, no hay ningún insert a `community_answers` ni se actualiza el
-      contador de `replies`.
+- [x] **Foro completo**: hilo con respuestas, responder de verdad
+      (`community_answers`) y likes persistentes en post y en respuesta
+      (`post_likes` / `answer_likes`), uno por socio. Los contadores `likes` y
+      `replies` los mantienen triggers, así que la tarjeta del listado y el hilo
+      no se desfasan.
+- [ ] Marcar "mejor respuesta": la columna `best` existe y se muestra, pero nadie
+      la puede setear (debería poder el autor del post).
+- [ ] Foto en la publicación: el prototipo la ofrece pero `community_posts` no
+      tiene dónde guardarla.
 - [ ] Realtime con `subscribeTable` en la cola de reintegros del admin.
 
 ## Fase 5 — Móvil nativo
