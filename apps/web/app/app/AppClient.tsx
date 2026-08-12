@@ -3,18 +3,13 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { urls, FOTO_TIPOS, FOTO_MAX, buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup } from '@kumo/shared';
+import {
+  urls, FOTO_TIPOS, FOTO_MAX,
+  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
+  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  type CalCell, type VaccineKind,
+} from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
-
-/** Parsea fechas libres como "30 ago 2026" a ISO ("2026-08-30"). Si no matchea, devuelve null. */
-const MESES_ABR: Record<string, string> = { ene: '01', feb: '02', mar: '03', abr: '04', may: '05', jun: '06', jul: '07', ago: '08', sep: '09', oct: '10', nov: '11', dic: '12' };
-function parseFreeDate(s: string): string | null {
-  const m = /(\d{1,2})\s+([a-záéíóú]{3,})\.?\s+(\d{4})/i.exec(s.trim());
-  if (!m) return null;
-  const mes = MESES_ABR[m[2]!.toLowerCase().slice(0, 3)];
-  if (!mes) return null;
-  return `${m[3]}-${mes}-${m[1]!.padStart(2, '0')}`;
-}
 
 /*
  * Webapp del socio — vista "App compu" del prototipo (reference/kumo-prototype.html).
@@ -55,7 +50,8 @@ const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
 ];
 
 /* ── Datos (mock del prototipo) ────────────────────────────────── */
-export type Vac = { id: string; name: string; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; icon: 'shield' | 'pill' | 'circle'; reminder?: string; mark?: boolean };
+/** `appliedOn`/`dueOn` van crudas además de formateadas en `sub`: el calendario las necesita para ubicar el día. */
+export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; reminder?: string; mark?: boolean };
 export type Pet = { id: string; name: string; plan: string; socio: string; photo: string; breed: string; microchip: string; castrado: string; odonto: string; vaccines: Vac[] };
 export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
 export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; badge?: string };
@@ -214,8 +210,6 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
   const pet = pets[petIdx] ?? pets[0];
   const [showCal, setShowCal] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [nv, setNv] = useState('');
-  const [nf, setNf] = useState('');
   const [showAddC, setShowAddC] = useState(false);
   const [cn, setCn] = useState('');
   const [cp, setCp] = useState('');
@@ -266,12 +260,16 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     router.refresh();
     setBusy(false);
   };
-  const addVac = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!nv.trim() || !pet) return;
+  const addVac = async ({ kind, name, aplicada, fecha }: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => {
+    if (!pet) return;
     setBusy(true);
-    await supabase.from('vaccinations').insert({ pet_id: pet.id, name: nv, status: 'pendiente', due_on: parseFreeDate(nf) });
-    setNv(''); setNf(''); setShowAdd(false);
+    await supabase.from('vaccinations').insert({
+      pet_id: pet.id, name, kind,
+      status: aplicada ? 'aplicada' : 'pendiente',
+      applied_on: aplicada ? fecha : null,
+      due_on: aplicada ? null : fecha,
+    });
+    setShowAdd(false);
     router.refresh();
     setBusy(false);
   };
@@ -285,7 +283,8 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     setBusy(false);
   };
 
-  const vacIcon = (t: Vac['icon'], stroke: string) => {
+  const vacIcon = (kind: VaccineKind, stroke: string) => {
+    const t = KIND_ICON[kind];
     const inner = t === 'shield' ? shieldPath : t === 'pill' ? pillPath : plusCircle;
     return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>{inner}</svg>;
   };
@@ -344,21 +343,8 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
       {/* Salud y vacunas */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
         <div style={{ fontWeight: 700, fontSize: 15 }}>Salud y vacunas</div>
-        <button onClick={() => setShowCal((s) => !s)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>{showCal ? 'Ocultar calendario' : 'Ver calendario'}</button>
+        <button onClick={() => setShowCal(true)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', textDecoration: 'underline', padding: 0 }}>Ver calendario</button>
       </div>
-      {showCal && (
-        <div style={{ background: 'rgb(240,237,249)', borderRadius: 14, padding: 14, marginBottom: 14, animation: 'kpop 0.2s ease' }}>
-          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 10, color: 'rgb(93,84,145)' }}>📅 Calendario de {pet.name}</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {allVacs.map((v) => (
-              <div key={'cal' + v.id} style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', borderRadius: 9, padding: '8px 12px' }}>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{v.name}</span>
-                <span style={{ fontSize: 12.5, color: 'rgb(135,129,160)' }}>{v.sub}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {allVacs.map((v) => {
           const done = v.tone === 'green';
@@ -366,7 +352,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
           return (
             <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: tone.card, border: tone.border, borderRadius: 14, padding: '13px 14px' }}>
               <div style={{ width: 34, height: 34, borderRadius: 10, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: tone.iconBg }}>
-                {vacIcon(v.icon, tone.iconStroke)}
+                {vacIcon(v.kind, tone.iconStroke)}
               </div>
               <div style={{ flex: '1 1 0%', minWidth: 0 }}>
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{v.name}</div>
@@ -384,19 +370,16 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
         })}
       </div>
 
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={() => setShowCal((s) => !s)} style={{ flex: '0 0 auto', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: '14px 16px', borderRadius: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+      {/* En pantallas angostas los dos textos completos no entran en una fila, así
+          que el de agregar baja a su propio renglón en vez de quedar apretado. */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+        <button onClick={() => setShowCal(true)} style={{ flex: '0 0 auto', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: '14px 16px', borderRadius: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5D5491" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="17" rx="2" /><line x1="3" y1="9" x2="21" y2="9" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="16" y1="2" x2="16" y2="6" /></svg>Calendario
         </button>
-        <button onClick={() => setShowAdd((s) => !s)} style={{ flex: '1 1 0%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer' }}>+ Agregar estudio o vacuna</button>
+        <button onClick={() => setShowAdd(true)} style={{ flex: '1 1 220px', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar estudio o vacuna</button>
       </div>
-      {showAdd && (
-        <form onSubmit={addVac} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: 14, marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', animation: 'kpop 0.2s ease' }}>
-          <input value={nv} onChange={(e) => setNv(e.target.value)} placeholder="Nombre (ej: Ecografía)" style={{ flex: '2 1 160px', padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <input value={nf} onChange={(e) => setNf(e.target.value)} placeholder="Fecha (ej: 30 ago 2026)" style={{ flex: '1 1 130px', padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <button type="submit" disabled={busy} style={{ flex: '0 0 auto', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13.5, padding: '11px 18px', borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>Agregar</button>
-        </form>
-      )}
+      {showCal && <CalendarioSheet vacs={allVacs} onClose={() => setShowCal(false)} />}
+      {showAdd && <AgregarSheet petName={pet.name} onClose={() => setShowAdd(false)} onSave={addVac} />}
 
       {/* Contactos de emergencia */}
       <div style={{ padding: '20px 0 0', borderTop: '1px solid rgb(238,236,245)', marginTop: 20 }}>
@@ -1214,6 +1197,175 @@ function Perfil({ go, profile, pets, reintegradoTotal }: { go: (s: Screen) => vo
 }
 
 /* ── Placeholder ───────────────────────────────────────────────── */
+/* ── Hoja inferior (los sheets del prototipo) ──────────────────── */
+function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(33,30,51,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'kfade 0.2s ease' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: '24px 24px 0 0', padding: '16px 20px 26px', animation: 'kslideup 0.28s cubic-bezier(.2,.8,.2,1)' }}>
+        <div style={{ width: 40, height: 4, borderRadius: 100, background: 'rgb(224,220,236)', margin: '0 auto 16px' }} />
+        {children}
+      </div>
+    </div>
+  );
+}
+const sheetBtn = (fill: boolean): CSSProperties => ({
+  background: fill ? 'rgb(93,84,145)' : 'rgb(240,237,249)', color: fill ? '#fff' : 'rgb(93,84,145)',
+  border: 'none', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 14, cursor: 'pointer', fontFamily: '"DM Sans"',
+});
+/** Botón de un grupo de opciones tipo pastilla (Tipo, Estado). */
+const segBtn = (active: boolean): CSSProperties => ({
+  flex: '1 1 0%', border: `1.5px solid ${active ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`, background: active ? 'rgb(93,84,145)' : '#fff',
+  color: active ? '#fff' : 'rgb(91,86,112)', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '10px 6px', borderRadius: 11, cursor: 'pointer',
+});
+const sheetLabel: CSSProperties = { display: 'block', fontWeight: 700, fontSize: 13, marginBottom: 8 };
+const sheetInput: CSSProperties = { width: '100%', boxSizing: 'border-box', border: '1.5px solid rgb(230,227,240)', borderRadius: 12, padding: '12px 14px', fontFamily: '"DM Sans"', fontSize: 14, outline: 'none' };
+
+/* ── Hoja: Calendario de salud ─────────────────────────────────── */
+function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }) {
+  const hoy = new Date();
+  const [mes, setMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  const [dia, setDia] = useState<CalCell | null>(null);
+  const cells = buildCalMes(vacs, mes.y, mes.m);
+  const mover = (delta: number) => setMes(({ y, m }) => {
+    const d = new Date(y, m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 2 }}>Calendario de salud</div>
+      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Cuándo aplicaste cada vacuna y cuándo toca la próxima.</div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+          <button onClick={() => mover(-1)} aria-label="Mes anterior" style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontSize: 20, cursor: 'pointer', padding: '4px 8px' }}>‹</button>
+          <div style={{ flex: 1, textAlign: 'center', fontWeight: 700, fontSize: 14 }}>{calMesLabel(mes.y, mes.m)}</div>
+          <button onClick={() => mover(1)} aria-label="Mes siguiente" style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontSize: 20, cursor: 'pointer', padding: '4px 8px' }}>›</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 12 }}>
+          {CAL_DIAS.map((d) => <div key={d} style={{ textAlign: 'center', fontSize: 11, fontWeight: 700, color: 'rgb(162,157,186)', padding: '6px 0' }}>{d}</div>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {cells.map((c, i) => {
+            if (c.num === null) return <div key={`h${i}`} />;
+            const tone = c.mark ? CAL_TONE[c.mark] : null;
+            const marcado = c.vaxes.length > 0;
+            return (
+              <button key={c.iso} onClick={marcado ? () => setDia(c) : undefined} title={marcado ? c.vaxes.map((v) => v.name).join(', ') : undefined}
+                style={{ position: 'relative', width: '100%', aspectRatio: '1', borderRadius: 8, background: tone?.bg ?? '#fff', border: `1px solid ${tone?.border ?? 'rgb(238,236,245)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontFamily: '"DM Sans"', color: 'rgb(33,30,51)', cursor: marcado ? 'pointer' : 'default', padding: 0 }}>
+                {c.num}
+                {marcado && <span style={{ position: 'absolute', bottom: 2, right: 2, width: 6, height: 6, borderRadius: '50%', background: tone!.dot }} />}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ borderTop: '1px solid rgb(238,236,245)', paddingTop: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 10 }}>Leyenda</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+          {([['aplicada', 'Vacuna aplicada'], ['pronto', 'Próxima en 3 días'], ['pendiente', 'Próxima pendiente']] as const).map(([k, txt]) => (
+            <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 24, height: 24, borderRadius: 6, background: CAL_TONE[k].bg, border: `1.5px solid ${CAL_TONE[k].border}` }} />
+              <span>{txt}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <button onClick={onClose} style={{ ...sheetBtn(false), width: '100%', marginTop: 6 }}>Cerrar</button>
+
+      {dia && (
+        <Sheet onClose={() => setDia(null)}>
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Vacunas del {calDiaLabel(dia.iso!)}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {dia.vaxes.map((v, i) => (
+              <div key={v.name + i} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#fff' }}>{ic(shieldPath, false, 20)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700 }}>{v.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgb(135,129,160)', marginTop: 2 }}>{v.estado}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => setDia(null)} style={{ ...sheetBtn(false), width: '100%', marginTop: 20 }}>Cerrar</button>
+        </Sheet>
+      )}
+    </Sheet>
+  );
+}
+
+/* ── Hoja: Agregar al carnet ───────────────────────────────────── */
+function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: () => void; onSave: (v: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => Promise<void> }) {
+  const hoy = new Date();
+  const [kind, setKind] = useState<VaccineKind>('Vacuna');
+  const [name, setName] = useState('');
+  const [aplicada, setAplicada] = useState(true);
+  const [fecha, setFecha] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pMes, setPMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  const [busy, setBusy] = useState(false);
+  const puedeGuardar = name.trim().length > 0 && !busy;
+  const moverP = (delta: number) => setPMes(({ y, m }) => {
+    const d = new Date(y, m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  const guardar = async () => {
+    if (!puedeGuardar) return;
+    setBusy(true);
+    await onSave({ kind, name: name.trim(), aplicada, fecha });
+  };
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Agregar al carnet</div>
+      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Sumá una vacuna, estudio o antiparasitario al historial de {petName}.</div>
+
+      <label style={sheetLabel}>Tipo</label>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {VACUNA_KINDS.map((k) => <button key={k} onClick={() => setKind(k)} style={segBtn(kind === k)}>{k}</button>)}
+      </div>
+
+      <label style={sheetLabel} htmlFor="av-name">Nombre</label>
+      <input id="av-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Ej: Quíntuple, Análisis de sangre…" style={{ ...sheetInput, marginBottom: 16 }} />
+
+      <label style={sheetLabel}>Estado</label>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <button onClick={() => setAplicada(true)} style={segBtn(aplicada)}>Sí, ya aplicada</button>
+        <button onClick={() => setAplicada(false)} style={segBtn(!aplicada)}>No, es próxima</button>
+      </div>
+
+      <label style={sheetLabel}>{aplicada ? 'Fecha de aplicación' : 'Próxima fecha'}</label>
+      <button onClick={() => setPickerOpen((o) => !o)} style={{ ...sheetInput, textAlign: 'left', marginBottom: 8, background: '#fff', cursor: 'pointer', color: fecha ? 'rgb(33,30,51)' : 'rgb(162,157,186)' }}>
+        {fecha ? fmtFechaCorta(fecha) : 'Seleccionar fecha'}
+      </button>
+      {pickerOpen && (
+        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <button onClick={() => moverP(-1)} aria-label="Mes anterior" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: '4px 6px' }}>←</button>
+            <span style={{ fontWeight: 600, fontSize: 13 }}>{calMesLabel(pMes.y, pMes.m)}</span>
+            <button onClick={() => moverP(1)} aria-label="Mes siguiente" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: '4px 6px' }}>→</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 3, textAlign: 'center' }}>
+            {buildPickerMes(pMes.y, pMes.m).map((d, i) => d.num === null
+              ? <div key={`h${i}`} />
+              : (
+                <button key={d.iso} onClick={() => { setFecha(d.iso); setPickerOpen(false); }}
+                  style={{ background: fecha === d.iso ? 'rgb(93,84,145)' : '#fff', border: `1px solid ${fecha === d.iso ? 'rgb(93,84,145)' : 'rgb(238,236,245)'}`, borderRadius: 6, padding: '5px 2px', cursor: 'pointer', fontSize: 11, fontFamily: '"DM Sans"', color: fecha === d.iso ? '#fff' : 'rgb(33,30,51)', fontWeight: fecha === d.iso ? 600 : 400 }}>{d.num}</button>
+              ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+        <button onClick={onClose} style={{ ...sheetBtn(false), flex: 'none', padding: '14px 20px' }}>Cancelar</button>
+        <button onClick={guardar} disabled={!puedeGuardar} style={{ ...sheetBtn(true), flex: 1, background: puedeGuardar ? 'rgb(93,84,145)' : 'rgb(199,193,222)', cursor: puedeGuardar ? 'pointer' : 'not-allowed' }}>{busy ? 'Guardando…' : 'Guardar'}</button>
+      </div>
+    </Sheet>
+  );
+}
+
 /* ── Pantalla: Notificaciones ──────────────────────────────────── */
 const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath } as const;
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */

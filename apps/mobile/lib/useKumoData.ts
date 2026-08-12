@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { NotifInput } from '@kumo/shared';
+import type { NotifInput, VaccineKind } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
-export type Vac = { id: string; name: string; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; mark: boolean; remind: boolean };
+/** `appliedOn`/`dueOn` van crudas además de formateadas en `sub`: el calendario las necesita para ubicar el día. */
+export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; mark: boolean; remind: boolean };
 export type Pet = {
   id: string; name: string; species: string; plan: string; socio: string; photo: string;
   breed: string; age: string; microchip: string; castrado: string; odonto: string; next: string; vaccines: Vac[];
@@ -88,15 +89,16 @@ const ESTADO_REINT: Record<string, string> = {
   en_revision: 'En revisión', acreditado: 'Acreditado', rechazado: 'Rechazado', pendiente: 'Pendiente',
 };
 
-type VacRow = { id: string; name: string; applied_on: string | null; due_on: string | null; status: string };
+type VacRow = { id: string; name: string; kind: VaccineKind; applied_on: string | null; due_on: string | null; status: string };
 function mapVac(v: VacRow): Vac {
   const d = daysUntil(v.due_on);
+  const base = { id: v.id, name: v.name, kind: v.kind ?? 'Vacuna', appliedOn: v.applied_on, dueOn: v.due_on };
   if (v.status === 'aplicada' || v.due_on == null) {
-    return { id: v.id, name: v.name, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green', mark: false, remind: false };
+    return { ...base, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green', mark: false, remind: false };
   }
   const label = d == null ? '—' : d < 0 ? 'Vencida' : d === 0 ? 'Hoy' : `En ${d} días`;
   const tone: Vac['tone'] = d != null && d <= 7 ? 'lime' : 'amber';
-  return { id: v.id, name: v.name, sub: `Próxima: ${fmtDate(v.due_on)}`, status: label, tone, mark: true, remind: tone === 'lime' };
+  return { ...base, sub: `Próxima: ${fmtDate(v.due_on)}`, status: label, tone, mark: true, remind: tone === 'lime' };
 }
 
 /* ── Hook ──────────────────────────────────────────────────────── */
@@ -109,7 +111,7 @@ export function useKumoData(userId: string | null) {
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
-      supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, status, applied_on, due_on)').eq('owner_id', userId),
+      supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status, requested_on, created_at').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo'),

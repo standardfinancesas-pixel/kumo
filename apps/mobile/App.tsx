@@ -6,9 +6,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { colors, buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup } from '@kumo/shared';
+import {
+  colors,
+  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
+  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  type CalCell, type VaccineKind,
+} from '@kumo/shared';
 import { supabase } from './lib/supabase';
-import { useKumoData, type Pet, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
+import { useKumoData, type Pet, type Vac, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
 /* Familias (Baloo 2 títulos, DM Sans cuerpo) — igual que la web. */
@@ -62,6 +67,8 @@ const PROMOS = [
 type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio' | 'notif';
 type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'foros';
 const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '').replace(/\D/g, ''));
+/** Del ícono genérico que devuelve `KIND_ICON` al nombre que entiende `Ic`. */
+const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
 type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin';
@@ -235,11 +242,191 @@ function Inicio({ profile, pets, petIdx, setPetIdx, go }: { profile: Profile | n
 }
 
 /* ── Pantalla: Carnet ──────────────────────────────────────────── */
+/* ── Hoja inferior (los sheets del prototipo) ──────────────────── */
+function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60, backgroundColor: 'rgba(33,30,51,0.45)', justifyContent: 'flex-end' }}>
+      <Pressable onPress={() => {}} style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 26 }}>
+          <View style={{ width: 40, height: 4, borderRadius: 100, backgroundColor: '#e0dcec', alignSelf: 'center', marginBottom: 16 }} />
+          {children}
+        </ScrollView>
+      </Pressable>
+    </Pressable>
+  );
+}
+/** Botón de un grupo de opciones tipo pastilla (Tipo, Estado). */
+function SegBtn({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} style={{ flex: 1, borderWidth: 1.5, borderColor: active ? BRAND : colors.violet[200], backgroundColor: active ? BRAND : '#fff', borderRadius: 11, paddingVertical: 10, paddingHorizontal: 6, alignItems: 'center' }}>
+      <Text style={{ fontWeight: '600', fontSize: 13, color: active ? '#fff' : MUTED }}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+const SheetLabel = ({ children }: { children: ReactNode }) => <Text style={{ fontWeight: '700', fontSize: 13, marginBottom: 8, color: INK }}>{children}</Text>;
+
+/* ── Hoja: Calendario de salud ─────────────────────────────────── */
+function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }) {
+  const hoy = new Date();
+  const [mes, setMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  const [dia, setDia] = useState<CalCell | null>(null);
+  const cells = buildCalMes(vacs, mes.y, mes.m);
+  const mover = (delta: number) => setMes(({ y, m }) => {
+    const d = new Date(y, m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  return (
+    <Sheet onClose={onClose}>
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK, marginBottom: 2 }}>Calendario de salud</Text>
+      <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>Cuándo aplicaste cada vacuna y cuándo toca la próxima.</Text>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <TouchableOpacity onPress={() => mover(-1)} style={{ paddingHorizontal: 8, paddingVertical: 4 }}><Text style={{ color: BRAND, fontSize: 20 }}>‹</Text></TouchableOpacity>
+        <Text style={{ flex: 1, textAlign: 'center', fontWeight: '700', fontSize: 14, color: INK }}>{calMesLabel(mes.y, mes.m)}</Text>
+        <TouchableOpacity onPress={() => mover(1)} style={{ paddingHorizontal: 8, paddingVertical: 4 }}><Text style={{ color: BRAND, fontSize: 20 }}>›</Text></TouchableOpacity>
+      </View>
+      <View style={{ flexDirection: 'row', marginBottom: 12 }}>
+        {CAL_DIAS.map((d) => <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#a29dba', paddingVertical: 6 }}>{d}</Text>)}
+      </View>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 }}>
+        {cells.map((c, i) => {
+          const tone = c.mark ? CAL_TONE[c.mark] : null;
+          const marcado = c.vaxes.length > 0;
+          if (c.num === null) return <View key={`h${i}`} style={{ width: `${100 / 7}%`, aspectRatio: 1 }} />;
+          return (
+            <View key={c.iso} style={{ width: `${100 / 7}%`, aspectRatio: 1, padding: 2 }}>
+              <TouchableOpacity disabled={!marcado} onPress={() => setDia(c)} style={{ flex: 1, borderRadius: 8, backgroundColor: tone?.bg ?? '#fff', borderWidth: 1, borderColor: tone?.border ?? '#eeecf5', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 13, color: INK }}>{c.num}</Text>
+                {marcado && <View style={{ position: 'absolute', bottom: 2, right: 2, width: 6, height: 6, borderRadius: 3, backgroundColor: tone!.dot }} />}
+              </TouchableOpacity>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={{ borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 16 }}>
+        <Text style={{ fontWeight: '700', fontSize: 13, color: INK, marginBottom: 10 }}>Leyenda</Text>
+        <View style={{ gap: 8 }}>
+          {([['aplicada', 'Vacuna aplicada'], ['pronto', 'Próxima en 3 días'], ['pendiente', 'Próxima pendiente']] as const).map(([k, txt]) => (
+            <View key={k} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <View style={{ width: 24, height: 24, borderRadius: 6, backgroundColor: CAL_TONE[k].bg, borderWidth: 1.5, borderColor: CAL_TONE[k].border }} />
+              <Text style={{ fontSize: 12, color: INK }}>{txt}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+      <TouchableOpacity onPress={onClose} style={{ backgroundColor: colors.violet[100], borderRadius: 14, padding: 13, alignItems: 'center', marginTop: 12 }}>
+        <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
+      </TouchableOpacity>
+
+      {dia && (
+        <Sheet onClose={() => setDia(null)}>
+          <Text style={{ fontWeight: '700', fontSize: 18, color: INK, marginBottom: 20 }}>Vacunas del {calDiaLabel(dia.iso!)}</Text>
+          <View style={{ gap: 12 }}>
+            {dia.vaxes.map((v, i) => (
+              <View key={v.name + i} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 12, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}><Ic d="shield" size={20} color="#fff" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: INK }}>{v.name}</Text>
+                  <Text style={{ fontSize: 12, color: '#8781a0', marginTop: 2 }}>{v.estado}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+          <TouchableOpacity onPress={() => setDia(null)} style={{ backgroundColor: colors.violet[100], borderRadius: 14, padding: 13, alignItems: 'center', marginTop: 20 }}>
+            <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
+          </TouchableOpacity>
+        </Sheet>
+      )}
+    </Sheet>
+  );
+}
+
+/* ── Hoja: Agregar al carnet ───────────────────────────────────── */
+function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: () => void; onSave: (v: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => Promise<void> }) {
+  const hoy = new Date();
+  const [kind, setKind] = useState<VaccineKind>('Vacuna');
+  const [name, setName] = useState('');
+  const [aplicada, setAplicada] = useState(true);
+  const [fecha, setFecha] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pMes, setPMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  const [busy, setBusy] = useState(false);
+  const puedeGuardar = name.trim().length > 0 && !busy;
+  const moverP = (delta: number) => setPMes(({ y, m }) => {
+    const d = new Date(y, m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  const guardar = async () => {
+    if (!puedeGuardar) return;
+    setBusy(true);
+    await onSave({ kind, name: name.trim(), aplicada, fecha });
+  };
+
+  return (
+    <Sheet onClose={onClose}>
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK, marginBottom: 4 }}>Agregar al carnet</Text>
+      <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>Sumá una vacuna, estudio o antiparasitario al historial de {petName}.</Text>
+
+      <SheetLabel>Tipo</SheetLabel>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+        {VACUNA_KINDS.map((k) => <SegBtn key={k} label={k} active={kind === k} onPress={() => setKind(k)} />)}
+      </View>
+
+      <SheetLabel>Nombre</SheetLabel>
+      <TextInput value={name} onChangeText={setName} placeholder="Ej: Quíntuple, Análisis de sangre…" placeholderTextColor={colors.violet[400]}
+        style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff', marginBottom: 16 }} />
+
+      <SheetLabel>Estado</SheetLabel>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
+        <SegBtn label="Sí, ya aplicada" active={aplicada} onPress={() => setAplicada(true)} />
+        <SegBtn label="No, es próxima" active={!aplicada} onPress={() => setAplicada(false)} />
+      </View>
+
+      <SheetLabel>{aplicada ? 'Fecha de aplicación' : 'Próxima fecha'}</SheetLabel>
+      <TouchableOpacity onPress={() => setPickerOpen((o) => !o)} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8, backgroundColor: '#fff' }}>
+        <Text style={{ fontSize: 14, color: fecha ? INK : colors.violet[400] }}>{fecha ? fmtFechaCorta(fecha) : 'Seleccionar fecha'}</Text>
+      </TouchableOpacity>
+      {pickerOpen && (
+        <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 12, padding: 12, marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <TouchableOpacity onPress={() => moverP(-1)} style={{ paddingHorizontal: 6, paddingVertical: 4 }}><Text style={{ fontSize: 16, color: INK }}>←</Text></TouchableOpacity>
+            <Text style={{ fontWeight: '600', fontSize: 13, color: INK }}>{calMesLabel(pMes.y, pMes.m)}</Text>
+            <TouchableOpacity onPress={() => moverP(1)} style={{ paddingHorizontal: 6, paddingVertical: 4 }}><Text style={{ fontSize: 16, color: INK }}>→</Text></TouchableOpacity>
+          </View>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+            {buildPickerMes(pMes.y, pMes.m).map((d, i) => d.num === null
+              ? <View key={`h${i}`} style={{ width: `${100 / 7}%`, aspectRatio: 1 }} />
+              : (
+                <View key={d.iso} style={{ width: `${100 / 7}%`, aspectRatio: 1, padding: 1.5 }}>
+                  <TouchableOpacity onPress={() => { setFecha(d.iso); setPickerOpen(false); }} style={{ flex: 1, borderRadius: 6, borderWidth: 1, backgroundColor: fecha === d.iso ? BRAND : '#fff', borderColor: fecha === d.iso ? BRAND : '#eeecf5', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 11, color: fecha === d.iso ? '#fff' : INK, fontWeight: fecha === d.iso ? '600' : '400' }}>{d.num}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+          </View>
+        </View>
+      )}
+
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+        <TouchableOpacity onPress={onClose} style={{ backgroundColor: colors.violet[100], borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center' }}>
+          <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Cancelar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity disabled={!puedeGuardar} onPress={guardar} style={{ flex: 1, backgroundColor: puedeGuardar ? BRAND : '#c7c1de', borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{busy ? 'Guardando…' : 'Guardar'}</Text>
+        </TouchableOpacity>
+      </View>
+    </Sheet>
+  );
+}
+
 function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; reload: () => void; go: (t: Screen) => void }) {
   const pet = pets[petIdx];
   const [busy, setBusy] = useState<string | null>(null);
-  const [newVac, setNewVac] = useState('');
   const [adding, setAdding] = useState(false);
+  const [showCal, setShowCal] = useState(false);
 
   const markApplied = async (vacId: string) => {
     setBusy(vacId);
@@ -247,13 +434,16 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
     await reload();
     setBusy(null);
   };
-  const addVac = async () => {
-    if (!newVac.trim() || !pet) return;
-    setBusy('new');
-    await supabase.from('vaccinations').insert({ pet_id: pet.id, name: newVac.trim(), status: 'pendiente' });
-    setNewVac(''); setAdding(false);
+  const addVac = async ({ kind, name, aplicada, fecha }: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => {
+    if (!pet) return;
+    await supabase.from('vaccinations').insert({
+      pet_id: pet.id, name, kind,
+      status: aplicada ? 'aplicada' : 'pendiente',
+      applied_on: aplicada ? fecha : null,
+      due_on: aplicada ? null : fecha,
+    });
+    setAdding(false);
     await reload();
-    setBusy(null);
   };
 
   if (!pet) {
@@ -266,6 +456,9 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
     );
   }
   return (
+    // Las hojas van fuera del ScrollView: adentro, `position:absolute` se
+    // posiciona contra el contenido y no contra la pantalla.
+    <View style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={styles.screen}>
       <H1>Carnet digital</H1>
       <View style={{ height: 10 }} />
@@ -273,7 +466,9 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
       <PetCard pet={pet} detailed />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Text style={{ fontWeight: '700', fontSize: 16, color: INK }}>Salud y vacunas</Text>
-        <Text style={{ fontSize: 13, color: BRAND, fontWeight: '600', textDecorationLine: 'underline' }}>Ver calendario</Text>
+        <TouchableOpacity onPress={() => setShowCal(true)}>
+          <Text style={{ fontSize: 13, color: BRAND, fontWeight: '600', textDecorationLine: 'underline' }}>Ver calendario</Text>
+        </TouchableOpacity>
       </View>
       <View style={{ gap: 10 }}>
         {pet.vaccines.map((v) => {
@@ -281,7 +476,7 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
           const hi = v.tone === 'lime';
           return (
             <View key={v.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: hi ? '#eef7d6' : '#f7f6fa', borderWidth: hi ? 1.5 : 1, borderColor: hi ? LIME : '#eeecf5', borderRadius: 14, padding: 13 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}><Ic d="shield" size={18} color={tone.fg} /></View>
+              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}><Ic d={VAC_IC[KIND_ICON[v.kind]]} size={18} color={tone.fg} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{v.name}</Text>
                 <Text style={{ fontSize: 12, color: colors.violet[400] }}>{v.sub}</Text>
@@ -304,27 +499,23 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
           </View>
         )}
       </View>
-      {adding ? (
-        <View style={{ marginTop: 16, gap: 10 }}>
-          <TextInput
-            value={newVac} onChangeText={setNewVac} placeholder="Nombre de la vacuna o estudio" placeholderTextColor={colors.violet[400]}
-            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }}
-          />
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={() => { setAdding(false); setNewVac(''); }} style={{ flex: 1, backgroundColor: colors.violet[100], borderRadius: 12, padding: 14, alignItems: 'center' }}>
-              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity disabled={busy === 'new'} onPress={addVac} style={{ flex: 1, backgroundColor: BRAND, borderRadius: 12, padding: 14, alignItems: 'center', opacity: busy === 'new' ? 0.6 : 1 }}>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Guardar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      ) : (
-        <TouchableOpacity onPress={() => setAdding(true)} style={{ backgroundColor: BRAND, borderRadius: 14, padding: 15, alignItems: 'center', marginTop: 16 }}>
+      {/* Los dos botones del prototipo: el calendario a la izquierda y el alta al
+          lado. En 375px los dos textos completos no entran en una fila (el del
+          alta quedaba con 3px de aire), así que el de agregar va abajo, entero. */}
+      <View style={{ gap: 10, marginTop: 16 }}>
+        <TouchableOpacity onPress={() => setAdding(true)} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center' }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>+ Agregar estudio o vacuna</Text>
         </TouchableOpacity>
-      )}
+        <TouchableOpacity onPress={() => setShowCal(true)} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, backgroundColor: colors.violet[100], borderRadius: 14, paddingVertical: 14 }}>
+          <Ic d="calendar" size={18} />
+          <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Calendario</Text>
+        </TouchableOpacity>
+      </View>
+
     </ScrollView>
+    {showCal && <CalendarioSheet vacs={pet.vaccines} onClose={() => setShowCal(false)} />}
+    {adding && <AgregarSheet petName={pet.name} onClose={() => setAdding(false)} onSave={addVac} />}
+    </View>
   );
 }
 

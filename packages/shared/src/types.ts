@@ -38,10 +38,13 @@ export type Pet = {
 
 export type VaccineStatus = 'aplicada' | 'pendiente' | 'vencida';
 
+export type VaccineKind = 'Vacuna' | 'Estudio' | 'Antiparasitario';
+
 export type Vaccination = {
   id: string;
   petId: string;
   name: string;
+  kind: VaccineKind;
   status: VaccineStatus;
   appliedOn: string | null; // ISO date
   dueOn: string | null; // ISO date

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, type NotifInput } from '@kumo/shared';
+import { urls, type NotifInput, type VaccineKind } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
@@ -19,21 +19,19 @@ function daysUntil(iso: string | null): number | null {
   return Math.round((new Date(iso + 'T00:00:00').getTime() - today.getTime()) / 86400000);
 }
 
-type VaccinationRow = { id: string; name: string; status: string; applied_on: string | null; due_on: string | null };
+type VaccinationRow = { id: string; name: string; kind: VaccineKind; status: string; applied_on: string | null; due_on: string | null };
 function mapVac(v: VaccinationRow): Vac {
-  const icon: Vac['icon'] = /despara/i.test(v.name) ? 'pill' : 'shield';
+  const base = { id: v.id, name: v.name, kind: v.kind ?? 'Vacuna', appliedOn: v.applied_on, dueOn: v.due_on };
   if (v.status === 'aplicada') {
-    return { id: v.id, name: v.name, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green', icon };
+    return { ...base, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green' };
   }
   const days = daysUntil(v.due_on);
   const near = days !== null && days <= 3;
   return {
-    id: v.id,
-    name: v.name,
+    ...base,
     sub: `Próxima: ${fmtDate(v.due_on)}`,
     status: days === null ? 'Pendiente' : days < 0 ? 'Vencida' : `En ${days} día${days === 1 ? '' : 's'}`,
     tone: near ? 'lime' : 'amber',
-    icon,
     reminder: near ? '⏰ Recordatorio: aplicala pronto' : undefined,
     mark: true,
   };
@@ -166,7 +164,7 @@ export default async function Page() {
 
   const { data: petsRows } = await supabase
     .from('pets')
-    .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, status, applied_on, due_on)')
+    .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)')
     .eq('owner_id', auth.user.id);
   const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(r as PetRow, profile.memberNo, profile.planName));
 

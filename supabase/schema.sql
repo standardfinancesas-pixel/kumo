@@ -96,6 +96,8 @@ create table if not exists vaccinations (
   id          uuid primary key default uuid_generate_v4(),
   pet_id      uuid not null references pets(id) on delete cascade,
   name        text not null,
+  -- Vacuna, estudio o antiparasitario: define el ícono del carnet.
+  kind        text not null default 'Vacuna' check (kind in ('Vacuna', 'Estudio', 'Antiparasitario')),
   status      vaccine_status not null default 'pendiente',
   applied_on  date,
   due_on      date,
