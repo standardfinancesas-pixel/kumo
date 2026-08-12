@@ -47,6 +47,25 @@ de cada pantalla.
       estado sale de la base, no del selector DEMO del prototipo, que se
       eliminó de la web y de mobile.
 - [ ] **Contactos de emergencia en mobile** (la webapp ya los tiene).
+- [ ] **Cobro de la cuota mensual — no existe.** El paso 5 del alta pide número,
+      vencimiento y CVV, los valida y los descarta: al servidor solo viajan
+      `{ socio, pet, plan }`. Está bien que no se guarden (el CVV no se puede
+      almacenar y guardar el número obliga a certificar PCI DSS), pero significa
+      que **el socio queda `activo` sin que se le cobre nada**. Lo que falta:
+      tokenizar la tarjeta contra la pasarela (Mercado Pago) y guardar solo el
+      token y los últimos 4 dígitos; suscripción recurrente; webhook de pago que
+      mueva el socio entre `activo` y `moroso`; y mostrar el medio de pago en Mi
+      perfil. Necesita las credenciales del cliente.
+      Ojo: el reintegro **no** se paga a la tarjeta sino por transferencia al
+      CBU/CVU que ahora se pide en la solicitud. Son dos flujos distintos.
+- [ ] **Fecha de resolución de un reintegro** (`resolved_at`). Hoy solo se guarda
+      cuándo se pidió, así que el seguimiento del detalle marca los pasos hechos
+      pero sin fecha, y las notificaciones fechan el reintegro por el pedido.
+- [ ] **Definir si hay tope anual de reintegros.** La pantalla del prototipo dice
+      "de $180.000 de tope anual", sus Términos dicen "No existe tope anual: los
+      topes mensual y por evento reemplazan cualquier límite anual", y los perks
+      del plan en el seed dicen "Tope anual $180.000". Si hay tope, va como
+      columna de `plans` (hoy no existe) y se muestra en la tarjeta de Reintegros.
 
 ## Fase 3 — Deploy y operación
 - [x] **Un solo proyecto en Vercel** (equipo `kumo`), con las tres secciones en
