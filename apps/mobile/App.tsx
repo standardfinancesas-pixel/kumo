@@ -1604,9 +1604,10 @@ export default function App() {
         {/* Header fijo: el saludo, las notificaciones y el menú. Está acá y no
             dentro de Inicio para que el menú (Mi perfil, Mis mascotas, Mis
             guardados, Mi negocio) siga a mano desde cualquier pantalla. */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 6, paddingBottom: 10 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 12 }}>
           <View>
-            <Text style={{ fontSize: 13, color: colors.violet[400] }}>Hola de nuevo</Text>
+            {/* El saludo y el nombre quedaban pegados (0 px entre las dos líneas). */}
+            <Text style={{ fontSize: 13, color: colors.violet[400], marginBottom: 4 }}>Hola de nuevo</Text>
             <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{data.profile?.firstName ?? 'Socio'}</Text>
           </View>
           <View style={{ flexDirection: 'row', gap: 10 }}>

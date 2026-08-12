@@ -105,8 +105,9 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Sc
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18, position: 'relative' }}>
         <div>
-          <div style={{ fontSize: 13, color: 'rgb(162,157,186)' }}>Hola de nuevo</div>
-          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 23 }}>{profile.firstName}</div>
+          {/* El saludo y el nombre quedaban pegados (0 px entre las dos líneas). */}
+          <div style={{ fontSize: 13, color: 'rgb(162,157,186)', marginBottom: 3 }}>Hola de nuevo</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 23, lineHeight: 1.15 }}>{profile.firstName}</div>
         </div>
         <button onClick={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, background: 'rgb(240,237,249)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }} aria-label={noLeidas > 0 ? `Notificaciones (${noLeidas} sin leer)` : 'Notificaciones'}>
           <span style={{ color: '#5D5491' }}>{ic(bellPath, false, 21)}</span>
