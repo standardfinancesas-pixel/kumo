@@ -186,13 +186,13 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Sc
               <div style={{ fontSize: 11, color: 'rgb(93,84,145)', fontWeight: 600, marginTop: 6 }}>Ver más →</div>
             </div>
           </button>
-          <button onClick={() => go('beneficios')} style={{ textAlign: 'left', borderRadius: 12, padding: 14, color: '#fff', cursor: 'pointer', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 120, background: 'linear-gradient(rgba(33,30,51,0) 30%, rgba(33,30,51,0.75) 100%), url(/img/dog-bath-happy.webp) center/cover', position: 'relative', overflow: 'hidden' }}>
+          <button onClick={() => go('beneficios')} style={{ textAlign: 'left', borderRadius: 12, padding: 14, color: '#fff', cursor: 'pointer', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 120, background: 'linear-gradient(rgba(33,30,51,0) 30%, rgba(33,30,51,0.75) 100%), url(/img/home-beneficios.webp) center/cover', position: 'relative', overflow: 'hidden' }}>
             <div style={{ fontWeight: 700, fontSize: 14 }}>Beneficios</div>
             <div style={{ fontSize: 11, opacity: 0.9 }}>Descuentos exclusivos</div>
           </button>
         </div>
         <div className="wa-cards" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <button onClick={() => go('servicios')} style={{ textAlign: 'left', borderRadius: 12, padding: 14, color: '#fff', cursor: 'pointer', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 120, background: 'linear-gradient(rgba(33,30,51,0) 30%, rgba(33,30,51,0.75) 100%), url(/img/prestador-caregiver.webp) center top/cover', position: 'relative', overflow: 'hidden' }}>
+          <button onClick={() => go('servicios')} style={{ textAlign: 'left', borderRadius: 12, padding: 14, color: '#fff', cursor: 'pointer', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 120, background: 'linear-gradient(rgba(33,30,51,0) 30%, rgba(33,30,51,0.75) 100%), url(/img/home-servicios.webp) center top/cover', position: 'relative', overflow: 'hidden' }}>
             <div style={{ fontWeight: 700, fontSize: 14 }}>Servicios</div>
             <div style={{ fontSize: 11, opacity: 0.9 }}>Encontrá prestadores cerca tuyo</div>
           </button>
