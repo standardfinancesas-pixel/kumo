@@ -36,7 +36,7 @@ const pillPath = <><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7z
 const bellPath = <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>;
 
 /** `notif` no va en el sidebar: se llega por la campanita, como en el prototipo. */
-type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif';
+type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif' | 'prestar';
 
 const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'inicio', label: 'Inicio', icon: ic(house) },
@@ -430,15 +430,143 @@ const catPin = (cat: string) => {
   if (cat === 'Adiestrador') return { inner: <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></>, filled: false };
   return { inner: person, filled: false };
 };
-const pinSlots = [{ left: '30%', top: '34%' }, { left: '66%', top: '30%' }, { left: '50%', top: '60%' }];
+/** Posición del pin en el mapa. El mapa es decorativo (no es geografía real: eso
+ *  es Google Maps, Fase 4), así que la posición se deriva del id del prestador
+ *  para que sea estable entre renders en vez de saltar en cada filtrado. */
+function pinPos(id: string): { left: string; top: string } {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 100000;
+  return { left: `${18 + (h % 64)}%`, top: `${24 + (Math.floor(h / 64) % 48)}%` };
+}
+const heartPath = <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1a5.5 5.5 0 0 0-7.8 7.7l1.1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />;
+const globePath = <><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" /></>;
+const igPath = <><rect x="2" y="2" width="20" height="20" rx="5.5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1.2" fill="#5D5491" stroke="none" /></>;
+const pinDropPath = <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></>;
+const phonePath = <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.8a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2z" />;
+
+/* ── Pantalla: detalle del prestador ───────────────────────────── */
+/** Portada, identidad, tarifas, contacto y reseñas, con la barra fija de abajo.
+ *  Antes tocar un prestador solo desplegaba un acordeón dentro de la lista. */
+function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM; guardado: boolean; onGuardar: () => void; onVolver: () => void }) {
+  const wa = 'https://wa.me/' + (p.phone ?? '').replace(/\D/g, '');
+  const dato = (icono: ReactNode, texto: string, ultimo = false) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: ultimo ? 'none' : '1px solid rgb(238,236,245)' }}>
+      <span style={{ color: '#5D5491', flex: 'none' }}>{ic(icono, false, 19)}</span>
+      <span style={{ fontSize: 14, fontWeight: 600 }}>{texto}</span>
+    </div>
+  );
+  const contacto = [
+    p.website ? { i: globePath, t: p.website } : null,
+    p.instagram ? { i: igPath, t: p.instagram } : null,
+    p.address ? { i: pinDropPath, t: p.address } : null,
+    p.phone ? { i: phonePath, t: p.phone } : null,
+  ].filter(Boolean) as { i: ReactNode; t: string }[];
+
+  return (
+    <div style={{ padding: '0 0 24px' }}>
+      {/* Portada */}
+      <div style={{ position: 'relative', height: 132, background: `linear-gradient(135deg, #5D5491, #463f70), url(${p.photoUrl}) center/cover`, backgroundBlendMode: 'darken', borderRadius: '16px 16px 0 0', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.4))' }} />
+        <div style={{ position: 'absolute', right: -30, top: -30, width: 150, height: 150, borderRadius: '50%', background: 'radial-gradient(circle, rgba(225,251,98,0.25), transparent 70%)' }} />
+        <button onClick={onVolver} aria-label="Volver a Servicios" style={{ position: 'absolute', top: 14, left: 16, width: 38, height: 38, borderRadius: 12, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>←</button>
+      </div>
+
+      <div style={{ padding: '0 20px' }}>
+        {/* Avatar + identidad */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginTop: -38, marginBottom: 14, position: 'relative', zIndex: 3 }}>
+          <div style={{ width: 84, height: 84, borderRadius: 24, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)`, flex: 'none', border: '4px solid #fff', boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }} />
+          <div style={{ flex: 1, paddingBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1.1 }}>{p.name}</span>
+              <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#E1FB62" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
+              </span>
+            </div>
+            <div style={{ color: 'rgb(135,129,160)', fontSize: 13.5 }}>{p.category} · {p.zone}</div>
+          </div>
+        </div>
+
+        {/* Chips de estado */}
+        <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgb(238,247,214)', color: 'rgb(95,125,16)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5f7d10" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{shieldPath}</svg>Verificado por Kumo
+          </span>
+          <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>{p.km} km de tu casa</span>
+        </div>
+
+        {p.about && <p style={{ fontSize: 14, color: 'rgb(91,86,112)', lineHeight: 1.6, margin: '0 0 18px' }}>{p.about}</p>}
+
+        {/* Servicios y tarifas. La base guarda un precio por prestador, no una
+            lista, así que se muestra el que hay en vez de inventar tarifas. */}
+        {p.price > 0 && (
+          <>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Servicios y tarifas</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 13, padding: '12px 14px', marginBottom: 18 }}>
+              <span style={{ fontSize: 14, fontWeight: 600 }}>{p.category}</span>
+              <span style={{ fontSize: 14, color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span>
+            </div>
+          </>
+        )}
+
+        {contacto.length > 0 && (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '6px 16px', marginBottom: 18 }}>
+            {contacto.map((c, i) => dato(c.i, c.t, i === contacto.length - 1))}
+          </div>
+        )}
+
+        {/* Reseñas. Todavía no hay tabla de reseñas: se muestra el promedio y la
+            cantidad que ya trae el prestador, y falta el listado. */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 15 }}>Reseñas de socios</div>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'rgb(91,86,112)' }}>
+            {star}<strong style={{ color: 'rgb(33,30,51)' }}>{p.rating}</strong> · {p.reviews}
+          </div>
+        </div>
+        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>
+          {p.reviews > 0
+            ? `${p.reviews} socios calificaron este servicio con ${p.rating} de 5. Todavía no publicamos los comentarios.`
+            : 'Todavía no tiene reseñas. Si lo contratás, vas a poder dejar la primera.'}
+        </div>
+      </div>
+
+      {/* Barra fija de contacto */}
+      <div style={{ position: 'sticky', bottom: 0, background: '#fff', borderTop: '1px solid rgb(238,236,245)', padding: '14px 20px', display: 'flex', gap: 10, marginTop: 20 }}>
+        <a href={wa} target="_blank" rel="noopener" style={{ flex: 1, background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none', boxShadow: '0 8px 18px rgba(93,84,145,0.25)' }}>
+          {ic(chat, false, 17)}Contactar
+        </a>
+        <button onClick={onGuardar} aria-label={guardado ? 'Quitar de guardados' : 'Guardar prestador'} style={{ width: 52, background: guardado ? 'rgb(251,232,239)' : 'rgb(225,251,98)', border: 'none', borderRadius: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill={guardado ? '#c14d7a' : 'none'} stroke="#211E33" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{heartPath}</svg>
+        </button>
+      </div>
+    </div>
+  );
+}
 const star = <svg width="12" height="12" viewBox="0 0 24 24" fill="#f5b301" style={{ display: 'inline', verticalAlign: -1 }}><path d="M12 3.4 14.6 9l6 .5-4.6 4 1.4 5.9L12 18l-5.4 3.2 1.4-5.9-4.6-4 6-.5z" /></svg>;
 
-function Servicios({ go, providers }: { go: (s: Screen) => void; providers: ProviderVM[] }) {
+function Servicios({ go, providers, initialGuardados, memberId }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; memberId: string }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radio, setRadio] = useState(5);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [selId, setSelId] = useState<string | null>(null);
+  const [guardados, setGuardados] = useState<string[]>(initialGuardados);
   const ql = q.trim().toLowerCase();
+
+  // Optimista: el corazón responde al toque y la base se actualiza atrás. Si
+  // falla, se vuelve atrás para no mentirle al socio.
+  const toggleGuardado = async (id: string) => {
+    const estaba = guardados.includes(id);
+    setGuardados((g) => (estaba ? g.filter((x) => x !== id) : [...g, id]));
+    const { error } = estaba
+      ? await supabase.from('provider_favorites').delete().eq('member_id', memberId).eq('provider_id', id)
+      : await supabase.from('provider_favorites').insert({ member_id: memberId, provider_id: id });
+    if (error) setGuardados((g) => (estaba ? [...g, id] : g.filter((x) => x !== id)));
+  };
+
+  const sel = providers.find((p) => p.id === selId);
+  if (sel) {
+    return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => toggleGuardado(sel.id)} onVolver={() => setSelId(null)} />;
+  }
+  const guardadosList = providers.filter((p) => guardados.includes(p.id));
   const list = providers.filter((p) => {
     if (p.km > radio) return false;
     if (cat && p.category !== cat) return false;
@@ -455,7 +583,7 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Servicios</div>
           <div style={{ color: 'rgb(135,129,160)', fontSize: 14 }}>Contratá prestadores verificados u ofrecé el tuyo</div>
         </div>
-        <button onClick={() => go('negocio')} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 7, background: 'rgb(225,251,98)', border: 'none', borderRadius: 13, padding: '10px 14px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(225,251,98,0.4)' }}>
+        <button onClick={() => go('prestar')} style={{ flex: '0 0 auto', display: 'flex', alignItems: 'center', gap: 7, background: 'rgb(225,251,98)', border: 'none', borderRadius: 13, padding: '10px 14px', cursor: 'pointer', boxShadow: '0 4px 12px rgba(225,251,98,0.4)' }}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
           <span style={{ color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 14, whiteSpace: 'nowrap' }}>Prestar servicio</span>
         </button>
@@ -465,6 +593,7 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'rgb(247,246,250)', border: '1.5px solid rgb(238,236,245)', borderRadius: 14, padding: '11px 14px', marginBottom: 14 }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.5" y2="16.5" /></svg>
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar paseador, guardería, zona…" style={{ flex: '1 1 0%', border: 'none', outline: 'none', background: 'none', fontSize: 14, fontFamily: '"DM Sans"', color: 'rgb(33,30,51)' }} />
+        {q && <button onClick={() => setQ('')} aria-label="Limpiar búsqueda" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(162,157,186)', fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>}
       </div>
 
       {/* Chips categoría */}
@@ -501,10 +630,13 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
           <path d="M0 112 H320 M0 120 H320" stroke="#cfd3de" strokeWidth="8" /><path d="M112 0 V250 M206 0 V250" stroke="#cfd3de" strokeWidth="8" /><path d="M0 116 H320" stroke="#fff" strokeWidth="1" strokeDasharray="6 6" />
         </svg>
         <div style={{ position: 'absolute', left: '50%', top: '52%', transform: 'translate(-50%, -50%)', width: circle, height: circle, borderRadius: '50%', background: 'rgba(93,84,145,0.1)', border: '1.5px dashed rgba(93,84,145,0.5)', zIndex: 1, transition: 'width 0.4s cubic-bezier(0.2,0.8,0.3,1), height 0.4s cubic-bezier(0.2,0.8,0.3,1)' }} />
-        {list.slice(0, 3).map((p, i) => {
+        {/* Un pin por prestador de la lista filtrada, y se toca para abrir su ficha.
+            Antes eran los tres primeros y no hacían nada. */}
+        {list.map((p, i) => {
           const pin = catPin(p.category);
+          const pos = pinPos(p.id);
           return (
-            <div key={p.id} style={{ position: 'absolute', left: pinSlots[i]!.left, top: pinSlots[i]!.top, transform: 'translate(-50%, -100%)', zIndex: 2, animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both' } as CSSProperties}>
+            <button key={p.id} onClick={() => setSelId(p.id)} title={p.name} style={{ position: 'absolute', left: pos.left, top: pos.top, transform: 'translate(-50%, -100%)', zIndex: 2, background: 'none', border: 'none', padding: 0, cursor: 'pointer', animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both', animationDelay: `${i * 0.09}s` } as CSSProperties}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                 <div style={{ background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 10, padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap', boxShadow: '0 3px 8px rgba(0,0,0,0.2)', marginBottom: 3 }}>{p.name}</div>
                 <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)' }}>
@@ -513,13 +645,36 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
                   </span>
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
         <div style={{ position: 'absolute', left: '50%', top: '52%', transform: 'translate(-50%, -50%)', zIndex: 3 }}>
           <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'rgb(42,120,214)', border: '3px solid #fff', boxShadow: '0 0 0 6px rgba(42,120,214,0.18)' }} />
         </div>
       </div>
+
+      {/* Guardados */}
+      {guardadosList.length > 0 && (
+        <div style={{ background: 'rgb(251,232,239)', border: '1px solid rgb(246,213,226)', borderRadius: 18, padding: 14, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="#c14d7a" stroke="#c14d7a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{heartPath}</svg>
+            <span style={{ fontWeight: 800, fontSize: 14, fontFamily: '"Baloo 2"' }}>Guardados</span>
+            <span style={{ background: '#fff', color: 'rgb(193,77,122)', fontWeight: 700, fontSize: 11, padding: '2px 8px', borderRadius: 100 }}>{guardadosList.length}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {guardadosList.map((p) => (
+              <button key={p.id} onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 11, background: '#fff', border: 'none', borderRadius: 13, padding: '10px 12px', cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
+                <div style={{ width: 38, height: 38, borderRadius: 11, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)`, flex: 'none' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
+                  <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone}</div>
+                </div>
+                <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Lista */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -529,40 +684,164 @@ function Servicios({ go, providers }: { go: (s: Screen) => void; providers: Prov
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {list.map((p) => {
-          const openP = openId === p.id;
-          const wa = 'https://wa.me/' + (p.phone ?? "").replace(/\D/g, '');
-          return (
-            <div key={p.id} className="wa-card" onClick={() => setOpenId(openP ? null : p.id)} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 14, cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-                <div style={{ width: 50, height: 50, borderRadius: 15, background: `url(${p.photoUrl}) center/cover, rgb(226,245,234)`, flex: '0 0 auto' }} />
-                <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
-                    {p.badge && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 5 }}>{p.badge}</span>}
-                  </div>
-                  <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone} · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></div>
-                  <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>{star} {p.rating} ({p.reviews}) · <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span></div>
-                </div>
-                <span style={{ color: 'rgb(199,194,218)', fontSize: 18, transform: openP ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s', display: 'inline-block' }}>›</span>
+        {list.map((p) => (
+          <button key={p.id} className="wa-card" onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 14, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
+            <div style={{ width: 50, height: 50, borderRadius: 15, background: `url(${p.photoUrl}) center/cover, rgb(226,245,234)`, flex: '0 0 auto' }} />
+            <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
+                {p.badge && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 5 }}>{p.badge}</span>}
               </div>
-              {openP && (
-                <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 12, borderTop: '1px solid rgb(238,236,245)', paddingTop: 12 }}>
-                  <p style={{ fontSize: 13, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 8px' }}>{p.about}</p>
-                  <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginBottom: 12 }}>
-                    {p.address}{p.instagram ? ` · ${p.instagram}` : ''}{p.website ? ` · ${p.website}` : ''}
-                  </div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <a href={wa} target="_blank" rel="noopener" style={{ flex: '1 1 0%', textAlign: 'center', background: 'rgb(37,211,102)', color: '#fff', fontWeight: 700, fontSize: 13, padding: 11, borderRadius: 10, textDecoration: 'none' }}>Contactar por WhatsApp</a>
-                    <a href={`tel:${p.phone}`} style={{ flex: '1 1 0%', textAlign: 'center', background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 13, padding: 11, borderRadius: 10, textDecoration: 'none' }}>Llamar</a>
-                  </div>
-                </div>
-              )}
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone} · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></div>
+              <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>{star} {p.rating} ({p.reviews}) · <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span></div>
             </div>
+            <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
+          </button>
+        ))}
+        {list.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '30px 10px', color: 'rgb(162,157,186)', fontSize: 14, lineHeight: 1.5 }}>
+            Sin resultados en {radio} km.<br />Ampliá el radio o cambiá de servicio.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Pantalla: Prestar servicio ────────────────────────────────── */
+/** "Sumate como prestador", igual que el prototipo. Antes el botón de Servicios
+ *  llevaba a "Mi negocio" y el alta era cuatro inputs sueltos dentro de una
+ *  tarjeta. Acá el rubro se elige de una grilla con íconos y se puede subir la
+ *  foto de portada, que es la que se ve en el listado y en la ficha. */
+const RUBRO_ICONS: Record<string, ReactNode> = {
+  Paseador: paw,
+  Guardería: house,
+  Adiestrador: <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></>,
+  'Baño y estética': <path d="M12 3s6 5.7 6 10a6 6 0 0 1-12 0c0-4.3 6-10 6-10z" />,
+  Cuidador: person,
+};
+
+function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: Profile; negocio: MiNegocio | null }) {
+  const router = useRouter();
+  const [rubro, setRubro] = useState<string>(RUBROS[0]!);
+  const [nombre, setNombre] = useState('');
+  const [zona, setZona] = useState('');
+  const [tel, setTel] = useState(profile.phone ?? '');
+  const [about, setAbout] = useState('');
+  const [foto, setFoto] = useState<File | null>(null);
+  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [enviado, setEnviado] = useState(false);
+
+  // Si ya tiene un negocio, no hay alta que hacer: se lo manda a verlo.
+  if (negocio && !enviado) {
+    return (
+      <div style={{ padding: '8px 20px 24px' }}>
+        <button onClick={() => go('servicios')} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 6 }}>← Servicios</button>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 2 }}>Ya tenés un negocio</div>
+        <p style={{ color: 'rgb(135,129,160)', fontSize: 14, margin: '0 0 18px' }}>Diste de alta &quot;{negocio.name}&quot;. Podés ver su estado y sus datos desde Mi negocio.</p>
+        <button onClick={() => go('negocio')} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Ir a Mi negocio</button>
+      </div>
+    );
+  }
+
+  const elegirFoto = (f?: File) => {
+    if (!f) return;
+    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
+    if (f.size > FOTO_MAX) { setError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+    setError('');
+    setFoto(f);
+    setFotoPreview(URL.createObjectURL(f));
+  };
+
+  const enviar = async () => {
+    if (!nombre.trim()) { setError('Poné el nombre o la marca de tu servicio.'); return; }
+    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
+    setBusy(true); setError('');
+
+    let photoUrl: string | null = null;
+    if (foto) {
+      const ext = foto.name.split('.').pop()?.toLowerCase() || 'jpg';
+      const path = `${profile.id}/negocio-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, foto, { contentType: foto.type });
+      if (upErr) { setError('No pudimos subir la portada. Probá de nuevo o mandá la solicitud sin foto.'); setBusy(false); return; }
+      photoUrl = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+    }
+
+    const { error: insErr } = await supabase.from('providers').insert({
+      owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, status: 'pendiente',
+    });
+    if (insErr) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    setBusy(false);
+    setEnviado(true);
+    router.refresh();
+  };
+
+  if (enviado) {
+    return (
+      <div style={{ padding: '40px 24px', textAlign: 'center' }}>
+        <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'rgb(225,251,98)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}>
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
+        </div>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, margin: '0 0 8px' }}>Solicitud enviada</div>
+        <p style={{ color: 'rgb(91,86,112)', fontSize: 14, lineHeight: 1.55, margin: '0 auto 24px', maxWidth: 420 }}>El club va a <strong>validar los datos de tu negocio</strong> antes de publicarlo. Podés seguir el estado desde <strong>Mi negocio</strong>.</p>
+        <button onClick={() => go('negocio')} style={{ width: '100%', maxWidth: 420, background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', marginBottom: 10, fontFamily: '"DM Sans"' }}>Ir a Mi negocio</button>
+        <button onClick={() => go('servicios')} style={{ width: '100%', maxWidth: 420, background: 'none', color: 'rgb(135,129,160)', border: 'none', fontWeight: 600, fontSize: 14, padding: 10, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Volver a Servicios</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '8px 20px 24px' }}>
+      <button onClick={() => go('servicios')} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 6 }}>← Servicios</button>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 2 }}>Sumate como prestador</div>
+      <p style={{ color: 'rgb(135,129,160)', fontSize: 14, margin: '0 0 18px' }}>Elegí tu rubro y contanos sobre tu servicio. El club valida los datos antes de publicarlo.</p>
+
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 700, color: 'rgb(91,86,112)', marginBottom: 8 }}>¿Qué servicio ofrecés?</label>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18 }}>
+        {RUBROS.map((r) => {
+          const activo = rubro === r;
+          return (
+            <button key={r} onClick={() => setRubro(r)} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '13px 14px', borderRadius: 13, cursor: 'pointer', fontFamily: '"DM Sans"', textAlign: 'left', border: `1.5px solid ${activo ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`, background: activo ? 'rgb(240,237,249)' : '#fff' }}>
+              <span style={{ color: '#5D5491', display: 'flex' }}>{ic(RUBRO_ICONS[r] ?? paw, r === 'Paseador', 19)}</span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{r}</span>
+            </button>
           );
         })}
-        {list.length === 0 && <div style={{ color: 'rgb(135,129,160)', fontSize: 14, padding: '10px 2px' }}>No hay prestadores con esos filtros. Probá ampliar el radio.</div>}
       </div>
+
+      <label style={sheetLabel} htmlFor="pr-nombre">Nombre o empresa</label>
+      <input id="pr-nombre" value={nombre} onChange={(e) => { setNombre(e.target.value); setError(''); }} placeholder="Ej: Paseos Palermo / Lucas M." style={{ ...sheetInput, marginBottom: 12 }} />
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 160px' }}>
+          <label style={sheetLabel} htmlFor="pr-zona">Zona</label>
+          <input id="pr-zona" value={zona} onChange={(e) => { setZona(e.target.value); setError(''); }} placeholder="Palermo, CABA" style={sheetInput} />
+        </div>
+        <div style={{ flex: '1 1 160px' }}>
+          <label style={sheetLabel} htmlFor="pr-tel">WhatsApp</label>
+          <input id="pr-tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+54 11 ..." style={sheetInput} />
+        </div>
+      </div>
+
+      <label style={sheetLabel} htmlFor="pr-about">Contanos sobre tu servicio</label>
+      <textarea id="pr-about" value={about} onChange={(e) => setAbout(e.target.value)} rows={3} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...sheetInput, marginBottom: 16, resize: 'none' }} />
+
+      <label style={sheetLabel}>Foto de portada</label>
+      <label style={{ position: 'relative', display: 'flex', width: '100%', height: 140, border: '2px dashed rgb(230,227,240)', borderRadius: 12, alignItems: 'center', justifyContent: 'center', background: fotoPreview ? `url(${fotoPreview}) center/cover` : 'rgb(250,250,249)', cursor: 'pointer', overflow: 'hidden', marginBottom: 18 }}>
+        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirFoto(e.target.files?.[0])} style={{ display: 'none' }} />
+        {!fotoPreview && (
+          <div style={{ textAlign: 'center', pointerEvents: 'none' }}>
+            <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: 'rgb(162,157,186)' }}>{ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></>, false, 22)}</div>
+            <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Subir portada</div>
+          </div>
+        )}
+      </label>
+
+      {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+      <button onClick={enviar} disabled={busy} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 14, border: 'none', borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
     </div>
   );
 }
@@ -1439,7 +1718,7 @@ function EnConstruccion({ titulo }: { titulo: string }) {
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[] }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -1464,7 +1743,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" style={{ display: 'block' }}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
         </button>
         <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, color: 'rgb(93,84,145)' }}>Kumo</span>
-        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{screen === 'notif' ? 'Notificaciones' : current?.label}</span>
+        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{screen === 'notif' ? 'Notificaciones' : screen === 'prestar' ? 'Prestar servicio' : current?.label}</span>
       </div>
       {navOpen && <button className="wa-scrim" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
       <div className={navOpen ? 'wa-side wa-side-open' : 'wa-side'} style={{ width: 220, flex: '0 0 auto', borderRight: '1px solid rgb(238,236,245)', padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -1483,7 +1762,8 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
           {screen === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} />}
           {screen === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
-          {screen === 'servicios' && <Servicios go={go} providers={providers} />}
+          {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} memberId={profile.id} />}
+          {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} />}

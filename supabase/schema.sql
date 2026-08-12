@@ -222,6 +222,14 @@ create table if not exists club_settings (
   constraint singleton check (id = 1)
 );
 
+-- Prestadores guardados por el socio (el corazón del detalle y "Mis guardados").
+create table if not exists provider_favorites (
+  member_id   uuid not null references profiles(id) on delete cascade,
+  provider_id uuid not null references providers(id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (member_id, provider_id)
+);
+
 -- ============================================================
 --  Helper: ¿el usuario actual es admin?
 -- ============================================================
@@ -246,6 +254,7 @@ alter table push_notifications enable row level security;
 alter table faqs               enable row level security;
 alter table emergency_contacts enable row level security;
 alter table club_settings      enable row level security;
+alter table provider_favorites enable row level security;
 
 -- Catálogo público (planes, beneficios, faqs, ajustes, prestadores verificados)
 create policy "planes visibles"    on plans      for select using (true);
@@ -286,6 +295,10 @@ create policy "respuestas moderar"  on community_answers for update using (autho
 -- Contactos de emergencia: del dueño
 create policy "emergencias del dueño" on emergency_contacts for all
   using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- Guardados: cada socio ve y maneja solo los suyos (el admin no los necesita)
+create policy "guardados del socio" on provider_favorites for all
+  using (member_id = auth.uid()) with check (member_id = auth.uid());
 
 -- Notificaciones push: solo admin gestiona
 create policy "push admin" on push_notifications for all using (is_admin()) with check (is_admin());

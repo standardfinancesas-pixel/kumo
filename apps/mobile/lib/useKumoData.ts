@@ -16,6 +16,8 @@ export type Profile = {
 export type ProviderVM = {
   id: string; name: string; category: string; zone: string; km: number; badge?: string;
   rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string;
+  // Los usa la ficha del prestador.
+  about: string; address: string; instagram: string | null; website: string | null;
 };
 export type BenefitVM = { id: string; name: string; cat: string; disc: string; icon: 'hospital' | 'store' | 'pill' | 'droplet' };
 export type ReintVM = { id: string; place: string; det: string; spent: number; refund: number; estado: string };
@@ -33,6 +35,8 @@ export type KumoData = {
   negocio: MiNegocio | null;
   /** Materia prima de las notificaciones: la lista la arma `buildNotifs` de @kumo/shared, igual que la webapp. */
   notifInput: NotifInput;
+  /** Ids de los prestadores guardados (el corazón de la ficha y "Mis guardados"). */
+  guardados: string[];
 };
 
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; status: string; rating: number; reviews: number };
@@ -105,14 +109,15 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async () => {
     if (!userId) { setData(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status, requested_on, created_at').eq('member_id', userId).order('requested_on', { ascending: false }),
-      supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng').eq('status', 'verificado'),
+      supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, replies, likes, created_at, profiles(full_name)').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
+      supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
     ]);
 
     const p = profileRes.data;
@@ -155,6 +160,7 @@ export function useKumoData(userId: string | null) {
       km: haversineKm(r.lat, r.lng), badge: r.rating >= 4.9 && r.reviews > 0 ? 'Top rated' : 'Verificado',
       rating: r.rating, reviews: r.reviews, price: r.price, priceUnit: r.price_unit,
       phone: r.phone ?? '', photo: r.photo_url ?? PROVIDER_FALLBACK,
+      about: r.about ?? '', address: r.address ?? '', instagram: r.instagram, website: r.website,
     })).sort((a, b) => a.km - b.km);
 
     const benefits: BenefitVM[] = (benefRes.data ?? []).map((b) => ({
@@ -192,7 +198,9 @@ export function useKumoData(userId: string | null) {
       negocio: n ? { name: n.name, status: n.status, createdAt: n.created_at } : null,
     };
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput });
+    const guardados: string[] = (favRes.data ?? []).map((f) => f.provider_id);
+
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput, guardados });
     setLoading(false);
   }, [userId]);
 

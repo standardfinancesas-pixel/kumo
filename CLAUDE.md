@@ -48,7 +48,11 @@ la sesión de Supabase sin configurar nada:
   que depende la URL de red para abrir la app en un celular.
 - `pnpm typecheck` / `pnpm lint` — chequeos.
 - `pnpm --filter @kumo/web run build` — build de producción (correrlo antes de
-  deployar: hay errores que solo aparecen ahí).
+  deployar: hay errores que solo aparecen ahí). **Bajar el dev server antes**:
+  comparten `apps/web/.next` y el build lo sobreescribe, con lo que el dev queda
+  sirviendo 404 en sus chunks (`main-app.js`) y la página no hidrata — se ve como
+  "los clics no hacen nada". Si pasa: matar el server, `rm -rf apps/web/.next` y
+  levantarlo de nuevo.
 - `supabase db reset` — recrear la base local con schema + seed.
 
 ## Idioma

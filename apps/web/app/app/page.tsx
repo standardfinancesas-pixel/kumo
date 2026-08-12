@@ -225,5 +225,8 @@ export default async function Page() {
     negocio: negocioRow ? { name: negocioRow.name, status: negocioRow.status, createdAt: negocioRow.created_at } : null,
   };
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} />;
+  const { data: favRows } = await supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id);
+  const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
+
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} />;
 }

@@ -64,14 +64,14 @@ const PROMOS = [
   { title: 'Encontrá un cuidador', sub: 'Alguien de confianza', bg: '#5D5491', fg: '#fff', subFg: '#d8d3ec', photo: 'woman-cat.webp' },
 ];
 
-type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio' | 'notif';
+type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio' | 'notif' | 'prestar';
 type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'foros';
 const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '').replace(/\D/g, ''));
 /** Del ícono genérico que devuelve `KIND_ICON` al nombre que entiende `Ic`. */
 const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
-type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin';
+type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone';
 function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?: number; color?: string; fill?: boolean }) {
   const stroke = fill ? 'none' : color;
   const fillC = fill ? color : 'none';
@@ -102,6 +102,9 @@ function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?:
       {d === 'pill' && <><Rect x="3" y="8" width="18" height="8" rx="4" {...common} /><Line x1="12" y1="8" x2="12" y2="16" {...common} /></>}
       {d === 'droplet' && <Path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" {...common} />}
       {d === 'pin' && <><Path d="M12 21s7-5.6 7-11a7 7 0 0 0-14 0c0 5.4 7 11 7 11z" {...common} /><Circle cx="12" cy="10" r="2.5" {...common} /></>}
+      {d === 'globe' && <><Circle cx="12" cy="12" r="10" {...common} /><Path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" {...common} /></>}
+      {d === 'instagram' && <><Rect x="2" y="2" width="20" height="20" rx="5.5" {...common} /><Circle cx="12" cy="12" r="4" {...common} /><Circle cx="17.5" cy="6.5" r="1.2" fill={color} /></>}
+      {d === 'phone' && <Path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.8a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2z" {...common} />}
     </Svg>
   );
 }
@@ -555,28 +558,144 @@ const CHIPS = [
   { label: 'Todos', cat: null as string | null }, { label: 'Paseos', cat: 'Paseador' }, { label: 'Guardería', cat: 'Guardería' },
   { label: 'Baño', cat: 'Baño y estética' }, { label: 'Adiestrador', cat: 'Adiestrador' }, { label: 'Cuidador', cat: 'Cuidador' },
 ];
-/* Posiciones fijas de los 3 pins del mapa (el mapa es decorativo, como en el prototipo). */
-const PIN_POS = [{ x: 34, y: 40 }, { x: 70, y: 38 }, { x: 50, y: 54 }];
 const PIN_ICON: Record<string, IconName> = {
   'Paseador': 'paw', 'Guardería': 'house', 'Baño y estética': 'pin', 'Adiestrador': 'person', 'Cuidador': 'heart',
 };
-function Servicios({ providers }: { providers: ProviderVM[] }) {
+/** Posición del pin. El mapa es decorativo (Google Maps real es Fase 4), así que
+ *  sale del id para que sea estable entre renders y no salte al filtrar. */
+function pinPos(id: string): { x: number; y: number } {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 100000;
+  return { x: 18 + (h % 64), y: 24 + (Math.floor(h / 64) % 48) };
+}
+
+/* ── Sub-pantalla: ficha del prestador ─────────────────────────── */
+/** Portada, identidad, tarifa, contacto y reseñas, con la barra fija de abajo.
+ *  Antes tocar un prestador abría WhatsApp directo, sin poder ver nada. */
+function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM; guardado: boolean; onGuardar: () => void; onVolver: () => void }) {
+  const dato = (icono: IconName, texto: string, ultimo = false) => (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: ultimo ? 0 : 1, borderBottomColor: '#eeecf5' }}>
+      <Ic d={icono} size={19} />
+      <Text style={{ fontSize: 14, fontWeight: '600', color: INK, flex: 1 }}>{texto}</Text>
+    </View>
+  );
+  const contacto = [
+    p.website ? { i: 'globe' as IconName, t: p.website } : null,
+    p.instagram ? { i: 'instagram' as IconName, t: p.instagram } : null,
+    p.address ? { i: 'pin' as IconName, t: p.address } : null,
+    p.phone ? { i: 'phone' as IconName, t: p.phone } : null,
+  ].filter(Boolean) as { i: IconName; t: string }[];
+
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
+        {/* Portada */}
+        <View style={{ height: 132, backgroundColor: BRAND, overflow: 'hidden' }}>
+          <Image source={petImg(p.photo)} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.55 }} resizeMode="cover" />
+          <TouchableOpacity onPress={onVolver} style={{ position: 'absolute', top: 14, left: 16, width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 18 }}>←</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ paddingHorizontal: 20 }}>
+          {/* Avatar + identidad */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: -38, marginBottom: 14 }}>
+            <Image source={petImg(p.photo)} style={{ width: 84, height: 84, borderRadius: 24, borderWidth: 4, borderColor: '#fff', backgroundColor: colors.violet[100] }} />
+            <View style={{ flex: 1, paddingBottom: 4 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>{p.name}</Text>
+                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                  <Svg width={12} height={12} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={LIME} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+                </View>
+              </View>
+              <Text style={{ color: '#8781a0', fontSize: 13.5 }}>{p.category} · {p.zone}</Text>
+            </View>
+          </View>
+
+          {/* Chips */}
+          <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#eef7d6', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100 }}>
+              <Ic d="shield" size={12} color="#5f7d10" />
+              <Text style={{ color: '#5f7d10', fontWeight: '700', fontSize: 11.5 }}>Verificado por Kumo</Text>
+            </View>
+            <View style={{ backgroundColor: colors.violet[100], paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100 }}>
+              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 11.5 }}>{p.km} km de tu casa</Text>
+            </View>
+          </View>
+
+          {p.about ? <Text style={{ fontSize: 14, color: MUTED, lineHeight: 22, marginBottom: 18 }}>{p.about}</Text> : null}
+
+          {/* La base guarda un precio por prestador, no una lista de tarifas. */}
+          {p.price > 0 && (
+            <>
+              <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Servicios y tarifas</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 18 }}>
+                <Text style={{ fontSize: 14, fontWeight: '600', color: INK }}>{p.category}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: BRAND }}>{money(p.price)}{p.priceUnit}</Text>
+              </View>
+            </>
+          )}
+
+          {contacto.length > 0 && (
+            <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, marginBottom: 18 }}>
+              {contacto.map((c, i) => dato(c.i, c.t, i === contacto.length - 1))}
+            </View>
+          )}
+
+          {/* Todavía no hay tabla de reseñas: se muestra el promedio, no el listado. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>Reseñas de socios</Text>
+            <Text style={{ fontSize: 13, color: MUTED }}>★ <Text style={{ fontWeight: '700', color: INK }}>{p.rating}</Text> · {p.reviews}</Text>
+          </View>
+          <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 16 }}>
+            <Text style={{ fontSize: 13.5, color: '#8781a0', lineHeight: 20 }}>
+              {p.reviews > 0
+                ? `${p.reviews} socios calificaron este servicio con ${p.rating} de 5. Todavía no publicamos los comentarios.`
+                : 'Todavía no tiene reseñas. Si lo contratás, vas a poder dejar la primera.'}
+            </Text>
+          </View>
+        </View>
+      </ScrollView>
+
+      {/* Barra fija */}
+      <View style={{ flexDirection: 'row', gap: 10, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eeecf5', paddingHorizontal: 20, paddingVertical: 14 }}>
+        <TouchableOpacity onPress={() => openWa(p.phone)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14 }}>
+          <Ic d="chat" size={17} color="#fff" />
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Contactar</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onGuardar} style={{ width: 52, backgroundColor: guardado ? '#fbe8ef' : LIME, borderRadius: 14, alignItems: 'center', justifyContent: 'center' }}>
+          <Ic d="heart" size={20} color={guardado ? '#c14d7a' : INK} fill={guardado} />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
+function Servicios({ providers, guardados, onGuardar, onPrestar }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radius, setRadius] = useState(5);
+  const [selId, setSelId] = useState<string | null>(null);
   const ql = q.trim().toLowerCase();
   const list = providers.filter((p) => (!cat || p.category === cat) && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql)) && p.km <= radius);
-  const pins = list.slice(0, 3);
+
+  const sel = providers.find((p) => p.id === selId);
+  if (sel) {
+    return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => onGuardar(sel.id)} onVolver={() => setSelId(null)} />;
+  }
+  const guardadosList = providers.filter((p) => guardados.includes(p.id));
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
         <H1>Servicios</H1>
-        <TouchableOpacity style={{ backgroundColor: LIME, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14, marginTop: 4 }}><Text style={{ color: INK, fontWeight: '700', fontSize: 12.5 }}>+ Prestar servicio</Text></TouchableOpacity>
+        <TouchableOpacity onPress={onPrestar} style={{ backgroundColor: LIME, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14, marginTop: 4 }}><Text style={{ color: INK, fontWeight: '700', fontSize: 12.5 }}>+ Prestar servicio</Text></TouchableOpacity>
       </View>
       <Sub>Contratá prestadores verificados u ofrecé el tuyo</Sub>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingHorizontal: 14, marginBottom: 14 }}>
         <Ic d="search" size={18} color={colors.violet[400]} />
         <TextInput value={q} onChangeText={setQ} placeholder="Buscar paseador, guardería, zona…" placeholderTextColor={colors.violet[400]} style={{ flex: 1, paddingVertical: 12, fontSize: 14, color: INK }} />
+        {q ? <TouchableOpacity onPress={() => setQ('')}><Text style={{ color: '#a29dba', fontSize: 18 }}>×</Text></TouchableOpacity> : null}
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
         {CHIPS.map((c) => {
@@ -612,10 +731,42 @@ function Servicios({ providers }: { providers: ProviderVM[] }) {
       <View style={{ height: 230, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#e6e3f0', marginBottom: 14 }}>
         <MapBlocks />
         <View style={{ position: 'absolute', left: '50%', top: '52%', width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: 'rgba(93,84,145,0.4)', backgroundColor: 'rgba(93,84,145,0.08)', marginLeft: -75, marginTop: -75 }} />
-        {pins.map((p, i) => (
-          <Pin key={p.id} x={PIN_POS[i]!.x} y={PIN_POS[i]!.y} label={p.name} icon={PIN_ICON[p.category] ?? 'pin'} />
-        ))}
+        {/* Un pin por prestador de la lista, y se toca para abrir su ficha. Antes
+            eran los tres primeros y no hacían nada. */}
+        {list.map((p) => {
+          const pos = pinPos(p.id);
+          return (
+            <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%` }}>
+              <Pin x={0} y={0} label={p.name} icon={PIN_ICON[p.category] ?? 'pin'} />
+            </TouchableOpacity>
+          );
+        })}
       </View>
+
+      {/* Guardados */}
+      {guardadosList.length > 0 && (
+        <View style={{ backgroundColor: '#fbe8ef', borderWidth: 1, borderColor: '#f6d5e2', borderRadius: 18, padding: 14, marginBottom: 14 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Ic d="heart" size={16} color="#c14d7a" fill />
+            <Text style={{ fontWeight: '800', fontSize: 14, color: INK, fontFamily: FH }}>Guardados</Text>
+            <View style={{ backgroundColor: '#fff', borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2 }}>
+              <Text style={{ color: '#c14d7a', fontWeight: '700', fontSize: 11 }}>{guardadosList.length}</Text>
+            </View>
+          </View>
+          <View style={{ gap: 8 }}>
+            {guardadosList.map((p) => (
+              <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fff', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 10 }}>
+                <Image source={petImg(p.photo)} style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: colors.violet[100] }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.name}</Text>
+                  <Text style={{ fontSize: 12, color: '#a29dba' }}>{p.category} · {p.zone}</Text>
+                </View>
+                <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Text style={{ fontSize: 13, color: INK }}><Text style={{ fontWeight: '700' }}>{list.length} prestadores</Text> en {radius} km</Text>
         <Text style={{ fontSize: 12.5, color: MUTED }}>≡ Más cercano</Text>
@@ -627,7 +778,7 @@ function Servicios({ providers }: { providers: ProviderVM[] }) {
       )}
       <View style={{ gap: 12 }}>
         {list.map((p) => (
-          <TouchableOpacity key={p.id} onPress={() => openWa(p.phone)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
+          <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
             <Image source={petImg(p.photo)} style={{ width: 54, height: 54, borderRadius: 15, backgroundColor: colors.violet[100] }} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -840,17 +991,142 @@ function MisMascotas({ pets, userId, reload, go, setPetIdx }: { pets: Pet[]; use
 }
 
 /* ── Sub-pantalla: Mis guardados (estado vacío) ────────────────── */
-function Guardados() {
+function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[]; guardados: string[]; onAbrir: () => void }) {
+  const list = providers.filter((p) => guardados.includes(p.id));
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <H1>Mis guardados</H1>
       <Sub>Los prestadores que marcaste con el corazón.</Sub>
-      <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
-          <Ic d="heart" size={32} color={colors.violet[400]} />
+      {list.length === 0 ? (
+        <View style={{ alignItems: 'center', paddingVertical: 60 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <Ic d="heart" size={32} color={colors.violet[400]} />
+          </View>
+          <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 30 }}>Todavía no guardaste prestadores. Tocá el corazón en Servicios para tenerlos a mano.</Text>
         </View>
-        <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 30 }}>Todavía no guardaste prestadores. Tocá el corazón en Servicios para tenerlos a mano.</Text>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {list.map((p) => (
+            <TouchableOpacity key={p.id} onPress={onAbrir} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
+              <Image source={petImg(p.photo)} style={{ width: 50, height: 50, borderRadius: 15, backgroundColor: colors.violet[100] }} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
+                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone} · {p.km} km</Text>
+                <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>★ {p.rating} ({p.reviews})</Text>
+              </View>
+              <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
+}
+
+/* ── Sub-pantalla: Prestar servicio ────────────────────────────── */
+/** "Sumate como prestador", igual que el prototipo: el rubro se elige de una
+ *  grilla con íconos. Antes el botón de Servicios no hacía nada. */
+const RUBRO_IC: Record<string, IconName> = {
+  Paseador: 'paw', Guardería: 'house', Adiestrador: 'idcard', 'Baño y estética': 'droplet', Cuidador: 'person',
+};
+
+function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { userId: string; phone: string; negocio: MiNegocio | null; onVolver: () => void; onNegocio: () => void; reload: () => void }) {
+  const [rubro, setRubro] = useState(RUBROS[0]!);
+  const [nombre, setNombre] = useState('');
+  const [zona, setZona] = useState('');
+  const [tel, setTel] = useState(phone === '—' ? '' : phone);
+  const [about, setAbout] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [enviado, setEnviado] = useState(false);
+
+  if (negocio && !enviado) {
+    return (
+      <ScrollView contentContainerStyle={styles.screen}>
+        <TouchableOpacity onPress={onVolver} style={{ paddingVertical: 6, marginBottom: 6 }}><Text style={{ color: BRAND, fontWeight: '600', fontSize: 14 }}>← Servicios</Text></TouchableOpacity>
+        <H1>Ya tenés un negocio</H1>
+        <Sub>Diste de alta &quot;{negocio.name}&quot;. Podés ver su estado desde Mi negocio.</Sub>
+        <TouchableOpacity onPress={onNegocio} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ir a Mi negocio</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  if (enviado) {
+    return (
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, alignItems: 'center' }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+          <Svg width={34} height={34} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={INK} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+        </View>
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>Solicitud enviada</Text>
+        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 22, textAlign: 'center', marginBottom: 24 }}>El club va a validar los datos de tu negocio antes de publicarlo. Podés seguir el estado desde Mi negocio.</Text>
+        <TouchableOpacity onPress={onNegocio} style={{ alignSelf: 'stretch', backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginBottom: 10 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ir a Mi negocio</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onVolver} style={{ paddingVertical: 10 }}><Text style={{ color: '#8781a0', fontWeight: '600', fontSize: 14 }}>Volver a Servicios</Text></TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  const enviar = async () => {
+    if (!nombre.trim()) { setError('Poné el nombre o la marca de tu servicio.'); return; }
+    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
+    setBusy(true); setError('');
+    const { error: e } = await supabase.from('providers').insert({
+      owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      phone: tel.trim() || null, about: about.trim(), status: 'pendiente',
+    });
+    if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    setBusy(false);
+    setEnviado(true);
+    await reload();
+  };
+
+  const input = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' };
+
+  return (
+    <ScrollView contentContainerStyle={styles.screen}>
+      <TouchableOpacity onPress={onVolver} style={{ paddingVertical: 6, marginBottom: 6 }}><Text style={{ color: BRAND, fontWeight: '600', fontSize: 14 }}>← Servicios</Text></TouchableOpacity>
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 2 }}>Sumate como prestador</Text>
+      <Text style={{ color: '#8781a0', fontSize: 14, marginBottom: 18 }}>Elegí tu rubro y contanos sobre tu servicio. El club valida los datos antes de publicarlo.</Text>
+
+      <SheetLabel>¿Qué servicio ofrecés?</SheetLabel>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 18 }}>
+        {RUBROS.map((r) => {
+          const activo = rubro === r;
+          return (
+            <View key={r} style={{ width: '50%', padding: 4 }}>
+              <TouchableOpacity onPress={() => setRubro(r)} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 14, paddingVertical: 13, borderRadius: 13, borderWidth: 1.5, borderColor: activo ? BRAND : colors.violet[200], backgroundColor: activo ? colors.violet[100] : '#fff' }}>
+                <Ic d={RUBRO_IC[r] ?? 'paw'} size={19} fill={r === 'Paseador'} />
+                <Text style={{ fontWeight: '600', fontSize: 13.5, color: INK, flex: 1 }}>{r}</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        })}
       </View>
+
+      <SheetLabel>Nombre o empresa</SheetLabel>
+      <TextInput value={nombre} onChangeText={(v) => { setNombre(v); setError(''); }} placeholder="Ej: Paseos Palermo / Lucas M." placeholderTextColor={colors.violet[400]} style={{ ...input, marginBottom: 12 }} />
+
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+        <View style={{ flex: 1 }}>
+          <SheetLabel>Zona</SheetLabel>
+          <TextInput value={zona} onChangeText={(v) => { setZona(v); setError(''); }} placeholder="Palermo, CABA" placeholderTextColor={colors.violet[400]} style={input} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SheetLabel>WhatsApp</SheetLabel>
+          <TextInput value={tel} onChangeText={setTel} placeholder="+54 11 ..." placeholderTextColor={colors.violet[400]} style={input} />
+        </View>
+      </View>
+
+      <SheetLabel>Contanos sobre tu servicio</SheetLabel>
+      <TextInput value={about} onChangeText={setAbout} multiline numberOfLines={3} placeholder="Experiencia, disponibilidad, precios de referencia…" placeholderTextColor={colors.violet[400]} style={{ ...input, height: 90, textAlignVertical: 'top', marginBottom: 16 }} />
+
+      {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text> : null}
+      <TouchableOpacity disabled={busy} onPress={enviar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -1265,6 +1541,8 @@ export default function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [visto, setVisto] = useState<string | null>(null);
+  /** null = todavía no se tocó nada, vale lo que trajo la base. */
+  const [optimistaGuardados, setOptimistaGuardados] = useState<string[] | null>(null);
   const [fontsLoaded] = useFonts({ Baloo2_700Bold, Baloo2_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
   const { data, loading, reload } = useKumoData(userId);
 
@@ -1290,6 +1568,19 @@ export default function App() {
   const notifGroups = data ? buildNotifs(data.notifInput) : [];
   const noLeidas = contarNoLeidas(notifGroups, visto);
   const marcarLeidas = () => { const ahora = new Date().toISOString(); AsyncStorage.setItem(VISTO_KEY, ahora); setVisto(ahora); };
+
+  // Optimista: el corazón responde al toque y la base va atrás; si falla, se
+  // deshace para no mostrar un guardado que no existe.
+  const guardados = optimistaGuardados ?? data?.guardados ?? [];
+  const toggleGuardado = async (id: string) => {
+    if (!userId) return;
+    const estaba = guardados.includes(id);
+    setOptimistaGuardados(estaba ? guardados.filter((x) => x !== id) : [...guardados, id]);
+    const { error } = estaba
+      ? await supabase.from('provider_favorites').delete().eq('member_id', userId).eq('provider_id', id)
+      : await supabase.from('provider_favorites').insert({ member_id: userId, provider_id: id });
+    if (error) setOptimistaGuardados(guardados);
+  };
 
   return (
     <SafeAreaView style={styles.root}>
@@ -1331,13 +1622,14 @@ export default function App() {
         <View style={{ flex: 1 }}>
           {screen === 'inicio' && <Inicio profile={data.profile} pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
           {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} reload={reload} go={go} />}
-          {screen === 'servicios' && <Servicios providers={data.providers} />}
+          {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} />}
+          {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {screen === 'beneficios' && <Beneficios benefits={data.benefits} />}
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {screen === 'foros' && <Foros posts={data.posts} userId={userId} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
           {screen === 'mismascotas' && <MisMascotas pets={pets} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
-          {screen === 'guardados' && <Guardados />}
+          {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
           {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} />}
         </View>
