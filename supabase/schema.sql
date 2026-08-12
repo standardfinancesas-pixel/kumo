@@ -173,7 +173,9 @@ create table if not exists community_posts (
   title       text not null,
   body        text not null,
   zone        text,
-  -- El nombre va copiado: la RLS de `profiles` no deja leer el perfil de otro socio.
+  -- El nombre va copiado porque la RLS de `profiles` no deja leer el perfil de
+  -- otro socio. Lo pone el trigger `autor_desde_el_perfil` y no el cliente: si no,
+  -- cualquiera puede firmar con el nombre de otro.
   author_name text not null default '',
   replies     integer not null default 0,
   likes       integer not null default 0,
