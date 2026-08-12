@@ -759,9 +759,11 @@ function Ajustes({ settings }: { settings: SettingsVM }) {
 function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const verify = async (id: string) => {
+  /** Sin rechazo, una solicitud que no pasa la validación quedaba pendiente para
+   *  siempre: el socio nunca se enteraba y al club le quedaba en la cola. */
+  const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
     setBusyId(id);
-    await supabase.from('providers').update({ status: 'verificado' }).eq('id', id);
+    await supabase.from('providers').update({ status }).eq('id', id);
     router.refresh();
     setBusyId(null);
   };
@@ -780,7 +782,12 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
                 <td style={td}>{r.zona}</td>
                 <td style={td}>{r.rating !== '—' ? `★ ${r.rating}` : '—'}</td>
                 <td style={td}><span style={estadoBadge(r.estado)}>{r.estado}</span></td>
-                <td style={td}>{r.estado === 'Pendiente' && <button disabled={busyId === r.id} onClick={() => verify(r.id)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Verificar</button>}</td>
+                <td style={td}>{r.estado === 'Pendiente' && (
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'verificado')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Verificar</button>
+                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'rechazado')} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
+                  </div>
+                )}</td>
               </tr>
             ))}
           </tbody>
@@ -795,9 +802,9 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const pendientes = providers.filter((r) => r.estado === 'Pendiente');
-  const validate = async (id: string) => {
+  const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
     setBusyId(id);
-    await supabase.from('providers').update({ status: 'verificado' }).eq('id', id);
+    await supabase.from('providers').update({ status }).eq('id', id);
     router.refresh();
     setBusyId(null);
   };
@@ -816,7 +823,12 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
                 <td style={td}>{r.zona}</td>
                 <td style={{ ...td, color: '#8781a0' }}>{r.solicitado}</td>
                 <td style={td}><span style={estadoBadge(r.estado)}>{r.estado}</span></td>
-                <td style={td}>{r.estado === 'Pendiente' && <button disabled={busyId === r.id} onClick={() => validate(r.id)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Validar</button>}</td>
+                <td style={td}>{r.estado === 'Pendiente' && (
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'verificado')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Validar</button>
+                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'rechazado')} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
+                  </div>
+                )}</td>
               </tr>
             ))}
           </tbody>

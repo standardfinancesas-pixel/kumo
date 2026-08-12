@@ -6,4 +6,5 @@ export * from './urls';
 export * from './fechas';
 export * from './notifs';
 export * from './carnet';
+export * from './prestadores';
 export * as data from './data';

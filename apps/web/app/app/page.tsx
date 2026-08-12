@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, diasHasta, type NotifInput, type VaccineKind } from '@kumo/shared';
+import { urls, diasHasta, providerBadge, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
@@ -78,14 +78,16 @@ function haversineKm(lat: number, lng: number): number {
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
 }
 
-type ProviderRow = { id: string; name: string; category: string; zone: string; address: string | null; phone: string | null; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number | null; price_unit: string | null; photo_url: string | null; lat: number | null; lng: number | null };
+type ProviderRow = { id: string; name: string; category: string; zone: string; address: string | null; phone: string | null; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number | null; price_unit: string | null; photo_url: string | null; lat: number | null; lng: number | null; status: string };
 function mapProvider(row: ProviderRow): ProviderVM {
   const km = row.lat != null && row.lng != null ? haversineKm(row.lat, row.lng) : 5;
   return {
     id: row.id, name: row.name, category: row.category, zone: row.zone, address: row.address ?? '', phone: row.phone ?? '',
     instagram: row.instagram, website: row.website, about: row.about, rating: row.rating, reviews: row.reviews,
     price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: imgSrc(row.photo_url), km,
-    badge: row.rating >= 4.9 ? 'Top rated' : 'Verificado',
+    // El sello sale del estado que puso el admin, no del rating.
+    verificado: row.status === 'verificado',
+    badge: providerBadge(row.status, row.rating, row.reviews),
   };
 }
 
@@ -101,24 +103,25 @@ function mapBenefit(row: BenefitRow): BenefitVM {
   return { id: row.id, name: row.name, category: row.category, discount: row.discount, icon: benefitIcon(row.category) };
 }
 
-type AnswerRow = { text: string; likes: number; best: boolean; created_at: string; profiles: { full_name: string } | { full_name: string }[] | null };
-type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; profiles: { full_name: string } | { full_name: string }[] | null; community_answers: AnswerRow[] };
-function authorName(p: { full_name: string } | { full_name: string }[] | null): string {
-  const row = Array.isArray(p) ? p[0] : p;
-  return row?.full_name?.split(' ')[0] ?? 'Socio';
+type AnswerRow = { text: string; likes: number; best: boolean; created_at: string; author_name: string };
+type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; author_name: string; community_answers: AnswerRow[] };
+/** El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
+ *  todos los autores salían como "Socio". */
+function authorName(nombre: string | null): string {
+  return nombre?.trim().split(' ')[0] || 'Socio';
 }
 function mapPost(row: PostRow): ForumPost {
   return {
     id: row.id,
     cat: row.category,
     trend: row.likes >= 20,
-    author: authorName(row.profiles),
+    author: authorName(row.author_name),
     meta: `${row.zone ?? 'General'} · ${relTime(row.created_at)}`,
     title: row.title,
     body: row.body,
     replies: row.replies,
     likes: row.likes,
-    answers: (row.community_answers ?? []).map((a) => ({ author: authorName(a.profiles), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best })),
+    answers: (row.community_answers ?? []).map((a) => ({ author: authorName(a.author_name), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best })),
   };
 }
 
@@ -182,9 +185,22 @@ export default async function Page() {
 
   const { data: providerRows } = await supabase
     .from('providers')
-    .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, lat, lng')
+    .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, lat, lng, status')
     .eq('status', 'verificado');
   const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow));
+
+  // Reseñas de los prestadores publicados, más nuevas primero.
+  const { data: reviewRows } = await supabase
+    .from('provider_reviews')
+    .select('id, provider_id, member_id, rating, text, author_name, created_at')
+    .order('created_at', { ascending: false });
+  const reviews: Record<string, Review[]> = {};
+  for (const r of reviewRows ?? []) {
+    (reviews[r.provider_id] ??= []).push({
+      id: r.id, author: r.author_name, rating: r.rating, text: r.text,
+      createdAt: r.created_at, propia: r.member_id === auth.user.id,
+    });
+  }
 
   // El negocio propio del socio, si dio de alta uno. Va aparte de `providers`
   // porque ese listado solo trae los verificados y acá interesa verlo aunque
@@ -207,7 +223,7 @@ export default async function Page() {
 
   const { data: postRows } = await supabase
     .from('community_posts')
-    .select('id, category, title, body, zone, replies, likes, created_at, profiles(full_name), community_answers(text, likes, best, created_at, profiles(full_name))')
+    .select('id, category, title, body, zone, replies, likes, created_at, author_name, community_answers(text, likes, best, created_at, author_name)')
     .order('created_at', { ascending: false });
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow));
 
@@ -228,5 +244,5 @@ export default async function Page() {
   const { data: favRows } = await supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id);
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} />;
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diasHasta, type NotifInput, type VaccineKind } from '@kumo/shared';
+import { diasHasta, providerBadge, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -17,7 +17,7 @@ export type ProviderVM = {
   id: string; name: string; category: string; zone: string; km: number; badge?: string;
   rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string;
   // Los usa la ficha del prestador.
-  about: string; address: string; instagram: string | null; website: string | null;
+  about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
 };
 export type BenefitVM = { id: string; name: string; cat: string; disc: string; icon: 'hospital' | 'store' | 'pill' | 'droplet' };
 export type ReintVM = { id: string; place: string; det: string; spent: number; refund: number; estado: string };
@@ -37,6 +37,8 @@ export type KumoData = {
   notifInput: NotifInput;
   /** Ids de los prestadores guardados (el corazón de la ficha y "Mis guardados"). */
   guardados: string[];
+  /** Reseñas por prestador, más nuevas primero. */
+  reviews: Record<string, Review[]>;
 };
 
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; status: string; rating: number; reviews: number };
@@ -109,15 +111,16 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async () => {
     if (!userId) { setData(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status, requested_on, created_at').eq('member_id', userId).order('requested_on', { ascending: false }),
-      supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website').eq('status', 'verificado'),
+      supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo'),
-      supabase.from('community_posts').select('id, category, title, replies, likes, created_at, profiles(full_name)').order('created_at', { ascending: false }).limit(20),
+      supabase.from('community_posts').select('id, category, title, replies, likes, created_at, author_name').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
+      supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
     ]);
 
     const p = profileRes.data;
@@ -157,7 +160,9 @@ export function useKumoData(userId: string | null) {
 
     const providers: ProviderVM[] = (provRes.data ?? []).map((r) => ({
       id: r.id, name: r.name, category: r.category, zone: r.zone,
-      km: haversineKm(r.lat, r.lng), badge: r.rating >= 4.9 && r.reviews > 0 ? 'Top rated' : 'Verificado',
+      km: haversineKm(r.lat, r.lng),
+      // El sello sale del estado que puso el admin, con el mismo criterio que la webapp.
+      badge: providerBadge(r.status, r.rating, r.reviews), verificado: r.status === 'verificado',
       rating: r.rating, reviews: r.reviews, price: r.price, priceUnit: r.price_unit,
       phone: r.phone ?? '', photo: r.photo_url ?? PROVIDER_FALLBACK,
       about: r.about ?? '', address: r.address ?? '', instagram: r.instagram, website: r.website,
@@ -173,14 +178,13 @@ export function useKumoData(userId: string | null) {
     }));
     const reintTotal = (reintRes.data ?? []).filter((r) => r.status === 'acreditado').reduce((a, r) => a + r.refund, 0);
 
-    const posts: ForumPost[] = (postsRes.data ?? []).map((row) => {
-      const author = Array.isArray(row.profiles) ? row.profiles[0] : row.profiles;
-      return {
-        id: row.id, cat: row.category, title: row.title,
-        author: `${author?.full_name?.split(' ')[0] ?? 'Socio'} · ${relTime(row.created_at)}`,
-        replies: row.replies, likes: row.likes,
-      };
-    });
+    // El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
+    // todos los autores salían como "Socio".
+    const posts: ForumPost[] = (postsRes.data ?? []).map((row) => ({
+      id: row.id, cat: row.category, title: row.title,
+      author: `${row.author_name?.trim().split(' ')[0] || 'Socio'} · ${relTime(row.created_at)}`,
+      replies: row.replies, likes: row.likes,
+    }));
 
     const n = negocioRes.data;
     const negocio: MiNegocio | null = n
@@ -200,7 +204,15 @@ export function useKumoData(userId: string | null) {
 
     const guardados: string[] = (favRes.data ?? []).map((f) => f.provider_id);
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput, guardados });
+    const reviews: Record<string, Review[]> = {};
+    for (const r of revRes.data ?? []) {
+      (reviews[r.provider_id] ??= []).push({
+        id: r.id, author: r.author_name, rating: r.rating, text: r.text,
+        createdAt: r.created_at, propia: r.member_id === userId,
+      });
+    }
+
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput, guardados, reviews });
     setLoading(false);
   }, [userId]);
 

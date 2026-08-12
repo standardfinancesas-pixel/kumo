@@ -173,6 +173,8 @@ create table if not exists community_posts (
   title       text not null,
   body        text not null,
   zone        text,
+  -- El nombre va copiado: la RLS de `profiles` no deja leer el perfil de otro socio.
+  author_name text not null default '',
   replies     integer not null default 0,
   likes       integer not null default 0,
   reported    boolean not null default false,
@@ -184,6 +186,7 @@ create table if not exists community_answers (
   post_id    uuid not null references community_posts(id) on delete cascade,
   author_id  uuid references profiles(id) on delete set null,
   text       text not null,
+  author_name text not null default '',
   likes      integer not null default 0,
   best       boolean not null default false,
   created_at timestamptz not null default now()
@@ -230,6 +233,20 @@ create table if not exists provider_favorites (
   primary key (member_id, provider_id)
 );
 
+-- Reseñas de prestadores. `providers.rating` y `providers.reviews` se calculan
+-- de acá con el trigger `provider_reviews_sync` (ver migraciones).
+create table if not exists provider_reviews (
+  id          uuid primary key default uuid_generate_v4(),
+  provider_id uuid not null references providers(id) on delete cascade,
+  member_id   uuid not null references profiles(id) on delete cascade,
+  rating      smallint not null check (rating between 1 and 5),
+  text        text not null default '',
+  -- El nombre va copiado: la RLS de `profiles` no deja leer el perfil de otro socio.
+  author_name text not null,
+  created_at  timestamptz not null default now(),
+  unique (provider_id, member_id)
+);
+
 -- ============================================================
 --  Helper: ¿el usuario actual es admin?
 -- ============================================================
@@ -255,6 +272,7 @@ alter table faqs               enable row level security;
 alter table emergency_contacts enable row level security;
 alter table club_settings      enable row level security;
 alter table provider_favorites enable row level security;
+alter table provider_reviews   enable row level security;
 
 -- Catálogo público (planes, beneficios, faqs, ajustes, prestadores verificados)
 create policy "planes visibles"    on plans      for select using (true);
@@ -299,6 +317,16 @@ create policy "emergencias del dueño" on emergency_contacts for all
 -- Guardados: cada socio ve y maneja solo los suyos (el admin no los necesita)
 create policy "guardados del socio" on provider_favorites for all
   using (member_id = auth.uid()) with check (member_id = auth.uid());
+
+-- Reseñas: las de un prestador publicado son públicas; cada socio edita la suya
+create policy "reseñas visibles" on provider_reviews for select
+  using (exists (select 1 from providers p where p.id = provider_id and p.status = 'verificado') or member_id = auth.uid() or is_admin());
+create policy "reseña propia - insert" on provider_reviews for insert
+  with check (member_id = auth.uid());
+create policy "reseña propia - update" on provider_reviews for update
+  using (member_id = auth.uid()) with check (member_id = auth.uid());
+create policy "reseña propia - delete" on provider_reviews for delete
+  using (member_id = auth.uid() or is_admin());
 
 -- Notificaciones push: solo admin gestiona
 create policy "push admin" on push_notifications for all using (is_admin()) with check (is_admin());

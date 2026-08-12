@@ -7,7 +7,8 @@ import {
   urls, FOTO_TIPOS, FOTO_MAX,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  type CalCell, type VaccineKind,
+  ratingLabel, reviewTiempo,
+  type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
@@ -54,7 +55,7 @@ const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
 export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; reminder?: string; mark?: boolean };
 export type Pet = { id: string; name: string; plan: string; socio: string; photo: string; breed: string; microchip: string; castrado: string; odonto: string; vaccines: Vac[] };
 export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
-export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; badge?: string };
+export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; verificado: boolean; badge?: string };
 export type BenefitVM = { id: string; name: string; category: string; discount: string; icon: 'cross' | 'store' | 'tag' | 'droplet' };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number };
@@ -448,8 +449,42 @@ const phonePath = <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5
 /* ── Pantalla: detalle del prestador ───────────────────────────── */
 /** Portada, identidad, tarifas, contacto y reseñas, con la barra fija de abajo.
  *  Antes tocar un prestador solo desplegaba un acordeón dentro de la lista. */
-function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM; guardado: boolean; onGuardar: () => void; onVolver: () => void }) {
+function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }: { p: ProviderVM; guardado: boolean; onGuardar: () => void; onVolver: () => void; reviews: Review[]; profile: Profile }) {
+  const router = useRouter();
   const wa = 'https://wa.me/' + (p.phone ?? '').replace(/\D/g, '');
+  const propia = reviews.find((r) => r.propia);
+  const [abierta, setAbierta] = useState(false);
+  const [estrellas, setEstrellas] = useState(propia?.rating ?? 5);
+  const [texto, setTexto] = useState(propia?.text ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const guardarReseña = async () => {
+    setBusy(true);
+    // Una por socio y prestador: si ya opinó, se actualiza la suya.
+    await supabase.from('provider_reviews').upsert({
+      provider_id: p.id, member_id: profile.id, rating: estrellas,
+      text: texto.trim(), author_name: profile.firstName,
+    }, { onConflict: 'provider_id,member_id' });
+    setAbierta(false);
+    router.refresh();
+    setBusy(false);
+  };
+  const borrarReseña = async () => {
+    setBusy(true);
+    await supabase.from('provider_reviews').delete().eq('provider_id', p.id).eq('member_id', profile.id);
+    setAbierta(false);
+    router.refresh();
+    setBusy(false);
+  };
+  const estrellasFila = (n: number, onPick?: (v: number) => void) => (
+    <span style={{ display: 'inline-flex', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <span key={i} onClick={onPick ? () => onPick(i) : undefined} style={{ cursor: onPick ? 'pointer' : 'default', lineHeight: 1 }}>
+          <svg width={onPick ? 22 : 13} height={onPick ? 22 : 13} viewBox="0 0 24 24" fill={i <= n ? '#f5b301' : 'rgb(230,227,240)'} style={{ display: 'block' }}><path d="M12 3.4 14.6 9l6 .5-4.6 4 1.4 5.9L12 18l-5.4 3.2 1.4-5.9-4.6-4 6-.5z" /></svg>
+        </span>
+      ))}
+    </span>
+  );
   const dato = (icono: ReactNode, texto: string, ultimo = false) => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: ultimo ? 'none' : '1px solid rgb(238,236,245)' }}>
       <span style={{ color: '#5D5491', flex: 'none' }}>{ic(icono, false, 19)}</span>
@@ -481,19 +516,23 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
           <div style={{ flex: 1, paddingBottom: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1.1 }}>{p.name}</span>
-              <span style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#E1FB62" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
-              </span>
+              {p.verificado && (
+                <span title="Verificado por Kumo" style={{ width: 20, height: 20, borderRadius: '50%', background: 'rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#E1FB62" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
+                </span>
+              )}
             </div>
             <div style={{ color: 'rgb(135,129,160)', fontSize: 13.5 }}>{p.category} · {p.zone}</div>
           </div>
         </div>
 
-        {/* Chips de estado */}
+        {/* Chips de estado. El sello sale del estado real, no está fijo. */}
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgb(238,247,214)', color: 'rgb(95,125,16)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5f7d10" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{shieldPath}</svg>Verificado por Kumo
-          </span>
+          {p.verificado && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgb(238,247,214)', color: 'rgb(95,125,16)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5f7d10" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{shieldPath}</svg>Verificado por Kumo
+            </span>
+          )}
           <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>{p.km} km de tu casa</span>
         </div>
 
@@ -517,19 +556,55 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
           </div>
         )}
 
-        {/* Reseñas. Todavía no hay tabla de reseñas: se muestra el promedio y la
-            cantidad que ya trae el prestador, y falta el listado. */}
+        {/* Reseñas reales: el promedio y el conteo del prestador los recalcula un
+            trigger sobre esta misma tabla, así que siempre coinciden. */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 15 }}>Reseñas de socios</div>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'rgb(91,86,112)' }}>
-            {star}<strong style={{ color: 'rgb(33,30,51)' }}>{p.rating}</strong> · {p.reviews}
+          {ratingLabel(p.rating, p.reviews) && (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 13, color: 'rgb(91,86,112)' }}>
+              {star}<strong style={{ color: 'rgb(33,30,51)' }}>{ratingLabel(p.rating, p.reviews)}</strong> · {p.reviews}
+            </div>
+          )}
+        </div>
+
+        {reviews.length === 0 && !abierta && (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5, marginBottom: 12 }}>
+            Todavía no tiene reseñas. Si lo contrataste, dejá la primera.
           </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 12 }}>
+          {reviews.map((r) => (
+            <div key={r.id} style={{ background: r.propia ? 'rgb(240,237,249)' : 'rgb(247,246,250)', border: `1px solid ${r.propia ? 'rgb(224,220,236)' : 'rgb(238,236,245)'}`, borderRadius: 16, padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                <div style={{ width: 30, height: 30, borderRadius: 9, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(135,129,160)' }}>{ic(person, false, 16)}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{r.propia ? 'Tu reseña' : r.author}</div>
+                  <div style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>{reviewTiempo(r.createdAt)}</div>
+                </div>
+                {estrellasFila(r.rating)}
+              </div>
+              {r.text && <div style={{ fontSize: 13, color: 'rgb(91,86,112)', lineHeight: 1.5 }}>{r.text}</div>}
+            </div>
+          ))}
         </div>
-        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>
-          {p.reviews > 0
-            ? `${p.reviews} socios calificaron este servicio con ${p.rating} de 5. Todavía no publicamos los comentarios.`
-            : 'Todavía no tiene reseñas. Si lo contratás, vas a poder dejar la primera.'}
-        </div>
+
+        {abierta ? (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 14, marginBottom: 8 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{propia ? 'Editar tu reseña' : `¿Cómo te fue con ${p.name}?`}</div>
+            <div style={{ marginBottom: 10 }}>{estrellasFila(estrellas, setEstrellas)}</div>
+            <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} placeholder="Contá tu experiencia (opcional)" style={{ ...sheetInput, resize: 'none', marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button onClick={guardarReseña} disabled={busy} style={{ ...sheetBtn(true), flex: '1 1 140px', fontSize: 14, padding: 12, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Publicar'}</button>
+              <button onClick={() => setAbierta(false)} style={{ ...sheetBtn(false), flex: '0 0 auto', fontSize: 14, padding: '12px 16px' }}>Cancelar</button>
+              {propia && <button onClick={borrarReseña} disabled={busy} style={{ flex: '0 0 auto', background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 14, padding: '12px 16px', borderRadius: 14, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Borrar</button>}
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => { setEstrellas(propia?.rating ?? 5); setTexto(propia?.text ?? ''); setAbierta(true); }} style={{ ...sheetBtn(false), width: '100%', fontSize: 14 }}>
+            {propia ? 'Editar tu reseña' : 'Dejar una reseña'}
+          </button>
+        )}
       </div>
 
       {/* Barra fija de contacto */}
@@ -546,7 +621,8 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
 }
 const star = <svg width="12" height="12" viewBox="0 0 24 24" fill="#f5b301" style={{ display: 'inline', verticalAlign: -1 }}><path d="M12 3.4 14.6 9l6 .5-4.6 4 1.4 5.9L12 18l-5.4 3.2 1.4-5.9-4.6-4 6-.5z" /></svg>;
 
-function Servicios({ go, providers, initialGuardados, memberId }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; memberId: string }) {
+function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; profile: Profile; reviews: Record<string, Review[]> }) {
+  const memberId = profile.id;
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radio, setRadio] = useState(5);
@@ -567,7 +643,7 @@ function Servicios({ go, providers, initialGuardados, memberId }: { go: (s: Scre
 
   const sel = providers.find((p) => p.id === selId);
   if (sel) {
-    return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => toggleGuardado(sel.id)} onVolver={() => setSelId(null)} />;
+    return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => toggleGuardado(sel.id)} onVolver={() => setSelId(null)} reviews={reviews[sel.id] ?? []} profile={profile} />;
   }
   const guardadosList = providers.filter((p) => guardados.includes(p.id));
   const list = providers.filter((p) => {
@@ -696,7 +772,11 @@ function Servicios({ go, providers, initialGuardados, memberId }: { go: (s: Scre
                 {p.badge && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 5 }}>{p.badge}</span>}
               </div>
               <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone} · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></div>
-              <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>{star} {p.rating} ({p.reviews}) · <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span></div>
+              {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
+              <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>
+                {ratingLabel(p.rating, p.reviews) ? <>{star} {ratingLabel(p.rating, p.reviews)} ({p.reviews}) · </> : <span style={{ color: 'rgb(162,157,186)' }}>Sin reseñas · </span>}
+                <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span>
+              </div>
             </div>
             <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
           </button>
@@ -1070,7 +1150,7 @@ function Foros({ initialPosts, profile }: { initialPosts: ForumPost[]; profile: 
     e.preventDefault();
     if (!nt.trim()) return;
     setBusy(true);
-    await supabase.from('community_posts').insert({ author_id: profile.id, category: cat === 'Todos' ? 'Salud' : cat, title: nt, body: nb || '—' });
+    await supabase.from('community_posts').insert({ author_id: profile.id, author_name: profile.firstName, category: cat === 'Todos' ? 'Salud' : cat, title: nt, body: nb || '—' });
     setNt(''); setNb(''); setOpen(false);
     router.refresh();
     setBusy(false);
@@ -1721,7 +1801,7 @@ function EnConstruccion({ titulo }: { titulo: string }) {
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[] }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]> }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -1765,7 +1845,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
           {screen === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} />}
           {screen === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
-          {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} memberId={profile.id} />}
+          {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
           {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} />}

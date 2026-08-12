@@ -10,7 +10,8 @@ import {
   colors,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  type CalCell, type VaccineKind,
+  ratingLabel, reviewTiempo,
+  type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { useKumoData, type Pet, type Vac, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
@@ -572,7 +573,47 @@ function pinPos(id: string): { x: number; y: number } {
 /* ── Sub-pantalla: ficha del prestador ─────────────────────────── */
 /** Portada, identidad, tarifa, contacto y reseñas, con la barra fija de abajo.
  *  Antes tocar un prestador abría WhatsApp directo, sin poder ver nada. */
-function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM; guardado: boolean; onGuardar: () => void; onVolver: () => void }) {
+/** Cinco estrellas; si viene `onPick` son tocables (para calificar). */
+function Estrellas({ n, onPick }: { n: number; onPick?: (v: number) => void }) {
+  const size = onPick ? 26 : 13;
+  return (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((i) => (
+        <TouchableOpacity key={i} disabled={!onPick} onPress={() => onPick?.(i)}>
+          <Svg width={size} height={size} viewBox="0 0 24 24">
+            <Path d="M12 3.4 14.6 9l6 .5-4.6 4 1.4 5.9L12 18l-5.4 3.2 1.4-5.9-4.6-4 6-.5z" fill={i <= n ? '#f5b301' : '#e6e3f0'} />
+          </Svg>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, firstName, reload }: { p: ProviderVM; guardado: boolean; onGuardar: () => void; onVolver: () => void; reviews: Review[]; userId: string; firstName: string; reload: () => void }) {
+  const propia = reviews.find((r) => r.propia);
+  const [abierta, setAbierta] = useState(false);
+  const [estrellas, setEstrellas] = useState(propia?.rating ?? 5);
+  const [texto, setTexto] = useState(propia?.text ?? '');
+  const [busy, setBusy] = useState(false);
+
+  const guardarReseña = async () => {
+    setBusy(true);
+    // Una por socio y prestador: si ya opinó, se actualiza la suya.
+    await supabase.from('provider_reviews').upsert({
+      provider_id: p.id, member_id: userId, rating: estrellas, text: texto.trim(), author_name: firstName,
+    }, { onConflict: 'provider_id,member_id' });
+    setAbierta(false);
+    await reload();
+    setBusy(false);
+  };
+  const borrarReseña = async () => {
+    setBusy(true);
+    await supabase.from('provider_reviews').delete().eq('provider_id', p.id).eq('member_id', userId);
+    setAbierta(false);
+    await reload();
+    setBusy(false);
+  };
+
   const dato = (icono: IconName, texto: string, ultimo = false) => (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: ultimo ? 0 : 1, borderBottomColor: '#eeecf5' }}>
       <Ic d={icono} size={19} />
@@ -607,20 +648,24 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
             <View style={{ flex: 1, paddingBottom: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                 <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>{p.name}</Text>
-                <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
-                  <Svg width={12} height={12} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={LIME} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" /></Svg>
-                </View>
+                {p.verificado && (
+                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                    <Svg width={12} height={12} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={LIME} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" /></Svg>
+                  </View>
+                )}
               </View>
               <Text style={{ color: '#8781a0', fontSize: 13.5 }}>{p.category} · {p.zone}</Text>
             </View>
           </View>
 
-          {/* Chips */}
+          {/* Chips. El sello sale del estado real, no está fijo. */}
           <View style={{ flexDirection: 'row', gap: 7, flexWrap: 'wrap', marginBottom: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#eef7d6', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100 }}>
-              <Ic d="shield" size={12} color="#5f7d10" />
-              <Text style={{ color: '#5f7d10', fontWeight: '700', fontSize: 11.5 }}>Verificado por Kumo</Text>
-            </View>
+            {p.verificado && (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#eef7d6', paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100 }}>
+                <Ic d="shield" size={12} color="#5f7d10" />
+                <Text style={{ color: '#5f7d10', fontWeight: '700', fontSize: 11.5 }}>Verificado por Kumo</Text>
+              </View>
+            )}
             <View style={{ backgroundColor: colors.violet[100], paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100 }}>
               <Text style={{ color: BRAND, fontWeight: '700', fontSize: 11.5 }}>{p.km} km de tu casa</Text>
             </View>
@@ -645,18 +690,62 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
             </View>
           )}
 
-          {/* Todavía no hay tabla de reseñas: se muestra el promedio, no el listado. */}
+          {/* Reseñas reales: el promedio y el conteo los recalcula un trigger
+              sobre esta misma tabla, así que siempre coinciden. */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>Reseñas de socios</Text>
-            <Text style={{ fontSize: 13, color: MUTED }}>★ <Text style={{ fontWeight: '700', color: INK }}>{p.rating}</Text> · {p.reviews}</Text>
+            {ratingLabel(p.rating, p.reviews) ? <Text style={{ fontSize: 13, color: MUTED }}>★ <Text style={{ fontWeight: '700', color: INK }}>{ratingLabel(p.rating, p.reviews)}</Text> · {p.reviews}</Text> : null}
           </View>
-          <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 16 }}>
-            <Text style={{ fontSize: 13.5, color: '#8781a0', lineHeight: 20 }}>
-              {p.reviews > 0
-                ? `${p.reviews} socios calificaron este servicio con ${p.rating} de 5. Todavía no publicamos los comentarios.`
-                : 'Todavía no tiene reseñas. Si lo contratás, vas a poder dejar la primera.'}
-            </Text>
+
+          {reviews.length === 0 && !abierta && (
+            <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 16, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13.5, color: '#8781a0', lineHeight: 20 }}>Todavía no tiene reseñas. Si lo contrataste, dejá la primera.</Text>
+            </View>
+          )}
+
+          <View style={{ gap: 12, marginBottom: 12 }}>
+            {reviews.map((r) => (
+              <View key={r.id} style={{ backgroundColor: r.propia ? colors.violet[100] : '#f7f6fa', borderWidth: 1, borderColor: r.propia ? '#e0dcec' : '#eeecf5', borderRadius: 16, padding: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ic d="person" size={16} color="#8781a0" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 13, color: INK }}>{r.propia ? 'Tu reseña' : r.author}</Text>
+                    <Text style={{ fontSize: 11, color: '#a29dba' }}>{reviewTiempo(r.createdAt)}</Text>
+                  </View>
+                  <Estrellas n={r.rating} />
+                </View>
+                {r.text ? <Text style={{ fontSize: 13, color: MUTED, lineHeight: 20 }}>{r.text}</Text> : null}
+              </View>
+            ))}
           </View>
+
+          {abierta ? (
+            <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14, marginBottom: 8 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: INK, marginBottom: 10 }}>{propia ? 'Editar tu reseña' : `¿Cómo te fue con ${p.name}?`}</Text>
+              <View style={{ marginBottom: 10 }}><Estrellas n={estrellas} onPick={setEstrellas} /></View>
+              <TextInput value={texto} onChangeText={setTexto} multiline placeholder="Contá tu experiencia (opcional)" placeholderTextColor={colors.violet[400]}
+                style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 13, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff', height: 84, textAlignVertical: 'top', marginBottom: 10 }} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity disabled={busy} onPress={guardarReseña} style={{ flex: 1, backgroundColor: BRAND, borderRadius: 12, paddingVertical: 12, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>{busy ? 'Guardando…' : 'Publicar'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setAbierta(false)} style={{ backgroundColor: colors.violet[100], borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center' }}>
+                  <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
+                </TouchableOpacity>
+                {propia ? (
+                  <TouchableOpacity disabled={busy} onPress={borrarReseña} style={{ backgroundColor: '#fbe8ef', borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, alignItems: 'center' }}>
+                    <Text style={{ color: '#c14d7a', fontWeight: '700', fontSize: 14 }}>Borrar</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => { setEstrellas(propia?.rating ?? 5); setTexto(propia?.text ?? ''); setAbierta(true); }} style={{ backgroundColor: colors.violet[100], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
+              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>{propia ? 'Editar tu reseña' : 'Dejar una reseña'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -674,7 +763,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
   );
 }
 
-function Servicios({ providers, guardados, onGuardar, onPrestar }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void }) {
+function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId, firstName, reload }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void; reviews: Record<string, Review[]>; userId: string; firstName: string; reload: () => void }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radius, setRadius] = useState(5);
@@ -684,7 +773,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar }: { providers: 
 
   const sel = providers.find((p) => p.id === selId);
   if (sel) {
-    return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => onGuardar(sel.id)} onVolver={() => setSelId(null)} />;
+    return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => onGuardar(sel.id)} onVolver={() => setSelId(null)} reviews={reviews[sel.id] ?? []} userId={userId} firstName={firstName} reload={reload} />;
   }
   const guardadosList = providers.filter((p) => guardados.includes(p.id));
 
@@ -789,7 +878,11 @@ function Servicios({ providers, guardados, onGuardar, onPrestar }: { providers: 
                 {p.badge ? <View style={{ backgroundColor: colors.violet[100], borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}><Text style={{ fontSize: 9, fontWeight: '700', color: BRAND }}>{p.badge}</Text></View> : null}
               </View>
               <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone} · {p.km} km</Text>
-              <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>★ {p.rating} ({p.reviews}) · <Text style={{ color: BRAND, fontWeight: '700' }}>{money(p.price)}{p.priceUnit}</Text></Text>
+              {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
+              <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                {ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews}) · ` : <Text style={{ color: '#a29dba' }}>Sin reseñas · </Text>}
+                <Text style={{ color: BRAND, fontWeight: '700' }}>{money(p.price)}{p.priceUnit}</Text>
+              </Text>
             </View>
             <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
           </TouchableOpacity>
@@ -1015,7 +1108,7 @@ function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[];
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
                 <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone} · {p.km} km</Text>
-                <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>★ {p.rating} ({p.reviews})</Text>
+                <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews})` : 'Sin reseñas'}</Text>
               </View>
               <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
             </TouchableOpacity>
@@ -1456,7 +1549,7 @@ const CAT_TONE: Record<string, { bg: string; fg: string }> = {
   'Guarderías': { bg: '#fbf3e2', fg: '#b8860b' },
 };
 const FORO_CATS = ['Salud', 'Paseadores', 'Guarderías', 'General'];
-function Foros({ posts, userId, reload }: { posts: ForumPost[]; userId: string; reload: () => void }) {
+function Foros({ posts, userId, firstName, reload }: { posts: ForumPost[]; userId: string; firstName: string; reload: () => void }) {
   const [open, setOpen] = useState(false);
   const [cat, setCat] = useState(FORO_CATS[0]!);
   const [title, setTitle] = useState('');
@@ -1466,7 +1559,7 @@ function Foros({ posts, userId, reload }: { posts: ForumPost[]; userId: string; 
   const publish = async () => {
     if (!title.trim() || !body.trim()) return;
     setBusy(true);
-    await supabase.from('community_posts').insert({ author_id: userId, category: cat, title: title.trim(), body: body.trim() });
+    await supabase.from('community_posts').insert({ author_id: userId, author_name: firstName, category: cat, title: title.trim(), body: body.trim() });
     setTitle(''); setBody(''); setOpen(false);
     await reload();
     setBusy(false);
@@ -1628,11 +1721,11 @@ export default function App() {
         <View style={{ flex: 1 }}>
           {screen === 'inicio' && <Inicio profile={data.profile} pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
           {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} reload={reload} go={go} />}
-          {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} />}
+          {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {screen === 'beneficios' && <Beneficios benefits={data.benefits} />}
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
-          {screen === 'foros' && <Foros posts={data.posts} userId={userId} reload={reload} />}
+          {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
           {screen === 'mismascotas' && <MisMascotas pets={pets} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}

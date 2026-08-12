@@ -123,11 +123,13 @@ export default async function Page() {
   }));
 
   // ── Moderación ──
-  const { data: reportRows } = await supabase.from('community_posts').select('id, category, title, profiles(full_name)').eq('reported', true);
-  const reports: ReportRow[] = (reportRows ?? []).map((r) => {
-    const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-    return { id: r.id, cat: r.category, autor: p?.full_name ? `por ${p.full_name.split(' ')[0]}` : 'por socio', titulo: r.title, motivo: 'Reportado por la comunidad' };
-  });
+  // El autor sale de la fila, igual que en la webapp del socio.
+  const { data: reportRows } = await supabase.from('community_posts').select('id, category, title, author_name').eq('reported', true);
+  const reports: ReportRow[] = (reportRows ?? []).map((r) => ({
+    id: r.id, cat: r.category,
+    autor: r.author_name?.trim() ? `por ${r.author_name.trim().split(' ')[0]}` : 'por socio',
+    titulo: r.title, motivo: 'Reportado por la comunidad',
+  }));
 
   // ── Push: audiencias reales + historial de envíos ──
   const { data: pendVaxPets } = await supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente');

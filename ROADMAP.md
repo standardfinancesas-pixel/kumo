@@ -74,9 +74,17 @@ de cada pantalla.
       (`packages/shared/src/notifs.ts`). El switch "Push y recordatorios" de la
       pantalla de notificaciones es decorativo hasta entonces, igual que en el
       prototipo. En la webapp sería Web Push, otro mecanismo.
-- [ ] Reseñas de prestadores (hoy `rating` y `reviews` vienen del seed).
-- [ ] Favoritos ("Mis guardados") y likes de foro persistentes — faltan tabla y
-      políticas RLS.
+- [x] **Reseñas de prestadores reales** (`provider_reviews`): el socio califica y
+      comenta, una reseña por prestador y editable. El promedio y el conteo los
+      recalcula el trigger `provider_reviews_sync`, así que la estrella de la
+      lista nunca se desfasa. Los ratings del seed quedaron en cero: eran
+      inventados.
+- [x] **Favoritos** (`provider_favorites`): el corazón de la ficha, la tarjeta
+      "Guardados" de Servicios y "Mis guardados" del menú, compartidos entre la
+      webapp y la app.
+- [ ] Likes de foro persistentes, y **responder en el foro**: hoy las respuestas
+      solo se leen, no hay ningún insert a `community_answers` ni se actualiza el
+      contador de `replies`.
 - [ ] Realtime con `subscribeTable` en la cola de reintegros del admin.
 
 ## Fase 5 — Móvil nativo
