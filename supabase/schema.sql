@@ -301,6 +301,8 @@ create policy "prestadores visibles" on providers for select using (status = 've
 
 -- Perfiles: cada quien ve/edita el suyo; admin ve todo
 create policy "perfil propio - select" on profiles for select using (id = auth.uid() or is_admin());
+-- Ojo: la RLS es por fila, no por columna. El trigger `profiles_campos_guard`
+-- (ver migraciones) es lo que impide que un socio se cambie el rol o el estado.
 create policy "perfil propio - update" on profiles for update using (id = auth.uid() or is_admin());
 create policy "perfil propio - insert" on profiles for insert with check (id = auth.uid());
 
