@@ -67,7 +67,13 @@ de cada pantalla.
 - [ ] Google Maps real en webapp y mobile (hoy los mapas son SVG decorativos con
       pins posicionados a mano; la distancia en km sí es real, por Haversine).
 - [ ] Push notifications reales con Expo (el admin ya las guarda en
-      `push_notifications`, pero nadie las envía).
+      `push_notifications`, pero nadie las envía). Falta: `expo-notifications` en
+      la app pidiendo permiso, una tabla de tokens de dispositivo por socio, el
+      envío a la Expo Push API y un cron que revise vacunas por vencer — hoy las
+      notificaciones se calculan recién cuando el socio abre la app
+      (`packages/shared/src/notifs.ts`). El switch "Push y recordatorios" de la
+      pantalla de notificaciones es decorativo hasta entonces, igual que en el
+      prototipo. En la webapp sería Web Push, otro mecanismo.
 - [ ] Reseñas de prestadores (hoy `rating` y `reviews` vienen del seed).
 - [ ] Favoritos ("Mis guardados") y likes de foro persistentes — faltan tabla y
       políticas RLS.
