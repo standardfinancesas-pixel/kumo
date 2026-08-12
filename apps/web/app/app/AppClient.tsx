@@ -7,7 +7,7 @@ import {
   urls, FOTO_TIPOS, FOTO_MAX,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE,
+  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -37,7 +37,7 @@ const pillPath = <><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7z
 const bellPath = <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>;
 
 /** `notif` no va en el sidebar: se llega por la campanita, como en el prototipo. */
-type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif' | 'prestar';
+type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif' | 'prestar' | 'mismascotas';
 
 const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'inicio', label: 'Inicio', icon: ic(house) },
@@ -1996,7 +1996,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
 
       {/* Mis mascotas */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>Mis mascotas</div>
+        <button onClick={() => go('mismascotas')} style={{ background: 'none', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', padding: 0, fontFamily: '\"DM Sans\"' }}>Mis mascotas ›</button>
         <button onClick={() => setShowAddPet((s) => !s)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>{showAddPet ? 'Cancelar' : '+ Agregar'}</button>
       </div>
       {showAddPet && (
@@ -2008,7 +2008,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
       )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {pets.map((p) => (
-          <button key={p.id} onClick={() => go('carnet')} className="wa-card" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '10px 14px', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
+          <button key={p.id} onClick={() => go('mismascotas')} className="wa-card" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '10px 14px', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
             <div style={{ width: 42, height: 42, borderRadius: 12, background: `url(${p.photo}) center/cover, rgb(240,237,249)`, flex: 'none' }} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</div>
@@ -2128,6 +2128,132 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
             </>
           )}
         </Sheet>
+      )}
+    </div>
+  );
+}
+
+/* ── Pantalla: Mis mascotas ────────────────────────────────────── */
+/** Listado y ficha de cada mascota, con su historial. En la webapp esta pantalla
+ *  no existía: las mascotas solo se veían como filas en Mi perfil. */
+const PET_EVENT_ICON = { vacuna: shieldPath, estudio: plusCircle, reintegro: wallet } as const;
+const PET_EVENT_TONE = {
+  vacuna: { bg: 'rgb(238,247,214)', fg: 'rgb(95,125,16)' },
+  estudio: { bg: 'rgb(240,237,249)', fg: 'rgb(93,84,145)' },
+  reintegro: { bg: 'rgb(226,245,234)', fg: 'rgb(47,143,91)' },
+} as const;
+
+function MisMascotas({ go, profile, pets, reintegros, setPetIdx }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegros: Reint[]; setPetIdx: (i: number) => void }) {
+  const router = useRouter();
+  const [selId, setSelId] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [pn, setPn] = useState('');
+  const [pr, setPr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const agregar = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!pn.trim()) return;
+    setBusy(true);
+    await supabase.from('pets').insert({ owner_id: profile.id, name: pn.trim(), breed: pr.trim() || null });
+    setPn(''); setPr(''); setShowAdd(false);
+    router.refresh();
+    setBusy(false);
+  };
+
+  const sel = pets.find((p) => p.id === selId);
+  const idx = pets.findIndex((p) => p.id === selId);
+
+  if (sel) {
+    const historial = buildPetHistory({
+      vaccines: sel.vaccines.map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, appliedOn: v.appliedOn, dueOn: v.dueOn })),
+      reintegros: reintegros.filter((r) => r.pet === sel.name).map((r) => ({ id: r.id, providerName: r.place, concept: r.concept, refund: r.refund, status: r.statusRaw, date: r.requestedOn })),
+    });
+    return (
+      <div style={{ padding: '8px 20px 24px' }}>
+        <button onClick={() => setSelId(null)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 8 }}>← Mis mascotas</button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+          <div style={{ width: 72, height: 72, borderRadius: 20, background: `url(${sel.photo}) center/cover, rgb(240,237,249)`, flex: 'none' }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21 }}>{sel.name}</div>
+            <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{sel.breed}</div>
+            <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginTop: 2 }}>Chip {sel.microchip} · Castrado: {sel.castrado}</div>
+          </div>
+        </div>
+
+        <button onClick={() => { if (idx >= 0) setPetIdx(idx); go('carnet'); }} style={{ ...sheetBtn(true), width: '100%', marginBottom: 20 }}>Ver carnet digital</button>
+
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Historial</div>
+        {historial.length === 0 ? (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 26, textAlign: 'center' }}>
+            <div style={{ fontWeight: 600, fontSize: 14.5 }}>Todavía sin movimientos</div>
+            <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 4, lineHeight: 1.45 }}>Cuando cargues vacunas o pidas un reintegro de {sel.name} van a aparecer acá.</div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {historial.map((e) => {
+              const tone = PET_EVENT_TONE[e.kind];
+              return (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '12px 14px' }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 11, background: tone.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: tone.fg }}>{ic(PET_EVENT_ICON[e.kind], false, 19)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>{e.title}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: tone.fg, background: tone.bg, padding: '2px 7px', borderRadius: 100 }}>{e.tag}</span>
+                    </div>
+                    <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{e.sub}</div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'rgb(162,157,186)', flex: 'none' }}>{fmtFechaCorta(e.date)}</div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '8px 20px 24px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22 }}>Mis mascotas</div>
+        <button onClick={() => setShowAdd((s) => !s)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>{showAdd ? 'Cancelar' : '+ Agregar mascota'}</button>
+      </div>
+
+      {showAdd && (
+        <form onSubmit={agregar} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 14, marginBottom: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input value={pn} onChange={(e) => setPn(e.target.value)} placeholder="Nombre" style={{ ...sheetInput, flex: '2 1 140px', width: 'auto' }} />
+          <input value={pr} onChange={(e) => setPr(e.target.value)} placeholder="Raza (opcional)" style={{ ...sheetInput, flex: '1 1 130px', width: 'auto' }} />
+          <button type="submit" disabled={busy} style={{ ...sheetBtn(true), flex: '0 0 auto', fontSize: 13.5, padding: '11px 18px', opacity: busy ? 0.6 : 1 }}>Agregar</button>
+        </form>
+      )}
+
+      {pets.length === 0 ? (
+        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 20, padding: 30, textAlign: 'center' }}>
+          <div style={{ width: 52, height: 52, borderRadius: 26, background: 'rgb(240,237,249)', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="#5D5491" style={{ display: 'block' }}>{paw}</svg>
+          </div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17 }}>Todavía no cargaste mascotas</div>
+          <div style={{ fontSize: 13, color: 'rgb(91,86,112)', marginTop: 5 }}>Agregá a tu peludo para tener su carnet digital y pedir reintegros.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {pets.map((p) => {
+            const proxima = p.vaccines.find((v) => v.mark && v.dueOn);
+            return (
+              <button key={p.id} className="wa-card" onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: '#fff', border: '1px solid rgb(240,238,247)', borderRadius: 18, padding: 14, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"', boxShadow: '0 4px 12px rgba(93,84,145,0.06)' }}>
+                <div style={{ width: 54, height: 54, borderRadius: 16, background: `url(${p.photo}) center/cover, rgb(240,237,249)`, flex: 'none' }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</div>
+                  <div style={{ fontSize: 12.5, color: 'rgb(162,157,186)' }}>{p.breed}</div>
+                  {proxima && <div style={{ fontSize: 11.5, color: 'rgb(95,125,16)', fontWeight: 600, marginTop: 3 }}>Próxima: {proxima.name} · {fmtFechaCorta(proxima.dueOn!)}</div>}
+                </div>
+                <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
+              </button>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -2399,7 +2525,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" style={{ display: 'block' }}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
         </button>
         <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, color: 'rgb(93,84,145)' }}>Kumo</span>
-        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{screen === 'notif' ? 'Notificaciones' : screen === 'prestar' ? 'Prestar servicio' : current?.label}</span>
+        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{screen === 'notif' ? 'Notificaciones' : screen === 'prestar' ? 'Prestar servicio' : screen === 'mismascotas' ? 'Mis mascotas' : current?.label}</span>
       </div>
       {navOpen && <button className="wa-scrim" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
       <div className={navOpen ? 'wa-side wa-side-open' : 'wa-side'} style={{ width: 220, flex: '0 0 auto', borderRight: '1px solid rgb(238,236,245)', padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -2424,6 +2550,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
+          {screen === 'mismascotas' && <MisMascotas go={go} profile={profile} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>

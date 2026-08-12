@@ -8,4 +8,5 @@ export * from './notifs';
 export * from './carnet';
 export * from './prestadores';
 export * from './reintegros';
+export * from './mascotas';
 export * as data from './data';

@@ -10,7 +10,7 @@ import {
   colors,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE,
+  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -1136,12 +1136,77 @@ function Perfil({ profile, go }: { profile: Profile | null; go: (t: Screen) => v
 }
 
 /* ── Sub-pantalla: Mis mascotas ────────────────────────────────── */
-function MisMascotas({ pets, userId, reload, go, setPetIdx }: { pets: Pet[]; userId: string; reload: () => void; go: (t: Screen) => void; setPetIdx: (i: number) => void }) {
+const PET_EVENT_IC: Record<PetEvento['kind'], IconName> = { vacuna: 'shield', estudio: 'hospital', reintegro: 'wallet' };
+const PET_EVENT_TONE: Record<PetEvento['kind'], { bg: string; fg: string }> = {
+  vacuna: { bg: '#eef7d6', fg: '#5f7d10' },
+  estudio: { bg: colors.violet[100], fg: BRAND },
+  reintegro: { bg: '#e2f5ea', fg: '#2f8f5b' },
+};
+
+function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets: Pet[]; reintegros: ReintVM[]; userId: string; reload: () => void; go: (t: Screen) => void; setPetIdx: (i: number) => void }) {
+  const [selId, setSelId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [breed, setBreed] = useState('');
   const [tipo, setTipo] = useState<'perro' | 'gato'>('perro');
   const [busy, setBusy] = useState(false);
+
+  const sel = pets.find((p) => p.id === selId);
+  if (sel) {
+    const idx = pets.findIndex((p) => p.id === selId);
+    const historial = buildPetHistory({
+      vaccines: sel.vaccines.map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, appliedOn: v.appliedOn, dueOn: v.dueOn })),
+      reintegros: reintegros.filter((r) => r.pet === sel.name).map((r) => ({ id: r.id, providerName: r.place, concept: r.concept, refund: r.refund, status: r.estadoRaw, date: r.fecha })),
+    });
+    return (
+      <ScrollView contentContainerStyle={styles.screen}>
+        <BackLink label="Mis mascotas" onPress={() => setSelId(null)} />
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+          <Image source={petImg(sel.photo)} style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: colors.violet[100] }} />
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 21, color: INK }}>{sel.name}</Text>
+            <Text style={{ fontSize: 13, color: '#8781a0' }}>{sel.breed}</Text>
+            <Text style={{ fontSize: 12, color: '#a29dba', marginTop: 2 }}>Chip {sel.microchip} · Castrado: {sel.castrado}</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity onPress={() => { if (idx >= 0) setPetIdx(idx); go('carnet'); }} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginBottom: 20 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ver carnet digital</Text>
+        </TouchableOpacity>
+
+        <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Historial</Text>
+        {historial.length === 0 ? (
+          <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 26, alignItems: 'center' }}>
+            <Text style={{ fontWeight: '600', fontSize: 14.5, color: INK }}>Todavía sin movimientos</Text>
+            <Text style={{ fontSize: 12.5, color: MUTED, textAlign: 'center', marginTop: 4, lineHeight: 19 }}>Cuando cargues vacunas o pidas un reintegro de {sel.name} van a aparecer acá.</Text>
+          </View>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {historial.map((e) => {
+              const tone = PET_EVENT_TONE[e.kind];
+              return (
+                <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ic d={PET_EVENT_IC[e.kind]} size={19} color={tone.fg} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                      <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{e.title}</Text>
+                      <View style={{ backgroundColor: tone.bg, borderRadius: 100, paddingHorizontal: 7, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: tone.fg }}>{e.tag}</Text>
+                      </View>
+                    </View>
+                    <Text style={{ fontSize: 12, color: '#a29dba' }}>{e.sub}</Text>
+                  </View>
+                  <Text style={{ fontSize: 12, color: '#a29dba' }}>{fmtFechaCorta(e.date)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        )}
+      </ScrollView>
+    );
+  }
 
   const add = async () => {
     if (!name.trim()) return;
@@ -1179,10 +1244,10 @@ function MisMascotas({ pets, userId, reload, go, setPetIdx }: { pets: Pet[]; use
         </View>
       )}
       <View style={{ gap: 12 }}>
-        {pets.map((p, i) => {
+        {pets.map((p) => {
           const alDia = p.next === 'Todo al día';
           return (
-            <TouchableOpacity key={p.id} onPress={() => { setPetIdx(i); go('carnet'); }} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 14 }}>
+            <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 14 }}>
               <Image source={petImg(p.photo)} style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: colors.violet[100] }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '800', fontFamily: FH, fontSize: 17, color: INK }}>{p.name}</Text>
@@ -2205,7 +2270,7 @@ export default function App() {
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
-          {screen === 'mismascotas' && <MisMascotas pets={pets} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
+          {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
           {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} />}
