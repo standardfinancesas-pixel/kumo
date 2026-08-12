@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, FOTO_MAX,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
-  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   type CalCell, type VaccineKind,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -256,7 +256,9 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
 
   const markApplied = async (vacId: string) => {
     setBusy(true);
-    await supabase.from('vaccinations').update({ status: 'aplicada', applied_on: new Date().toISOString().slice(0, 10) }).eq('id', vacId);
+    // `due_on` se conserva: deja el registro de cuándo tocaba. Nada lo muestra
+    // una vez aplicada, pero borrarlo perdía el dato sin ganar nada.
+    await supabase.from('vaccinations').update({ status: 'aplicada', applied_on: hoyISO() }).eq('id', vacId);
     router.refresh();
     setBusy(false);
   };

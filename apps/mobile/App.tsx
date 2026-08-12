@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   colors,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
-  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   type CalCell, type VaccineKind,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -430,7 +430,9 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
 
   const markApplied = async (vacId: string) => {
     setBusy(vacId);
-    await supabase.from('vaccinations').update({ status: 'aplicada', applied_on: new Date().toISOString().slice(0, 10), due_on: null }).eq('id', vacId);
+    // Igual que la webapp: `due_on` se conserva. Antes acá se borraba, así que
+    // la misma acción dejaba la fila distinta según desde dónde la hicieras.
+    await supabase.from('vaccinations').update({ status: 'aplicada', applied_on: hoyISO() }).eq('id', vacId);
     await reload();
     setBusy(null);
   };
