@@ -65,10 +65,14 @@ export type ForumPost = { id: string; cat: string; trend: boolean; author: strin
 /** Datos del socio logueado, resueltos en el Server Component (app/page.tsx). */
 export type Profile = { id: string; firstName: string; fullName: string; memberNo: number; planName: string; planPrice: number; email: string; phone: string | null; address: string | null; dni: string | null };
 
+/** Las mismas cinco promos que la app móvil, con sus colores: eran tres y con
+ *  otras fotos, así que las dos superficies mostraban cosas distintas. */
 const promos = [
-  { title: 'Encontrá un cuidador', sub: 'Alguien de confianza', img: '/img/prestador-caregiver.webp' },
-  { title: 'Guardería para el finde', sub: 'Lugares de confianza', img: '/img/cat-guarderia.webp' },
-  { title: 'Adiestrá con expertos', sub: 'Clases y resultados', img: '/img/prestador-trainer.webp' },
+  { title: 'Buscá tu paseador', sub: 'Cerca tuyo, verificados', bg: '#5D5491', fg: '#fff', subFg: '#d8d3ec', img: '/img/dog-walk.webp' },
+  { title: 'Baño y peluquería', sub: 'A domicilio, con descuento', bg: '#E1FB62', fg: '#211E33', subFg: '#3d3a52', img: '/img/dog-bath-happy.webp' },
+  { title: 'Guardería para el finde', sub: 'Lugares de confianza', bg: '#ECE7F7', fg: '#211E33', subFg: '#6b6485', img: '/img/cat-guarderia.webp' },
+  { title: 'Adiestrá con expertos', sub: 'Clases y resultados', bg: '#E1FB62', fg: '#211E33', subFg: '#3d3a52', img: '/img/plan-dalmata-cut.webp' },
+  { title: 'Encontrá un cuidador', sub: 'Alguien de confianza', bg: '#5D5491', fg: '#fff', subFg: '#d8d3ec', img: '/img/woman-cat.webp' },
 ];
 
 /* ── Selector de mascota (chips) ───────────────────────────────── */
@@ -161,13 +165,16 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile }: { go: (s: Screen) => v
         ))}
       </div>
 
-      <div onClick={() => go('servicios')} style={{ position: 'relative', overflow: 'hidden', background: 'rgb(225,251,98)', borderRadius: 18, padding: '16px 18px', display: 'flex', alignItems: 'center', marginBottom: 22, cursor: 'pointer', minHeight: 78 }}>
+      {/* El banner, igual que en reference/kumo-prototype.html: la foto va en
+          82x82 con `contain` —entera, no recortada— apoyada abajo a la derecha
+          y con sombra. Con `cover` se veía cortada y desproporcionada. */}
+      <div onClick={() => go('servicios')} style={{ position: 'relative', overflow: 'hidden', background: promo.bg, borderRadius: 18, padding: '16px 18px', display: 'flex', alignItems: 'center', marginBottom: 22, cursor: 'pointer', minHeight: 78 }}>
         <div style={{ position: 'absolute', top: -30, right: -20, width: 120, height: 120, borderRadius: '50%', background: 'rgba(255,255,255,0.18)', pointerEvents: 'none' }} />
-        <div style={{ flex: '1 1 0%', position: 'relative', zIndex: 1 }}>
-          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 15, color: 'rgb(33,30,51)', lineHeight: 1.15 }}>{promo.title}</div>
-          <div style={{ fontSize: 12, color: 'rgb(61,58,82)', marginTop: 1 }}>{promo.sub}</div>
+        <div style={{ flex: '1 1 0%', position: 'relative', zIndex: 1, paddingRight: 96 }}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 15, color: promo.fg, lineHeight: 1.15 }}>{promo.title}</div>
+          <div style={{ fontSize: 12, color: promo.subFg, marginTop: 1 }}>{promo.sub}</div>
         </div>
-        <div key={promo.img} style={{ position: 'absolute', right: 8, bottom: 0, height: 82, width: 82, zIndex: 1, pointerEvents: 'none', filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))', background: `url(${promo.img}) right bottom/cover no-repeat`, borderRadius: 12, animation: 'kfade 0.5s ease' }} />
+        <div key={promo.img} style={{ position: 'absolute', right: 8, bottom: 0, height: 82, width: 82, zIndex: 1, pointerEvents: 'none', filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.15))', backgroundImage: `url(${promo.img})`, backgroundSize: 'contain', backgroundPosition: 'right bottom', backgroundRepeat: 'no-repeat', animation: 'kfade 0.5s ease' }} />
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 16 }}>

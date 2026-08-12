@@ -59,7 +59,7 @@ const PROMOS = [
 ];
 
 type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio';
-type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'mas';
+type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'foros';
 const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '').replace(/\D/g, ''));
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
@@ -182,13 +182,7 @@ function Inicio({ profile, pets, petIdx, setPetIdx, go }: { profile: Profile | n
   ];
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <View>
-          <Text style={{ fontSize: 13, color: colors.violet[400] }}>Hola de nuevo</Text>
-          <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{profile?.firstName ?? 'Socio'}</Text>
-        </View>
-        <TouchableOpacity style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="bell" size={21} /></TouchableOpacity>
-      </View>
+      {/* El saludo y las notificaciones ahora viven en el header fijo del shell. */}
       <PetChips pets={pets} idx={petIdx} setIdx={setPetIdx} />
       {pet ? <PetCard pet={pet} /> : <EmptyPets go={go} />}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
@@ -205,7 +199,9 @@ function Inicio({ profile, pets, petIdx, setPetIdx, go }: { profile: Profile | n
           <Text style={{ fontWeight: '800', fontFamily: FH, fontSize: 17, color: promo.fg }}>{promo.title}</Text>
           <Text style={{ fontSize: 12.5, color: promo.subFg, marginTop: 2 }}>{promo.sub}</Text>
         </View>
-        <Image source={IMG[promo.photo]} style={{ width: 120, height: 78 }} resizeMode="cover" />
+        {/* 82x82 con "contain" y apoyada abajo a la derecha, igual que el
+            prototipo: con "cover" la foto salía recortada y desproporcionada. */}
+        <Image source={IMG[promo.photo]} style={{ width: 82, height: 82, marginRight: 8, alignSelf: 'flex-end' }} resizeMode="contain" />
       </TouchableOpacity>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <TouchableOpacity onPress={() => go('carnet')} style={{ width: '47%', flexGrow: 1, height: 130, borderRadius: 14, padding: 14, justifyContent: 'space-between', backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200] }}>
@@ -512,7 +508,7 @@ function MasSheet({ onClose, onGo }: { onClose: () => void; onGo: (t: Screen) =>
     { t: 'Mis mascotas', s: 'Datos y carnet de tus peludos', icon: 'paw', fill: true, to: 'mismascotas' },
     { t: 'Mis guardados', s: 'Prestadores que guardaste', icon: 'heart', fill: true, to: 'guardados' },
     { t: 'Mi negocio', s: 'Publicá y gestioná tus servicios', icon: 'house', to: 'minegocio' },
-    { t: 'Foros', s: 'Comunidad de dueños', icon: 'chat', to: 'foros' },
+    { t: 'Mis reintegros', s: 'Pedidos y estado de cada uno', icon: 'wallet', to: 'reintegros' },
   ];
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -998,7 +994,7 @@ const TABS: { k: Tab; label: string; icon: IconName }[] = [
   { k: 'carnet', label: 'Carnet', icon: 'idcard' },
   { k: 'servicios', label: 'Servicios', icon: 'paw' },
   { k: 'beneficios', label: 'Beneficios', icon: 'tag' },
-  { k: 'mas', label: 'Más', icon: 'menu' },
+  { k: 'foros', label: 'Foros', icon: 'chat' },
 ];
 
 export default function App() {
@@ -1044,6 +1040,23 @@ export default function App() {
           </View>
         ) : (
           <>
+        {/* Header fijo: el saludo, las notificaciones y el menú. Está acá y no
+            dentro de Inicio para que el menú (Mi perfil, Mis mascotas, Mis
+            guardados, Mi negocio) siga a mano desde cualquier pantalla. */}
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 6, paddingBottom: 10 }}>
+          <View>
+            <Text style={{ fontSize: 13, color: colors.violet[400] }}>Hola de nuevo</Text>
+            <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{data.profile?.firstName ?? 'Socio'}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+              <Ic d="bell" size={21} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMasOpen(true)} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: masOpen ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+              <Ic d="menu" size={22} color={masOpen ? '#fff' : BRAND} />
+            </TouchableOpacity>
+          </View>
+        </View>
         <View style={{ flex: 1 }}>
           {screen === 'inicio' && <Inicio profile={data.profile} pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
           {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} reload={reload} go={go} />}
@@ -1058,9 +1071,9 @@ export default function App() {
         </View>
         <View style={styles.tabbar}>
           {TABS.map((t) => {
-            const active = t.k === 'mas' ? masOpen : screen === t.k && !masOpen;
+            const active = screen === t.k && !masOpen;
             return (
-              <Pressable key={t.k} onPress={() => (t.k === 'mas' ? setMasOpen(true) : go(t.k as Screen))} style={styles.tabitem}>
+              <Pressable key={t.k} onPress={() => go(t.k as Screen)} style={styles.tabitem}>
                 <View style={{ backgroundColor: active ? LIME : 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 4 }}>
                   <Ic d={t.icon} size={22} color={active ? BRAND : colors.violet[400]} fill={t.icon === 'paw' && active} />
                 </View>
