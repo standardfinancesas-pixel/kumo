@@ -474,7 +474,9 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
 
       <div style={{ padding: '0 20px' }}>
         {/* Avatar + identidad */}
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginTop: -38, marginBottom: 14, position: 'relative', zIndex: 3 }}>
+        {/* El avatar monta sobre la portada, pero no tanto: con -38 el nombre
+            arrancaba justo en el filo de la foto y se leía pegado. */}
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginTop: -26, marginBottom: 14, position: 'relative', zIndex: 3 }}>
           <div style={{ width: 84, height: 84, borderRadius: 24, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)`, flex: 'none', border: '4px solid #fff', boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }} />
           <div style={{ flex: 1, paddingBottom: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>

@@ -589,8 +589,9 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
   return (
     <View style={{ flex: 1 }}>
       <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-        {/* Portada */}
-        <View style={{ height: 132, backgroundColor: BRAND, overflow: 'hidden' }}>
+        {/* Portada. Va con las esquinas de arriba redondeadas y separada, como en
+            el prototipo: pegada al header se leía como parte de él. */}
+        <View style={{ height: 132, marginTop: 6, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: BRAND, overflow: 'hidden' }}>
           <Image source={petImg(p.photo)} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.55 }} resizeMode="cover" />
           <TouchableOpacity onPress={onVolver} style={{ position: 'absolute', top: 14, left: 16, width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 18 }}>←</Text>
@@ -599,7 +600,9 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver }: { p: ProviderVM;
 
         <View style={{ paddingHorizontal: 20 }}>
           {/* Avatar + identidad */}
-          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: -38, marginBottom: 14 }}>
+          {/* El avatar monta sobre la portada, pero no tanto: con -38 el nombre
+              arrancaba justo en el filo de la foto y se leía pegado. */}
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: -26, marginBottom: 14 }}>
             <Image source={petImg(p.photo)} style={{ width: 84, height: 84, borderRadius: 24, borderWidth: 4, borderColor: '#fff', backgroundColor: colors.violet[100] }} />
             <View style={{ flex: 1, paddingBottom: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
@@ -1601,15 +1604,17 @@ export default function App() {
           </View>
         ) : (
           <>
-        {/* Header fijo: el saludo, las notificaciones y el menú. Está acá y no
-            dentro de Inicio para que el menú (Mi perfil, Mis mascotas, Mis
-            guardados, Mi negocio) siga a mano desde cualquier pantalla. */}
+        {/* Header fijo: las notificaciones y el menú viven acá y no dentro de
+            Inicio para que sigan a mano desde cualquier pantalla. El saludo, en
+            cambio, va solo en Inicio: en las otras no aporta y se apoyaba encima
+            del contenido (se veía pegado en la ficha del prestador). */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 10, paddingBottom: 12 }}>
-          <View>
-            {/* El saludo y el nombre quedaban pegados (0 px entre las dos líneas). */}
-            <Text style={{ fontSize: 13, color: colors.violet[400], marginBottom: 4 }}>Hola de nuevo</Text>
-            <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{data.profile?.firstName ?? 'Socio'}</Text>
-          </View>
+          {screen === 'inicio' ? (
+            <View>
+              <Text style={{ fontSize: 13, color: colors.violet[400], marginBottom: 4 }}>Hola de nuevo</Text>
+              <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{data.profile?.firstName ?? 'Socio'}</Text>
+            </View>
+          ) : <View />}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TouchableOpacity onPress={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: screen === 'notif' ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="bell" size={21} color={screen === 'notif' ? '#fff' : BRAND} />
