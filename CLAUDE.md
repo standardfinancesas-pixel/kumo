@@ -42,6 +42,10 @@ la sesión de Supabase sin configurar nada:
 - `pnpm dev:web` — el sitio en el puerto 3000 (las tres secciones).
 - `pnpm dev:mobile` — la app Expo.
 - `pnpm --filter @kumo/mobile run web` — la app Expo en el navegador (puerto 8081).
+  Levantarla SIEMPRE así, en una terminal aparte: Expo espera un TTY y muere si
+  lo arranca el preview del editor (por eso `mobile-web` no está en
+  `.claude/launch.json`). El 8081 es fijo: es el puerto que espera Metro y del
+  que depende la URL de red para abrir la app en un celular.
 - `pnpm typecheck` / `pnpm lint` — chequeos.
 - `pnpm --filter @kumo/web run build` — build de producción (correrlo antes de
   deployar: hay errores que solo aparecen ahí).

@@ -5,13 +5,8 @@
       "name": "web",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev:web"],
-      "port": 3000
-    },
-    {
-      "name": "mobile-web",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@kumo/mobile", "run", "web"],
-      "port": 8081
+      "port": 3000,
+      "autoPort": false
     }
   ]
 }
