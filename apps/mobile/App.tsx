@@ -895,31 +895,138 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
 }
 
 /* ── Pantalla: Beneficios ──────────────────────────────────────── */
-function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
-  const [addr, setAddr] = useState('');
+/** Los mismos que el prototipo y que guarda la base: una letra por día, con X
+ *  para miércoles. Comparar contra "Lun/Mar/Mié" no encendía ningún chip. */
+const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+
+/* ── Ficha del beneficio ───────────────────────────────────────── */
+/** La hoja del prototipo. Antes las filas no abrían nada y los datos que la
+ *  tabla ya guardaba (días, horario, vigencia) no se veían en ningún lado. */
+function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () => void; onCarnet: () => void }) {
+  const activos = new Set(b.days);
   return (
+    <Sheet onClose={onClose}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <View style={{ width: 46, height: 46, borderRadius: 13, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={22} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>{b.name}</Text>
+          <Text style={{ fontSize: 12.5, color: '#8781a0' }}>{b.cat}</Text>
+        </View>
+        <TouchableOpacity onPress={onClose} style={{ width: 32, height: 32, borderRadius: 10, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: BRAND, fontSize: 15 }}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+        <View style={{ flex: 1, backgroundColor: '#f7f6fa', borderRadius: 14, padding: 14 }}>
+          <Text style={{ fontSize: 11, color: '#8781a0', marginBottom: 4 }}>Descuento</Text>
+          <Text style={{ fontWeight: '800', fontSize: 20, color: BRAND }}>{b.disc}</Text>
+        </View>
+        <View style={{ flex: 1, backgroundColor: '#f7f6fa', borderRadius: 14, padding: 14 }}>
+          <Text style={{ fontSize: 11, color: '#8781a0', marginBottom: 4 }}>Plan mínimo</Text>
+          <Text style={{ fontWeight: '700', fontSize: 14, color: INK, marginTop: 3 }}>{b.planRequirement}</Text>
+        </View>
+      </View>
+
+      {b.zone ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#f7f6fa', borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <Ic d="pin" size={18} />
+          <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#4a4560', flex: 1 }}>{b.zone}</Text>
+        </View>
+      ) : null}
+
+      {(b.days.length > 0 || b.hours || b.validUntil) && (
+        <View style={{ backgroundColor: '#f7f6fa', borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          {b.days.length > 0 && (
+            <>
+              <Text style={{ fontSize: 11, color: '#8781a0', marginBottom: 10, fontWeight: '700', letterSpacing: 0.4 }}>DÍAS CON DESCUENTO</Text>
+              <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                {DIAS_SEMANA.map((d) => {
+                  const on = activos.has(d);
+                  return (
+                    <View key={d} style={{ width: 32, height: 32, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: on ? BRAND : '#eeecf5' }}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: on ? '#fff' : '#c2bcd6' }}>{d}</Text>
+                    </View>
+                  );
+                })}
+              </View>
+            </>
+          )}
+          <View style={{ flexDirection: 'row', gap: 18, flexWrap: 'wrap' }}>
+            {b.hours ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Ic d="calendar" size={15} color="#8781a0" />
+                <Text style={{ fontSize: 13, color: '#4a4560', fontWeight: '600' }}>{b.hours}</Text>
+              </View>
+            ) : null}
+            {b.validUntil ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                <Ic d="calendar" size={15} color="#8781a0" />
+                <Text style={{ fontSize: 13, color: '#4a4560', fontWeight: '600' }}>Hasta {fmtFechaCorta(b.validUntil)}</Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      )}
+
+      <View style={{ backgroundColor: '#f7f6fa', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+        <Text style={{ fontSize: 11, color: '#8781a0', marginBottom: 6, fontWeight: '700', letterSpacing: 0.4 }}>¿CÓMO USAR?</Text>
+        <Text style={{ fontSize: 13.5, lineHeight: 21, color: '#4a4560' }}>
+          {b.description || `Presentá tu carnet digital en ${b.name} para acceder al descuento. Si no tenés el carnet a mano, podés mostrar esta pantalla.`}
+        </Text>
+      </View>
+
+      <TouchableOpacity onPress={onCarnet} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Mostrar carnet →</Text>
+      </TouchableOpacity>
+    </Sheet>
+  );
+}
+
+function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (t: Screen) => void }) {
+  const [q, setQ] = useState('');
+  const [buscado, setBuscado] = useState('');
+  const [selId, setSelId] = useState<string | null>(null);
+  const ql = buscado.trim().toLowerCase();
+  const list = benefits.filter((b) => !ql || `${b.name} ${b.cat} ${b.zone}`.toLowerCase().includes(ql));
+  const sel = benefits.find((b) => b.id === selId);
+
+  return (
+    <View style={{ flex: 1 }}>
     <ScrollView contentContainerStyle={styles.screen}>
       <H1>Beneficios</H1>
       <Sub>Descuentos en la red de veterinarias y pet shops</Sub>
-      {/* Mapa con pins de descuento */}
+      {/* Mapa: un pin por beneficio de la lista, tocable. Antes eran seis pines
+          fijos que no representaban ninguno en particular. */}
       <View style={{ height: 175, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#e6e3f0', marginBottom: 16 }}>
         <MapBlocks />
-        {[{ x: 30, y: 34 }, { x: 55, y: 26 }, { x: 74, y: 40 }, { x: 24, y: 62 }, { x: 48, y: 66 }, { x: 70, y: 62 }].slice(0, benefits.length).map((p, i) => (
-          <View key={i} style={{ position: 'absolute', left: `${p.x}%`, top: `${p.y}%`, transform: [{ translateX: -15 }, { translateY: -30 }] }}>
-            <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: LIME, fontWeight: '800', fontSize: 13 }}>%</Text>
-            </View>
+        {list.map((b) => {
+          const pos = pinPos(b.id);
+          return (
+            <TouchableOpacity key={b.id} onPress={() => setSelId(b.id)} style={{ position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, transform: [{ translateX: -15 }, { translateY: -30 }] }}>
+              <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: LIME }}>
+                <Text style={{ color: LIME, fontWeight: '800', fontSize: 13 }}>%</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+        {buscado ? (
+          <View style={{ position: 'absolute', left: '50%', top: '50%', transform: [{ translateX: -9 }, { translateY: -9 }] }}>
+            <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#2a78d6', borderWidth: 3, borderColor: '#fff' }} />
           </View>
-        ))}
+        ) : null}
       </View>
-      {/* Buscar por dirección */}
+      {/* No hay geolocalización: los beneficios no tienen coordenadas (solo zona),
+          así que se busca por zona, nombre o rubro. */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingHorizontal: 14 }}>
           <Ic d="pin" size={17} color={colors.violet[400]} />
-          <TextInput value={addr} onChangeText={setAddr} placeholder="Ingresá tu dirección" placeholderTextColor={colors.violet[400]} style={{ flex: 1, paddingVertical: 12, fontSize: 14, color: INK }} />
+          <TextInput value={q} onChangeText={setQ} onSubmitEditing={() => setBuscado(q)} placeholder="Buscá por zona, local o rubro" placeholderTextColor={colors.violet[400]} style={{ flex: 1, paddingVertical: 12, fontSize: 14, color: INK }} />
+          {buscado ? <TouchableOpacity onPress={() => { setQ(''); setBuscado(''); }}><Text style={{ color: '#a29dba', fontSize: 18 }}>×</Text></TouchableOpacity> : null}
         </View>
-        <TouchableOpacity style={{ backgroundColor: BRAND, borderRadius: 14, paddingHorizontal: 20, justifyContent: 'center' }}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Buscar</Text></TouchableOpacity>
+        <TouchableOpacity onPress={() => setBuscado(q)} style={{ backgroundColor: BRAND, borderRadius: 14, paddingHorizontal: 20, justifyContent: 'center' }}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Buscar</Text></TouchableOpacity>
       </View>
+      {buscado ? <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Beneficios en «{buscado}»</Text> : null}
       {/* Banner "mostrá tu carnet" */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: BRAND, borderRadius: 18, padding: 16, marginBottom: 18 }}>
         <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="tag" size={22} color={INK} /></View>
@@ -928,19 +1035,31 @@ function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
           <Text style={{ fontSize: 12, color: colors.violet[300] }}>Presentá el carnet digital en cada local</Text>
         </View>
       </View>
-      <View style={{ gap: 12 }}>
-        {benefits.map((b) => (
-          <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14 }}>
-            <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={20} /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{b.name}</Text>
-              <Text style={{ fontSize: 12.5, color: colors.violet[400] }}>{b.cat}</Text>
-            </View>
-            <View style={{ backgroundColor: LIME, borderRadius: 100, paddingVertical: 6, paddingHorizontal: 12 }}><Text style={{ fontWeight: '800', fontFamily: FH, fontSize: 14, color: INK }}>{b.disc}</Text></View>
+      {list.length === 0 ? (
+        <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 26, alignItems: 'center' }}>
+          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <Ic d="tag" size={22} />
           </View>
-        ))}
-      </View>
+          <Text style={{ fontWeight: '600', fontSize: 14.5, color: INK }}>{buscado ? `Sin beneficios para «${buscado}»` : 'Todavía no hay beneficios activos'}</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED, textAlign: 'center', marginTop: 4, lineHeight: 19 }}>{buscado ? 'Probá con otra zona o rubro.' : 'El club los va cargando a medida que suma comercios a la red.'}</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {list.map((b) => (
+            <TouchableOpacity key={b.id} onPress={() => setSelId(b.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={20} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{b.name}</Text>
+                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{b.cat}{b.zone ? ` · ${b.zone}` : ''}</Text>
+              </View>
+              <View style={{ backgroundColor: LIME, borderRadius: 9, paddingVertical: 6, paddingHorizontal: 12 }}><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{b.disc}</Text></View>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </ScrollView>
+    {sel && <BeneficioFicha b={sel} onClose={() => setSelId(null)} onCarnet={() => { setSelId(null); go('carnet'); }} />}
+    </View>
   );
 }
 
@@ -1883,7 +2002,7 @@ export default function App() {
           {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} reload={reload} go={go} />}
           {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
-          {screen === 'beneficios' && <Beneficios benefits={data.benefits} />}
+          {screen === 'beneficios' && <Beneficios benefits={data.benefits} go={go} />}
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}

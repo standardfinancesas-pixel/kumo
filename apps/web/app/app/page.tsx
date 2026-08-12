@@ -98,9 +98,13 @@ function benefitIcon(category: string): BenefitVM['icon'] {
   if (/consulta|cirug/.test(c)) return 'cross';
   return 'tag';
 }
-type BenefitRow = { id: string; name: string; category: string; discount: string };
+type BenefitRow = { id: string; name: string; category: string; discount: string; description: string; zone: string; days: string[]; hours: string; valid_until: string | null; plan_requirement: string };
 function mapBenefit(row: BenefitRow): BenefitVM {
-  return { id: row.id, name: row.name, category: row.category, discount: row.discount, icon: benefitIcon(row.category) };
+  return {
+    id: row.id, name: row.name, category: row.category, discount: row.discount, icon: benefitIcon(row.category),
+    description: row.description ?? '', zone: row.zone ?? '', days: row.days ?? [], hours: row.hours ?? '',
+    validUntil: row.valid_until, planRequirement: row.plan_requirement,
+  };
 }
 
 type AnswerRow = { text: string; likes: number; best: boolean; created_at: string; author_name: string };
@@ -237,7 +241,7 @@ export default async function Page() {
       }
     : null;
 
-  const { data: benefitRows } = await supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo');
+  const { data: benefitRows } = await supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo');
   const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow));
 
   const { data: postRows } = await supabase

@@ -19,7 +19,12 @@ export type ProviderVM = {
   // Los usa la ficha del prestador.
   about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
 };
-export type BenefitVM = { id: string; name: string; cat: string; disc: string; icon: 'hospital' | 'store' | 'pill' | 'droplet' };
+/** La ficha del beneficio usa todo lo que la tabla ya guardaba y no se mostraba:
+ *  descripción, zona, días, horario y vigencia. */
+export type BenefitVM = {
+  id: string; name: string; cat: string; disc: string; icon: 'hospital' | 'store' | 'pill' | 'droplet';
+  description: string; zone: string; days: string[]; hours: string; validUntil: string | null; planRequirement: string;
+};
 /** El detalle necesita bastante más que la tarjeta del historial: el seguimiento,
  *  el comprobante y los datos de acreditación. */
 export type ReintVM = {
@@ -123,7 +128,7 @@ export function useKumoData(userId: string | null) {
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
-      supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo'),
+      supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, replies, likes, created_at, author_name').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
@@ -177,6 +182,8 @@ export function useKumoData(userId: string | null) {
 
     const benefits: BenefitVM[] = (benefRes.data ?? []).map((b) => ({
       id: b.id, name: b.name, cat: b.category, disc: b.discount, icon: benefitIcon(b.category),
+      description: b.description ?? '', zone: b.zone ?? '', days: b.days ?? [], hours: b.hours ?? '',
+      validUntil: b.valid_until, planRequirement: b.plan_requirement,
     }));
 
     const reintegros: ReintVM[] = (reintRes.data ?? []).map((r) => {

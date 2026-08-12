@@ -56,7 +56,12 @@ export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; st
 export type Pet = { id: string; name: string; plan: string; socio: string; photo: string; breed: string; microchip: string; castrado: string; odonto: string; vaccines: Vac[] };
 export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
 export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; verificado: boolean; badge?: string };
-export type BenefitVM = { id: string; name: string; category: string; discount: string; icon: 'cross' | 'store' | 'tag' | 'droplet' };
+/** La ficha del beneficio necesita todo lo que la tabla ya guardaba y no se usaba:
+ *  descripción, zona, días, horario y vigencia. */
+export type BenefitVM = {
+  id: string; name: string; category: string; discount: string; icon: 'cross' | 'store' | 'tag' | 'droplet';
+  description: string; zone: string; days: string[]; hours: string; validUntil: string | null; planRequirement: string;
+};
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number };
 export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: { author: string; when: string; text: string; likes: number; best: boolean }[] };
@@ -1229,12 +1234,98 @@ const storeIcon = <><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d
 const tagIcon = <><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.8z" /><circle cx="7.5" cy="7.5" r="1.2" /></>;
 const dropletIcon = <path d="M12 3s6 5.7 6 10a6 6 0 0 1-12 0c0-4.3 6-10 6-10z" />;
 const benefitIcons: Record<BenefitVM['icon'], ReactNode> = { cross: crossIcon, store: storeIcon, tag: tagIcon, droplet: dropletIcon };
-const benefPins = [{ left: '38%', top: '30%' }, { left: '78%', top: '26%' }, { left: '28%', top: '52%' }, { left: '58%', top: '52%' }, { left: '86%', top: '52%' }];
 
-function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
+/** Los mismos que el prototipo y que guarda la base: una letra por día, con X
+ *  para miércoles. Comparar contra "Lun/Mar/Mié" no encendía ningún chip. */
+const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
+const relojIcon = <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3.5 2" /></>;
+const calIcon = <><rect x="3" y="5" width="18" height="16" rx="2.5" /><line x1="3" y1="10" x2="21" y2="10" /><line x1="8" y1="3" x2="8" y2="7" /><line x1="16" y1="3" x2="16" y2="7" /></>;
+
+/* ── Ficha del beneficio ───────────────────────────────────────── */
+/** La hoja del prototipo. Antes las filas tenían `cursor:pointer` y no abrían
+ *  nada, y los datos que la tabla ya guardaba (días, horario, vigencia) no se
+ *  mostraban en ningún lado. */
+function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () => void; onCarnet: () => void }) {
+  const activos = new Set(b.days);
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
+        <div style={{ width: 46, height: 46, borderRadius: 13, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#5D5491' }}>{ic(benefitIcons[b.icon], false, 22)}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18 }}>{b.name}</div>
+          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)' }}>{b.category}</div>
+        </div>
+        <button onClick={onClose} aria-label="Cerrar" style={{ background: 'rgb(240,237,249)', border: 'none', width: 32, height: 32, borderRadius: 10, cursor: 'pointer', color: '#5D5491', fontSize: 15, flex: 'none' }}>✕</button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <div style={{ flex: 1, background: 'rgb(247,246,250)', borderRadius: 14, padding: 14 }}>
+          <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginBottom: 4 }}>Descuento</div>
+          <div style={{ fontWeight: 800, fontSize: 20, color: '#5D5491' }}>{b.discount}</div>
+        </div>
+        <div style={{ flex: 1, background: 'rgb(247,246,250)', borderRadius: 14, padding: 14 }}>
+          <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginBottom: 4 }}>Plan mínimo</div>
+          <div style={{ fontWeight: 700, fontSize: 14, marginTop: 3 }}>{b.planRequirement}</div>
+        </div>
+      </div>
+
+      {b.zone && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(247,246,250)', borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <span style={{ color: '#5D5491', flex: 'none' }}>{ic(pinDropPath, false, 18)}</span>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(74,69,96)' }}>{b.zone}</div>
+        </div>
+      )}
+
+      {(b.days.length > 0 || b.hours || b.validUntil) && (
+        <div style={{ background: 'rgb(247,246,250)', borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          {b.days.length > 0 && (
+            <>
+              <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginBottom: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Días con descuento</div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                {DIAS_SEMANA.map((d) => {
+                  const on = activos.has(d);
+                  return <span key={d} style={{ width: 32, height: 32, borderRadius: 9, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, flex: 'none', background: on ? 'rgb(93,84,145)' : 'rgb(238,236,245)', color: on ? '#fff' : 'rgb(194,188,214)' }}>{d}</span>;
+                })}
+              </div>
+            </>
+          )}
+          <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+            {b.hours && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ color: 'rgb(135,129,160)', flex: 'none' }}>{ic(relojIcon, false, 15)}</span>
+                <span style={{ fontSize: 13, color: 'rgb(74,69,96)', fontWeight: 600 }}>{b.hours}</span>
+              </div>
+            )}
+            {b.validUntil && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span style={{ color: 'rgb(135,129,160)', flex: 'none' }}>{ic(calIcon, false, 15)}</span>
+                <span style={{ fontSize: 13, color: 'rgb(74,69,96)', fontWeight: 600 }}>Hasta {fmtFechaCorta(b.validUntil)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: 'rgb(247,246,250)', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+        <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginBottom: 6, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>¿Cómo usar?</div>
+        <div style={{ fontWeight: 500, fontSize: 13.5, lineHeight: 1.6, color: 'rgb(74,69,96)' }}>
+          {b.description || `Presentá tu carnet digital en ${b.name} para acceder al descuento. Si no tenés el carnet a mano, podés mostrar esta pantalla.`}
+        </div>
+      </div>
+
+      <button onClick={onCarnet} style={{ ...sheetBtn(true), width: '100%' }}>Mostrar carnet →</button>
+    </Sheet>
+  );
+}
+
+function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (s: Screen) => void }) {
   const [q, setQ] = useState('');
-  const ql = q.trim().toLowerCase();
-  const list = benefits.filter((b) => !ql || `${b.name} ${b.category}`.toLowerCase().includes(ql));
+  const [buscado, setBuscado] = useState('');
+  const [selId, setSelId] = useState<string | null>(null);
+  const ql = buscado.trim().toLowerCase();
+  const list = benefits.filter((b) => !ql || `${b.name} ${b.category} ${b.zone}`.toLowerCase().includes(ql));
+  const sel = benefits.find((b) => b.id === selId);
+  const buscar = () => setBuscado(q);
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Beneficios</div>
@@ -1248,23 +1339,39 @@ function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
           <rect x="20" y="112" width="86" height="60" rx="4" fill="#dfe2ea" /><rect x="128" y="106" width="66" height="70" rx="4" fill="#dfe2ea" /><rect x="214" y="112" width="86" height="66" rx="4" fill="#dfe2ea" />
           <path d="M0 90 H320 M0 98 H320" stroke="#cfd3de" strokeWidth="8" /><path d="M112 0 V200 M206 0 V200" stroke="#cfd3de" strokeWidth="8" /><path d="M0 94 H320" stroke="#fff" strokeWidth="1" strokeDasharray="6 6" />
         </svg>
-        {benefPins.map((slot, i) => (
-          <div key={i} style={{ position: 'absolute', left: slot.left, top: slot.top, transform: 'translate(-50%, -100%)', zIndex: 2, animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both' } as CSSProperties}>
-            <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)' }}>
-              <span style={{ transform: 'rotate(-45deg)', color: 'rgb(225,251,98)', fontWeight: 800, fontSize: 13 }}>%</span>
-            </div>
+        {/* Un pin por beneficio de la lista, tocable y con la pulsación del
+            prototipo. Antes eran cinco pines fijos que no representaban nada. */}
+        {list.map((b, i) => {
+          const pos = pinPos(b.id);
+          return (
+            <button key={b.id} onClick={() => setSelId(b.id)} title={`${b.name} · ${b.discount}`} style={{ position: 'absolute', left: pos.left, top: pos.top, transform: 'translate(-50%, -100%)', zIndex: 2, background: 'none', border: 'none', padding: 0, cursor: 'pointer', animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both', animationDelay: `${i * 0.08}s` } as CSSProperties}>
+              <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)', animation: 'kpulse 2.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` } as CSSProperties}>
+                <span style={{ transform: 'rotate(-45deg)', color: 'rgb(225,251,98)', fontWeight: 800, fontSize: 13 }}>%</span>
+              </div>
+            </button>
+          );
+        })}
+        {/* El punto azul aparece recién cuando el socio buscó, como en el prototipo. */}
+        {buscado && (
+          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 3 }}>
+            <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgb(42,120,214)', border: '3px solid #fff', boxShadow: '0 0 0 6px rgba(42,120,214,0.2)' }} />
           </div>
-        ))}
+        )}
       </div>
 
       {/* Buscar dirección */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <div style={{ flex: '1 1 0%', display: 'flex', alignItems: 'center', gap: 9, background: 'rgb(247,246,250)', border: '1.5px solid rgb(238,236,245)', borderRadius: 14, padding: '11px 14px' }}>
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z" /><circle cx="12" cy="11" r="2.2" /></svg>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ingresá tu dirección" style={{ flex: '1 1 0%', border: 'none', outline: 'none', background: 'none', fontSize: 14, fontFamily: '"DM Sans"', color: 'rgb(33,30,51)' }} />
+          {/* No hay geolocalización: los beneficios no tienen coordenadas (solo
+              zona), así que se busca por zona, nombre o rubro. */}
+          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') buscar(); }} placeholder="Buscá por zona, local o rubro" style={{ flex: '1 1 0%', border: 'none', outline: 'none', background: 'none', fontSize: 14, fontFamily: '"DM Sans"', color: 'rgb(33,30,51)' }} />
+          {buscado && <button onClick={() => { setQ(''); setBuscado(''); }} aria-label="Limpiar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(162,157,186)', fontSize: 18, lineHeight: 1, padding: 0 }}>×</button>}
         </div>
-        <button style={{ flex: '0 0 auto', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '0 22px', borderRadius: 14, cursor: 'pointer' }}>Buscar</button>
+        <button onClick={buscar} style={{ flex: '0 0 auto', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '0 22px', borderRadius: 14, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Buscar</button>
       </div>
+
+      {buscado && <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Beneficios en «{buscado}»</div>}
 
       {/* Banner carnet */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgb(93,84,145)', borderRadius: 18, padding: '16px 18px', marginBottom: 18 }}>
@@ -1280,19 +1387,27 @@ function Beneficios({ benefits }: { benefits: BenefitVM[] }) {
       {/* Lista */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {list.map((b) => (
-          <div key={b.id} className="wa-card" style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 14, cursor: 'pointer' }}>
-            <div style={{ width: 44, height: 44, borderRadius: 12, background: '#fff', border: '1px solid rgb(238,236,245)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#5D5491" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{benefitIcons[b.icon]}</svg>
+          <button key={b.id} className="wa-card" onClick={() => setSelId(b.id)} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '12px 14px', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: '#fff', border: '1px solid rgb(238,236,245)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto', color: '#5D5491' }}>
+              {ic(benefitIcons[b.icon], false, 21)}
             </div>
             <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-              <div style={{ fontWeight: 700, fontSize: 15, color: 'rgb(33,30,51)' }}>{b.name}</div>
-              <div style={{ fontSize: 12.5, color: 'rgb(162,157,186)' }}>{b.category}</div>
+              <div style={{ fontWeight: 600, fontSize: 14, color: 'rgb(33,30,51)' }}>{b.name}</div>
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{b.category}{b.zone ? ` · ${b.zone}` : ''}</div>
             </div>
-            <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 800, fontSize: 14, padding: '6px 12px', borderRadius: 100, flex: '0 0 auto' }}>{b.discount}</span>
-          </div>
+            <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 14, padding: '6px 12px', borderRadius: 9, flex: '0 0 auto' }}>{b.discount}</span>
+          </button>
         ))}
-        {list.length === 0 && <div style={{ color: 'rgb(135,129,160)', fontSize: 14, padding: '10px 2px' }}>Sin resultados para “{q}”.</div>}
+        {list.length === 0 && (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 26, textAlign: 'center' }}>
+            <div style={{ width: 46, height: 46, borderRadius: 14, background: 'rgb(240,237,249)', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D5491' }}>{ic(tagIcon, false, 22)}</div>
+            <div style={{ fontWeight: 600, fontSize: 14.5 }}>{buscado ? `Sin beneficios para «${buscado}»` : 'Todavía no hay beneficios activos'}</div>
+            <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 4, lineHeight: 1.45 }}>{buscado ? 'Probá con otra zona o rubro.' : 'El club los va cargando a medida que suma comercios a la red.'}</div>
+          </div>
+        )}
       </div>
+
+      {sel && <BeneficioFicha b={sel} onClose={() => setSelId(null)} onCarnet={() => { setSelId(null); go('carnet'); }} />}
     </div>
   );
 }
@@ -2031,7 +2146,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
           {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} />}
-          {screen === 'beneficios' && <Beneficios benefits={benefits} />}
+          {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} />}
