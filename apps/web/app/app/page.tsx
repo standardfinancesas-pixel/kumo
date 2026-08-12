@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, type NotifInput, type VaccineKind } from '@kumo/shared';
+import { urls, diasHasta, type NotifInput, type VaccineKind } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
@@ -12,11 +12,10 @@ function fmtDate(iso: string | null): string {
   const d = new Date(iso + 'T00:00:00');
   return `${String(d.getDate()).padStart(2, '0')} ${MESES[d.getMonth()]} ${d.getFullYear()}`;
 }
+/** Ojo: esto corre en el servidor (Vercel, en UTC), así que el "hoy" tiene que
+ *  venir del calendario argentino y no del reloj de la máquina. */
 function daysUntil(iso: string | null): number | null {
-  if (!iso) return null;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return Math.round((new Date(iso + 'T00:00:00').getTime() - today.getTime()) / 86400000);
+  return iso ? diasHasta(iso) : null;
 }
 
 type VaccinationRow = { id: string; name: string; kind: VaccineKind; status: string; applied_on: string | null; due_on: string | null };

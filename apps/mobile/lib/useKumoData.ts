@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { NotifInput, VaccineKind } from '@kumo/shared';
+import { diasHasta, type NotifInput, type VaccineKind } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -50,11 +50,7 @@ function fmtShort(iso: string | null): string {
   const d = asDate(iso);
   return `${String(d.getDate()).padStart(2, '0')} ${MESES[d.getMonth()]}`;
 }
-function daysUntil(iso: string | null): number | null {
-  if (!iso) return null;
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  return Math.round((asDate(iso).getTime() - today.getTime()) / 86400000);
-}
+const daysUntil = (iso: string | null): number | null => (iso ? diasHasta(iso) : null);
 function relTime(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
   if (mins < 60) return `hace ${Math.max(mins, 1)} min`;

@@ -59,7 +59,7 @@ create table if not exists profiles (
   birth_date   date,
   plan_id      uuid,
   status       member_status not null default 'activo',
-  joined_on    date        not null default current_date,
+  joined_on    date        not null default (now() at time zone 'America/Argentina/Buenos_Aires')::date,
   created_at   timestamptz not null default now()
 );
 
@@ -151,7 +151,7 @@ create table if not exists reimbursements (
   refund         integer not null,
   refund_pct     integer not null,
   status         reimbursement_status not null default 'en_revision',
-  requested_on   date not null default current_date,
+  requested_on   date not null default (now() at time zone 'America/Argentina/Buenos_Aires')::date,
   receipt_no     text,
   -- Path dentro del bucket privado 'receipts' (ver migración de comprobantes).
   receipt_path   text,

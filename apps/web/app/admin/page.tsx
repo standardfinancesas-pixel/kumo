@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls } from '@kumo/shared';
+import { urls, mesActualISO } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, {
   type AdminProfile, type KpiVM, type DistRow, type SocioRow, type ColaRow, type HistRow,
@@ -50,8 +50,10 @@ export default async function Page() {
   const totalSocios = socioList.length;
   const activos = socioList.filter((s) => s.status === 'activo').length;
   const bajas = socioList.filter((s) => s.status === 'baja').length;
-  const startOfMonth = new Date(); startOfMonth.setDate(1); startOfMonth.setHours(0, 0, 0, 0);
-  const nuevosEsteMes = socioList.filter((s) => s.joined_on && new Date(s.joined_on) >= startOfMonth).length;
+  // El mes arranca según el calendario argentino: acá corre en UTC, y el 1° antes
+  // de las 21:00 de Buenos Aires el servidor todavía cree que es el mes anterior.
+  const inicioDeMes = mesActualISO();
+  const nuevosEsteMes = socioList.filter((s) => s.joined_on && s.joined_on >= inicioDeMes).length;
   const mrr = socioList.filter((s) => s.status === 'activo').reduce((acc, s) => acc + (planOf(s)?.base_price ?? 0), 0);
   const churnPct = totalSocios > 0 ? Math.round((bajas / totalSocios) * 1000) / 10 : 0;
 

@@ -6,6 +6,7 @@
  * a reference/kumo-prototype.html.
  */
 
+import { diasHasta } from './fechas';
 import type { VaccineKind } from './types';
 
 export const VACUNA_KINDS: VaccineKind[] = ['Vacuna', 'Estudio', 'Antiparasitario'];
@@ -57,24 +58,6 @@ export const fmtFechaCorta = (iso: string) => {
 };
 
 const iso = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-
-/**
- * Hoy según el reloj del socio.
- *
- * No usar `toISOString().slice(0,10)`: eso da la fecha en UTC y en Argentina
- * (UTC-3) después de las 21:00 devuelve el día siguiente, así que una vacuna
- * aplicada a la noche quedaba registrada un día después.
- */
-export function hoyISO(): string {
-  const d = new Date();
-  return iso(d.getFullYear(), d.getMonth(), d.getDate());
-}
-
-function diasHasta(fecha: string): number {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-  return Math.round((new Date(fecha + 'T00:00:00').getTime() - hoy.getTime()) / 86400000);
-}
 
 /**
  * Arma las celdas del mes: los huecos iniciales para que el 1 caiga en su día de

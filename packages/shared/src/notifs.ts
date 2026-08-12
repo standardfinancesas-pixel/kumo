@@ -7,6 +7,8 @@
  * una armaba su propia lista, terminaron mostrando cosas distintas.
  */
 
+import { diasHasta } from './fechas';
+
 export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision';
 
 export type Notif = {
@@ -38,7 +40,6 @@ const money = (n: number) => '$' + n.toLocaleString('es-AR');
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const asDate = (iso: string) => new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
 const fmtDia = (iso: string) => { const d = asDate(iso); return `${d.getDate()} ${MESES[d.getMonth()]}`; };
-const diasHasta = (iso: string) => Math.ceil((asDate(iso).getTime() - Date.now()) / 86400000);
 
 /** "Recién", "Hace 2 h", "Ayer", "Hace 3 días". */
 export function notifTiempo(iso: string): string {
