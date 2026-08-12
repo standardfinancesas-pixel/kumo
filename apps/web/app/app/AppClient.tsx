@@ -7,7 +7,7 @@ import {
   urls, FOTO_TIPOS, FOTO_MAX,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  ratingLabel, reviewTiempo,
+  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -930,24 +930,153 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
 }
 
 /* ── Pantalla: Reintegros ──────────────────────────────────────── */
-export type Reint = { id: string; place: string; detail: string; spent: number; refund: number; status: 'Acreditado' | 'Aprobado' | 'En revisión' | 'Rechazado' };
+export type ReintStatus = 'Acreditado' | 'Aprobado' | 'En revisión' | 'Rechazado';
+/** El detalle del reintegro necesita bastante más que la tarjeta del historial:
+ *  el seguimiento, el comprobante y los datos de acreditación. */
+export type Reint = {
+  id: string; place: string; concept: string; detail: string; fecha: string;
+  spent: number; refund: number; refundPct: number;
+  status: ReintStatus; statusRaw: string; requestedOn: string;
+  pet: string; receiptNo: string | null; receiptPath: string | null;
+  bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
+};
 const m$ = (n: number) => '$' + n.toLocaleString('es-AR');
 
-function Reintegros({ initialReintegros, planName, memberId }: { initialReintegros: Reint[]; planName: string; memberId: string }) {
+const reintTone = (raw: string) => REINT_TONE[raw] ?? REINT_TONE.en_revision!;
+const upIcon = <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5-5 5 5" /><line x1="12" y1="5" x2="12" y2="16" /></>;
+const infoIcon = <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><line x1="12" y1="8" x2="12" y2="8" /></>;
+const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU en hasta 30 días hábiles. Podés pedir 1 reintegro de consultas cada 2 meses.';
+
+/* ── Detalle de un reintegro ───────────────────────────────────── */
+/** Montos, seguimiento, comprobante y datos de acreditación. Antes el historial
+ *  no se podía abrir: la tarjeta era el final del camino. */
+function ReintegroDetalle({ r, planName, onVolver }: { r: Reint; planName: string; onVolver: () => void }) {
+  const [verBusy, setVerBusy] = useState(false);
+  const tone = reintTone(r.statusRaw);
+  const pasos = reintPasos(r.statusRaw, r.fecha);
+
+  /** El bucket es privado: se pide una URL firmada corta y se abre. */
+  const verComprobante = async () => {
+    if (!r.receiptPath) return;
+    setVerBusy(true);
+    const { data } = await supabase.storage.from('receipts').createSignedUrl(r.receiptPath, 300);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener');
+    setVerBusy(false);
+  };
+
+  const meta: { k: string; v: string }[] = [
+    { k: 'Mascota', v: r.pet },
+    { k: 'Concepto', v: r.concept },
+    ...(r.bank.holder ? [{ k: 'Titular', v: r.bank.holder }] : []),
+    ...(r.bank.dni ? [{ k: 'DNI', v: r.bank.dni }] : []),
+    ...(r.bank.cuit ? [{ k: 'CUIT / CUIL', v: r.bank.cuit }] : []),
+    ...(r.bank.name ? [{ k: 'Banco', v: r.bank.name }] : []),
+    ...(r.bank.cbu ? [{ k: 'CBU / CVU destino', v: r.bank.cbu }] : []),
+    ...(r.bank.alias ? [{ k: 'Alias', v: r.bank.alias }] : []),
+  ];
+
+  return (
+    <div style={{ padding: '8px 20px 24px' }}>
+      <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 6 }}>← Reintegros</button>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+        <div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, lineHeight: 1.15 }}>{r.place}</div>
+          <div style={{ fontSize: 13, color: 'rgb(162,157,186)', marginTop: 2 }}>{r.concept} · {r.fecha}</div>
+        </div>
+        <span style={{ background: tone.bg, color: tone.fg, fontWeight: 700, fontSize: 11, padding: '5px 11px', borderRadius: 100, whiteSpace: 'nowrap', marginTop: 2 }}>{r.status}</span>
+      </div>
+
+      {/* Montos */}
+      <div style={{ background: 'rgb(93,84,145)', borderRadius: 18, padding: '18px 20px', color: '#fff', marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid rgba(255,255,255,0.14)' }}>
+          <div>
+            <div style={{ color: 'rgb(201,195,227)', fontSize: 12 }}>{r.statusRaw === 'acreditado' ? 'Reintegro acreditado' : r.statusRaw === 'rechazado' ? 'Reintegro solicitado' : 'Reintegro estimado'}</div>
+            <div style={{ fontSize: 11, color: 'rgb(167,159,206)' }}>{r.refundPct}% del gasto · plan {planName}</div>
+          </div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 30, color: 'rgb(225,251,98)' }}>{m$(r.refund)}</div>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13 }}>
+          <span style={{ color: 'rgb(201,195,227)' }}>Total gastado</span><span style={{ fontWeight: 600 }}>{m$(r.spent)}</span>
+        </div>
+      </div>
+
+      {/* Seguimiento */}
+      <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '16px 18px', marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 14 }}>Seguimiento</div>
+        {pasos.map((p, i) => (
+          <div key={p.label} style={{ display: 'flex', gap: 12 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <div style={{ width: 22, height: 22, borderRadius: '50%', flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: p.done ? 'rgb(93,84,145)' : 'rgb(224,220,236)' }}>
+                {p.done && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>}
+              </div>
+              {i < pasos.length - 1 && <div style={{ width: 2, flex: 1, minHeight: 16, background: pasos[i + 1]!.done ? 'rgb(93,84,145)' : 'rgb(224,220,236)' }} />}
+            </div>
+            <div style={{ paddingBottom: 16 }}>
+              <div style={{ fontWeight: 600, fontSize: 13.5, color: p.done ? 'rgb(33,30,51)' : 'rgb(162,157,186)' }}>{p.label}</div>
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{pasoWhen(p)}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Comprobante */}
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>Comprobante</div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '12px 14px', marginBottom: 16 }}>
+        <div style={{ width: 48, height: 60, borderRadius: 8, background: 'repeating-linear-gradient(135deg, #ece9f5, #ece9f5 6px, #e2ddf0 6px, #e2ddf0 12px)', border: '1px solid rgb(222,217,236)', flex: 'none', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', paddingBottom: 5 }}>
+          <span style={{ fontSize: 8, color: 'rgb(135,129,160)', fontFamily: 'ui-monospace, monospace' }}>{(r.receiptPath?.split('.').pop() ?? 'DOC').toUpperCase().slice(0, 4)}</span>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontWeight: 600, fontSize: 13.5 }}>{r.receiptNo ? `Factura ${r.receiptNo}` : 'Comprobante cargado'}</div>
+          <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>Ticket fiscal · {m$(r.spent)}</div>
+        </div>
+        {r.receiptPath
+          ? <button onClick={verComprobante} disabled={verBusy} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: '"DM Sans"' }}>{verBusy ? 'Abriendo…' : 'Ver'}</button>
+          : <span style={{ color: 'rgb(162,157,186)', fontSize: 12.5 }}>Sin archivo</span>}
+      </div>
+
+      {/* Datos */}
+      <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '6px 16px', marginBottom: 16 }}>
+        {meta.map((m, i) => (
+          <div key={m.k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '11px 0', borderBottom: i === meta.length - 1 ? 'none' : '1px solid rgb(238,236,245)', fontSize: 13.5 }}>
+            <span style={{ color: 'rgb(135,129,160)' }}>{m.k}</span><span style={{ fontWeight: 600, textAlign: 'right', wordBreak: 'break-all' }}>{m.v}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgb(240,237,249)', borderRadius: 14, padding: '13px 15px' }}>
+        <span style={{ color: '#5D5491', flex: 'none', marginTop: 1 }}>{ic(infoIcon, false, 18)}</span>
+        <span style={{ fontSize: 12.5, color: 'rgb(91,86,112)', lineHeight: 1.5 }}>{NOTA_REINT}</span>
+      </div>
+    </div>
+  );
+}
+
+/* ── Pantalla: Reintegros ──────────────────────────────────────── */
+function Reintegros({ initialReintegros, planName, memberId, pets }: { initialReintegros: Reint[]; planName: string; memberId: string; pets: Pet[] }) {
   const router = useRouter();
   const items = initialReintegros;
+  const [selId, setSelId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [enviado, setEnviado] = useState(false);
   const [place, setPlace] = useState('');
   const [detail, setDetail] = useState('');
   const [spent, setSpent] = useState('');
+  const [petId, setPetId] = useState(pets[0]?.id ?? '');
+  const [titular, setTitular] = useState('');
+  const [cuit, setCuit] = useState('');
+  const [cbu, setCbu] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const total = items.filter((i) => i.status === 'Acreditado').reduce((a, i) => a + i.refund, 0);
 
+  const sel = items.find((i) => i.id === selId);
+  if (sel) return <ReintegroDetalle r={sel} planName={planName} onVolver={() => setSelId(null)} />;
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!file) { setError('Adjuntá la foto de la factura.'); return; }
+    if (!file) { setError('Cargá la factura: sin comprobante el club no puede validar el gasto.'); return; }
+    if (!titular.trim() || !cbu.trim()) { setError('Completá el titular y el CBU/CVU o alias: son los datos con los que se acredita.'); return; }
     const s = Number(spent) || 0;
     setBusy(true);
     setError('');
@@ -964,8 +1093,12 @@ function Reintegros({ initialReintegros, planName, memberId }: { initialReintegr
     }
 
     const { error: insErr } = await supabase.from('reimbursements').insert({
-      member_id: memberId, plan_name: planName, provider_name: place || 'Comprobante', concept: detail || 'Comprobante',
+      member_id: memberId, pet_id: petId || null, plan_name: planName,
+      provider_name: place || 'Comprobante', concept: detail || 'Comprobante',
       amount: s, refund: Math.round(s * 0.5), refund_pct: 50, status: 'en_revision', receipt_path: path,
+      bank_holder: titular.trim() || null, bank_cuit: cuit.trim() || null,
+      // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
+      ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
     });
     if (insErr) {
       // Si falla la solicitud, no dejamos el archivo huérfano en el bucket.
@@ -975,67 +1108,117 @@ function Reintegros({ initialReintegros, planName, memberId }: { initialReintegr
       return;
     }
 
-    setPlace(''); setDetail(''); setSpent(''); setFile(null); setOpen(false);
+    setPlace(''); setDetail(''); setSpent(''); setTitular(''); setCuit(''); setCbu(''); setFile(null);
+    setOpen(false); setEnviado(true);
     router.refresh();
     setBusy(false);
   };
 
-  const badge = (st: Reint['status']): { bg: string; fg: string } => {
-    if (st === 'Acreditado' || st === 'Aprobado') return { bg: 'rgb(226,245,234)', fg: 'rgb(47,143,91)' };
-    if (st === 'Rechazado') return { bg: 'rgb(251,232,239)', fg: 'rgb(176,72,63)' };
-    return { bg: 'rgb(251,243,226)', fg: 'rgb(184,134,11)' };
-  };
+  const grupo = (t: string) => <div style={{ fontSize: 12, fontWeight: 700, color: 'rgb(135,129,160)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 8 }}>{t}</div>;
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 16 }}>Reintegros</div>
 
-      <div style={{ background: 'linear-gradient(135deg, rgb(93,84,145), rgb(70,63,112))', borderRadius: 20, padding: 24, marginBottom: 16, textAlign: 'center', color: '#fff' }}>
-        <div style={{ fontSize: 13, color: 'rgb(201,195,227)' }}>Reintegrado este año</div>
-        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 40, color: 'rgb(225,251,98)', lineHeight: 1.1, margin: '4px 0' }}>{m$(total)}</div>
-        <div style={{ fontSize: 12.5, color: 'rgb(201,195,227)' }}>plan {planName}</div>
+      <div style={{ background: 'rgb(93,84,145)', borderRadius: 20, padding: 20, marginBottom: 18, textAlign: 'center', color: '#fff' }}>
+        <div style={{ fontSize: 13, color: 'rgb(201,195,227)', marginBottom: 4 }}>Reintegrado este año</div>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 34, color: 'rgb(225,251,98)', lineHeight: 1.1 }}>{m$(total)}</div>
+        <div style={{ fontSize: 12, color: 'rgb(201,195,227)' }}>plan {planName}</div>
       </div>
 
-      <button onClick={() => setOpen((o) => !o)} style={{ width: '100%', background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 15, borderRadius: 14, cursor: 'pointer', marginBottom: 16 }}>+ Subir factura</button>
+      {!open && !enviado && (
+        <button onClick={() => setOpen(true)} style={{ width: '100%', background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', marginBottom: 20 }}>+ Subir factura</button>
+      )}
+
+      {enviado && (
+        <div style={{ background: 'rgb(238,247,214)', border: '1.5px solid rgb(211,232,154)', borderRadius: 18, padding: 18, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgb(225,251,98)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: 'rgb(63,84,16)' }}>Solicitud enviada</div>
+            <div style={{ fontSize: 13, color: 'rgb(95,125,16)' }}>La revisamos y acreditamos en tu CBU/CVU en hasta 30 días hábiles.</div>
+          </div>
+          <button onClick={() => setEnviado(false)} aria-label="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(95,125,16)', fontSize: 18, lineHeight: 1, padding: 0 }}>✕</button>
+        </div>
+      )}
 
       {open && (
-        <form onSubmit={submit} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Veterinaria / comercio" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Detalle (ej: Consulta)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <input value={spent} onChange={(e) => setSpent(e.target.value)} type="number" placeholder="Monto gastado ($)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 14px', border: '1.5px dashed rgb(203,197,227)', borderRadius: 10, background: '#fff', cursor: 'pointer' }}>
-            <span style={{ display: 'flex', color: 'rgb(93,84,145)' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /><path d="M12 18v-6M9 15h6" /></svg>
-            </span>
-            <span style={{ fontSize: 13.5, color: file ? 'rgb(33,30,51)' : 'rgb(135,129,160)', fontWeight: file ? 600 : 400, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {file ? file.name : 'Foto de la factura (obligatoria)'}
-            </span>
-            <input type="file" accept="image/*,application/pdf" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(''); }} style={{ display: 'none' }} />
+        <form onSubmit={submit} style={{ background: 'rgb(247,246,250)', border: '1.5px solid rgb(230,227,240)', borderRadius: 18, padding: 18, marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>Solicitar reintegro</div>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(162,157,186)', fontSize: 20, lineHeight: 1, padding: 0 }}>✕</button>
+          </div>
+
+          {grupo('Comprobante')}
+          <label style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, border: '1.5px dashed rgb(201,195,227)', borderRadius: 14, padding: 22, background: '#fff', cursor: 'pointer', marginBottom: 16 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D5491' }}>{ic(upIcon, false, 22)}</div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>{file ? file.name : 'Cargá la factura'}</div>
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>Foto o PDF del ticket fiscal</div>
+            </div>
+            <input type="file" accept="image/*,.pdf" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(''); }} style={{ display: 'none' }} />
           </label>
-          {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
-          <button type="submit" disabled={busy} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar comprobante'}</button>
+
+          {/* Estos tres no están en el prototipo, pero sin ellos el club no sabe
+              de qué gasto se trata ni cuánto reintegrar. */}
+          {grupo('Datos del gasto')}
+          <input value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Veterinaria o comercio" style={{ ...sheetInput, marginBottom: 12 }} />
+          <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+            <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Concepto (ej: Consulta)" style={{ ...sheetInput, flex: '1 1 150px', width: 'auto' }} />
+            <input value={spent} onChange={(e) => setSpent(e.target.value)} type="number" inputMode="numeric" placeholder="Monto gastado" style={{ ...sheetInput, flex: '1 1 120px', width: 'auto' }} />
+          </div>
+          {pets.length > 1 && (
+            <select value={petId} onChange={(e) => setPetId(e.target.value)} style={{ ...sheetInput, marginBottom: 16 }}>
+              {pets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          )}
+
+          {grupo('Datos para la acreditación')}
+          <label style={sheetLabel} htmlFor="re-tit">Titular / Alias</label>
+          <input id="re-tit" value={titular} onChange={(e) => { setTitular(e.target.value); setError(''); }} placeholder="Nombre del titular de la cuenta" style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel} htmlFor="re-cuit">CUIT / CUIL</label>
+          <input id="re-cuit" value={cuit} onChange={(e) => setCuit(e.target.value)} inputMode="numeric" placeholder="20-12345678-9" style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel} htmlFor="re-cbu">CBU / CVU o alias</label>
+          <input id="re-cbu" value={cbu} onChange={(e) => { setCbu(e.target.value); setError(''); }} placeholder="0000003100010000000001 o mi.alias.mp" style={{ ...sheetInput, marginBottom: 16 }} />
+
+          {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+          <button type="submit" disabled={busy} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, fontFamily: '"DM Sans"' }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
         </form>
       )}
 
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>Historial</div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {items.map((it) => {
-          const b = badge(it.status);
-          return (
-            <div key={it.id} className="wa-card" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14.5, color: 'rgb(33,30,51)' }}>{it.place}</div>
-                <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginBottom: 8 }}>{it.detail}</div>
-                <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>Gastado {m$(it.spent)}</div>
-              </div>
-              <div style={{ textAlign: 'right', flex: '0 0 auto' }}>
-                <span style={{ background: b.bg, color: b.fg, fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 100 }}>{it.status}</span>
-                <div style={{ fontWeight: 700, fontSize: 13.5, color: 'rgb(93,84,145)', marginTop: 18 }}>Reintegro {m$(it.refund)}</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {items.length === 0 ? (
+        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 26, textAlign: 'center' }}>
+          <div style={{ width: 46, height: 46, borderRadius: 14, background: 'rgb(240,237,249)', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D5491' }}>{ic(wallet, false, 22)}</div>
+          <div style={{ fontWeight: 600, fontSize: 14.5 }}>Todavía no pediste ningún reintegro</div>
+          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 4, lineHeight: 1.45 }}>Subí la factura de una consulta, vacuna o estudio y te devolvemos la parte que cubre tu plan.</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {items.map((it) => {
+            const tone = reintTone(it.statusRaw);
+            return (
+              <button key={it.id} className="wa-card" onClick={() => setSelId(it.id)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 14, cursor: 'pointer', fontFamily: '"DM Sans"' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{it.place}</div>
+                    <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{it.concept} · {it.fecha}</div>
+                  </div>
+                  <span style={{ background: tone.bg, color: tone.fg, fontWeight: 600, fontSize: 11, padding: '4px 9px', borderRadius: 100, whiteSpace: 'nowrap' }}>{it.status}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13 }}>
+                  <span style={{ color: 'rgb(135,129,160)' }}>Gastado {m$(it.spent)}</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 700, color: 'rgb(93,84,145)' }}>Reintegro {m$(it.refund)}</span>
+                    <span style={{ color: 'rgb(199,194,218)', fontSize: 16 }}>›</span>
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1847,7 +2030,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
           {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
-          {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} />}
+          {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} />}

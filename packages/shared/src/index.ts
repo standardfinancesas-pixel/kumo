@@ -7,4 +7,5 @@ export * from './fechas';
 export * from './notifs';
 export * from './carnet';
 export * from './prestadores';
+export * from './reintegros';
 export * as data from './data';

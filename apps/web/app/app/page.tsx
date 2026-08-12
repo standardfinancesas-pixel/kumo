@@ -126,15 +126,34 @@ function mapPost(row: PostRow): ForumPost {
 }
 
 const REINT_STATUS: Record<string, Reint['status']> = { en_revision: 'En revisión', aprobado: 'Aprobado', rechazado: 'Rechazado', acreditado: 'Acreditado' };
-type ReintRow = { id: string; provider_name: string; concept: string; amount: number; refund: number; status: string; requested_on: string; created_at: string };
+type ReintRow = {
+  id: string; provider_name: string; concept: string; amount: number; refund: number; refund_pct: number;
+  status: string; requested_on: string; created_at: string; receipt_no: string | null; receipt_path: string | null;
+  bank_holder: string | null; bank_holder_dni: string | null; bank_cuit: string | null;
+  bank_name: string | null; bank_cbu: string | null; bank_alias: string | null;
+  pets: { name: string } | { name: string }[] | null;
+};
 function mapReint(row: ReintRow): Reint {
+  const pet = Array.isArray(row.pets) ? row.pets[0] : row.pets;
   return {
     id: row.id,
     place: row.provider_name,
+    concept: row.concept,
     detail: `${row.concept} · ${fmtDate(row.requested_on)}`,
+    fecha: fmtDate(row.requested_on),
     spent: row.amount,
     refund: row.refund,
+    refundPct: row.refund_pct,
     status: REINT_STATUS[row.status] ?? 'En revisión',
+    statusRaw: row.status,
+    requestedOn: row.requested_on,
+    pet: pet?.name ?? '—',
+    receiptNo: row.receipt_no,
+    receiptPath: row.receipt_path,
+    bank: {
+      holder: row.bank_holder, dni: row.bank_holder_dni, cuit: row.bank_cuit,
+      name: row.bank_name, cbu: row.bank_cbu, alias: row.bank_alias,
+    },
   };
 }
 
@@ -172,7 +191,7 @@ export default async function Page() {
 
   const { data: reintRows } = await supabase
     .from('reimbursements')
-    .select('id, provider_name, concept, amount, refund, status, requested_on, created_at')
+    .select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)')
     .eq('member_id', auth.user.id)
     .order('requested_on', { ascending: false });
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));

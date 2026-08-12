@@ -10,7 +10,7 @@ import {
   colors,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  ratingLabel, reviewTiempo,
+  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -268,6 +268,8 @@ function SegBtn({ label, active, onPress }: { label: string; active: boolean; on
   );
 }
 const SheetLabel = ({ children }: { children: ReactNode }) => <Text style={{ fontWeight: '700', fontSize: 13, marginBottom: 8, color: INK }}>{children}</Text>;
+/** Título de grupo del formulario, como en el prototipo. */
+const Grupo = ({ children }: { children: ReactNode }) => <Text style={{ fontSize: 12, fontWeight: '700', color: '#8781a0', letterSpacing: 0.5, marginBottom: 8 }}>{String(children).toUpperCase()}</Text>;
 
 /* ── Hoja: Calendario de salud ─────────────────────────────────── */
 function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }) {
@@ -1416,16 +1418,136 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
 
 /* ── Sub-pantalla: Reintegros ──────────────────────────────────── */
 const REFUND_PCT: Record<string, number> = { AMIGO: 30, FAMILIA: 50, VIP: 70 };
+const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU en hasta 30 días hábiles. Podés pedir 1 reintegro de consultas cada 2 meses.';
+const reintTone = (raw: string) => REINT_TONE[raw] ?? REINT_TONE.en_revision!;
+
+/* ── Sub-pantalla: detalle de un reintegro ─────────────────────── */
+/** Montos, seguimiento, comprobante y datos de acreditación. Antes el historial
+ *  no se podía abrir: la tarjeta era el final del camino. */
+function ReintegroDetalle({ r, planName, onVolver }: { r: ReintVM; planName: string; onVolver: () => void }) {
+  const [verBusy, setVerBusy] = useState(false);
+  const tone = reintTone(r.estadoRaw);
+  const pasos = reintPasos(r.estadoRaw, r.fecha);
+
+  /** El bucket es privado: se pide una URL firmada corta y se abre. */
+  const verComprobante = async () => {
+    if (!r.receiptPath) return;
+    setVerBusy(true);
+    const { data } = await supabase.storage.from('receipts').createSignedUrl(r.receiptPath, 300);
+    if (data?.signedUrl) Linking.openURL(data.signedUrl);
+    setVerBusy(false);
+  };
+
+  const meta: { k: string; v: string }[] = [
+    { k: 'Mascota', v: r.pet },
+    { k: 'Concepto', v: r.concept },
+    ...(r.bank.holder ? [{ k: 'Titular', v: r.bank.holder }] : []),
+    ...(r.bank.dni ? [{ k: 'DNI', v: r.bank.dni }] : []),
+    ...(r.bank.cuit ? [{ k: 'CUIT / CUIL', v: r.bank.cuit }] : []),
+    ...(r.bank.name ? [{ k: 'Banco', v: r.bank.name }] : []),
+    ...(r.bank.cbu ? [{ k: 'CBU / CVU destino', v: r.bank.cbu }] : []),
+    ...(r.bank.alias ? [{ k: 'Alias', v: r.bank.alias }] : []),
+  ];
+
+  return (
+    <ScrollView contentContainerStyle={styles.screen}>
+      <BackLink label="Reintegros" onPress={onVolver} />
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 16 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 21, color: INK }}>{r.place}</Text>
+          <Text style={{ fontSize: 13, color: '#a29dba', marginTop: 2 }}>{r.concept} · {r.fecha}</Text>
+        </View>
+        <View style={{ backgroundColor: tone.bg, borderRadius: 100, paddingHorizontal: 11, paddingVertical: 5, marginTop: 2 }}>
+          <Text style={{ color: tone.fg, fontWeight: '700', fontSize: 11 }}>{r.estado}</Text>
+        </View>
+      </View>
+
+      {/* Montos */}
+      <View style={{ backgroundColor: BRAND, borderRadius: 18, paddingHorizontal: 20, paddingVertical: 18, marginBottom: 16 }}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.14)' }}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: colors.violet[300], fontSize: 12 }}>{r.estadoRaw === 'acreditado' ? 'Reintegro acreditado' : r.estadoRaw === 'rechazado' ? 'Reintegro solicitado' : 'Reintegro estimado'}</Text>
+            <Text style={{ fontSize: 11, color: '#a79fce' }}>{r.refundPct}% del gasto · plan {planName}</Text>
+          </View>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 30, color: LIME }}>{money(r.refund)}</Text>
+        </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <Text style={{ color: colors.violet[300], fontSize: 13 }}>Total gastado</Text>
+          <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{money(r.spent)}</Text>
+        </View>
+      </View>
+
+      {/* Seguimiento */}
+      <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 18, paddingVertical: 16, marginBottom: 16 }}>
+        <Text style={{ fontWeight: '700', fontSize: 14, color: INK, marginBottom: 14 }}>Seguimiento</Text>
+        {pasos.map((p, i) => (
+          <View key={p.label} style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ alignItems: 'center' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: p.done ? BRAND : '#e0dcec' }}>
+                {p.done ? <Svg width={11} height={11} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke="#fff" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" /></Svg> : null}
+              </View>
+              {i < pasos.length - 1 ? <View style={{ width: 2, flex: 1, minHeight: 16, backgroundColor: pasos[i + 1]!.done ? BRAND : '#e0dcec' }} /> : null}
+            </View>
+            <View style={{ paddingBottom: 16, flex: 1 }}>
+              <Text style={{ fontWeight: '600', fontSize: 13.5, color: p.done ? INK : '#a29dba' }}>{p.label}</Text>
+              <Text style={{ fontSize: 12, color: '#a29dba' }}>{pasoWhen(p)}</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* Comprobante */}
+      <Text style={{ fontWeight: '700', fontSize: 14, color: INK, marginBottom: 10 }}>Comprobante</Text>
+      <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 }}>
+        <View style={{ width: 48, height: 60, borderRadius: 8, backgroundColor: '#ece9f5', borderWidth: 1, borderColor: '#ded9ec', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 5 }}>
+          <Text style={{ fontSize: 8, color: '#8781a0' }}>{(r.receiptPath?.split('.').pop() ?? 'DOC').toUpperCase().slice(0, 4)}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: '600', fontSize: 13.5, color: INK }}>{r.receiptNo ? `Factura ${r.receiptNo}` : 'Comprobante cargado'}</Text>
+          <Text style={{ fontSize: 12, color: '#a29dba' }}>Ticket fiscal · {money(r.spent)}</Text>
+        </View>
+        {r.receiptPath ? (
+          <TouchableOpacity disabled={verBusy} onPress={verComprobante}>
+            <Text style={{ color: BRAND, fontWeight: '600', fontSize: 13 }}>{verBusy ? 'Abriendo…' : 'Ver'}</Text>
+          </TouchableOpacity>
+        ) : <Text style={{ color: '#a29dba', fontSize: 12.5 }}>Sin archivo</Text>}
+      </View>
+
+      {/* Datos */}
+      <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, marginBottom: 16 }}>
+        {meta.map((m, i) => (
+          <View key={m.k} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 11, borderBottomWidth: i === meta.length - 1 ? 0 : 1, borderBottomColor: '#eeecf5' }}>
+            <Text style={{ color: '#8781a0', fontSize: 13.5 }}>{m.k}</Text>
+            <Text style={{ fontWeight: '600', fontSize: 13.5, color: INK, flex: 1, textAlign: 'right' }}>{m.v}</Text>
+          </View>
+        ))}
+      </View>
+
+      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: colors.violet[100], borderRadius: 14, paddingHorizontal: 15, paddingVertical: 13 }}>
+        <Ic d="bell" size={18} />
+        <Text style={{ fontSize: 12.5, color: MUTED, lineHeight: 19, flex: 1 }}>{NOTA_REINT}</Text>
+      </View>
+    </ScrollView>
+  );
+}
+
 function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go }: { profile: Profile | null; pets: Pet[]; reintegros: ReintVM[]; reintTotal: number; userId: string; reload: () => void; go: (t: Screen) => void }) {
+  const [selId, setSelId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [enviado, setEnviado] = useState(false);
   const [place, setPlace] = useState('');
   const [concept, setConcept] = useState('');
   const [amount, setAmount] = useState('');
+  const [titular, setTitular] = useState('');
+  const [cuit, setCuit] = useState('');
+  const [cbu, setCbu] = useState('');
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const pct = REFUND_PCT[profile?.planName ?? ''] ?? 30;
+  const sel = reintegros.find((r) => r.id === selId);
+  if (sel) return <ReintegroDetalle r={sel} planName={profile?.planName ?? '—'} onVolver={() => setSelId(null)} />;
 
   const pickPhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1438,8 +1560,9 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
 
   const submit = async () => {
     const n = Number(amount.replace(/\D/g, ''));
-    if (!place.trim() || !concept.trim() || !n || !profile) return;
-    if (!photo) { setError('Adjuntá la foto de la factura.'); return; }
+    if (!place.trim() || !concept.trim() || !n || !profile) { setError('Completá el comercio, el concepto y el monto.'); return; }
+    if (!photo) { setError('Cargá la factura: sin comprobante el club no puede validar el gasto.'); return; }
+    if (!titular.trim() || !cbu.trim()) { setError('Completá el titular y el CBU/CVU o alias: son los datos con los que se acredita.'); return; }
     setBusy(true);
     setError('');
 
@@ -1459,6 +1582,9 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       member_id: userId, pet_id: pets[0]?.id ?? null, plan_name: profile.planName,
       provider_name: place.trim(), concept: concept.trim(), amount: n,
       refund: Math.round((n * pct) / 100), refund_pct: pct, status: 'en_revision', receipt_path: path,
+      bank_holder: titular.trim() || null, bank_cuit: cuit.trim() || null,
+      // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
+      ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
     });
     if (insErr) {
       // No dejamos el archivo huérfano si falla la solicitud.
@@ -1468,7 +1594,8 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       return;
     }
 
-    setPlace(''); setConcept(''); setAmount(''); setPhoto(null); setOpen(false);
+    setPlace(''); setConcept(''); setAmount(''); setTitular(''); setCuit(''); setCbu(''); setPhoto(null);
+    setOpen(false); setEnviado(true);
     await reload();
     setBusy(false);
   };
@@ -1484,60 +1611,93 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 36, color: LIME, marginVertical: 2 }}>{money(reintTotal)}</Text>
         <Text style={{ fontSize: 12, color: colors.violet[300] }}>plan {profile?.planName ?? '—'} · reintegro {pct}%</Text>
       </View>
-      {open ? (
-        <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 18, padding: 16, marginBottom: 18, gap: 10 }}>
-          <TextInput value={place} onChangeText={setPlace} placeholder="Veterinaria o comercio" placeholderTextColor={colors.violet[400]} style={field} />
-          <TextInput value={concept} onChangeText={setConcept} placeholder="Concepto (consulta, vacuna…)" placeholderTextColor={colors.violet[400]} style={field} />
-          <TextInput value={amount} onChangeText={setAmount} placeholder="Monto gastado" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={field} />
-          <Text style={{ fontSize: 12.5, color: MUTED }}>Te correspondería {money(Math.round((Number(amount.replace(/\D/g, '')) * pct) / 100))} de reintegro.</Text>
-          <TouchableOpacity onPress={pickPhoto} style={{ borderWidth: 1.5, borderColor: colors.violet[300], borderStyle: 'dashed', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: '#fff', flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            {photo
-              ? <Image source={{ uri: photo.uri }} style={{ width: 34, height: 34, borderRadius: 7 }} />
-              : <View style={{ width: 34, height: 34, borderRadius: 7, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 16 }}>🧾</Text></View>}
-            <Text style={{ fontSize: 13.5, color: photo ? INK : MUTED, fontWeight: photo ? '600' : '400', flex: 1 }}>
-              {photo ? 'Factura adjunta · tocá para cambiar' : 'Foto de la factura (obligatoria)'}
-            </Text>
-          </TouchableOpacity>
-          {!!error && <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600' }}>{error}</Text>}
-          <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={() => setOpen(false)} style={{ flex: 1, backgroundColor: colors.violet[100], borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
-              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity disabled={busy} onPress={submit} style={{ flex: 1, backgroundColor: BRAND, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Enviar</Text>
-            </TouchableOpacity>
+      {enviado && (
+        <View style={{ backgroundColor: '#eef7d6', borderWidth: 1.5, borderColor: '#d3e89a', borderRadius: 18, padding: 18, marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}>
+            <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M20 6L9 17l-5-5" fill="none" stroke={INK} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
           </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: '#3f5410' }}>Solicitud enviada</Text>
+            <Text style={{ fontSize: 13, color: '#5f7d10' }}>La revisamos y acreditamos en tu CBU/CVU en hasta 30 días hábiles.</Text>
+          </View>
+          <TouchableOpacity onPress={() => setEnviado(false)}><Text style={{ color: '#5f7d10', fontSize: 18 }}>✕</Text></TouchableOpacity>
         </View>
-      ) : (
+      )}
+
+      {open ? (
+        <View style={{ backgroundColor: colors.violet[50], borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 18, padding: 18, marginBottom: 18 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ fontWeight: '700', fontSize: 16, color: INK }}>Solicitar reintegro</Text>
+            <TouchableOpacity onPress={() => setOpen(false)}><Text style={{ color: '#a29dba', fontSize: 20 }}>✕</Text></TouchableOpacity>
+          </View>
+
+          <Grupo>Comprobante</Grupo>
+          <TouchableOpacity onPress={pickPhoto} style={{ borderWidth: 1.5, borderColor: colors.violet[300], borderStyle: 'dashed', borderRadius: 14, padding: 22, backgroundColor: '#fff', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+            {photo
+              ? <Image source={{ uri: photo.uri }} style={{ width: 44, height: 44, borderRadius: 12 }} />
+              : <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={22} /></View>}
+            <View style={{ alignItems: 'center' }}>
+              <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{photo ? 'Factura adjunta · tocá para cambiar' : 'Cargá la factura'}</Text>
+              <Text style={{ fontSize: 12, color: '#a29dba' }}>Foto del ticket fiscal</Text>
+            </View>
+          </TouchableOpacity>
+
+          {/* Estos tres no están en el prototipo, pero sin ellos el club no sabe
+              de qué gasto se trata ni cuánto reintegrar. */}
+          <Grupo>Datos del gasto</Grupo>
+          <TextInput value={place} onChangeText={(v) => { setPlace(v); setError(''); }} placeholder="Veterinaria o comercio" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={concept} onChangeText={(v) => { setConcept(v); setError(''); }} placeholder="Concepto (consulta, vacuna…)" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={amount} onChangeText={(v) => { setAmount(v); setError(''); }} placeholder="Monto gastado" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 8 }} />
+          <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 16 }}>Te correspondería {money(Math.round((Number(amount.replace(/\D/g, '')) * pct) / 100))} de reintegro.</Text>
+
+          <Grupo>Datos para la acreditación</Grupo>
+          <TextInput value={titular} onChangeText={(v) => { setTitular(v); setError(''); }} placeholder="Nombre del titular de la cuenta" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={cuit} onChangeText={setCuit} placeholder="CUIT / CUIL · 20-12345678-9" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={cbu} onChangeText={(v) => { setCbu(v); setError(''); }} placeholder="CBU / CVU o alias" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 16 }} />
+
+          {!!error && <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text>}
+          <TouchableOpacity disabled={busy} onPress={submit} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : !enviado ? (
         <TouchableOpacity onPress={() => setOpen(true)} style={{ backgroundColor: LIME, borderRadius: 14, padding: 15, alignItems: 'center', marginBottom: 18 }}>
           <Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>+ Subir factura</Text>
         </TouchableOpacity>
-      )}
+      ) : null}
       <Text style={{ fontWeight: '700', fontSize: 16, marginBottom: 12 }}>Historial</Text>
-      <View style={{ gap: 12 }}>
-        {reintegros.map((h) => (
-          <View key={h.id} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 15 }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', fontSize: 14 }}>{h.place}</Text>
-                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{h.det}</Text>
-              </View>
-              <View style={{ backgroundColor: h.estado === 'Acreditado' ? colors.success.bg : h.estado === 'Rechazado' ? colors.danger.bg : '#fbf3e2', borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 }}>
-                <Text style={{ fontSize: 11, fontWeight: '700', color: h.estado === 'Acreditado' ? colors.success.fg : h.estado === 'Rechazado' ? colors.danger.fg : '#b8860b' }}>{h.estado}</Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-              <Text style={{ fontSize: 13, color: MUTED }}>Gastado {money(h.spent)}</Text>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>Reintegro {money(h.refund)} ›</Text>
-            </View>
+      {reintegros.length === 0 ? (
+        <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 26, alignItems: 'center' }}>
+          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+            <Ic d="wallet" size={22} />
           </View>
-        ))}
-        {reintegros.length === 0 && (
-          <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 24, alignItems: 'center' }}>
-            <Text style={{ fontSize: 13.5, color: MUTED, textAlign: 'center' }}>Todavía no pediste ningún reintegro. Subí una factura para empezar.</Text>
-          </View>
-        )}
-      </View>
+          <Text style={{ fontWeight: '600', fontSize: 14.5, color: INK }}>Todavía no pediste ningún reintegro</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED, textAlign: 'center', marginTop: 4, lineHeight: 19 }}>Subí la factura de una consulta, vacuna o estudio y te devolvemos la parte que cubre tu plan.</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {reintegros.map((h) => {
+            const tone = reintTone(h.estadoRaw);
+            return (
+              <TouchableOpacity key={h.id} onPress={() => setSelId(h.id)} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 6 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{h.place}</Text>
+                    <Text style={{ fontSize: 12, color: '#a29dba' }}>{h.concept} · {h.fecha}</Text>
+                  </View>
+                  <View style={{ backgroundColor: tone.bg, borderRadius: 100, paddingHorizontal: 9, paddingVertical: 4 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '600', color: tone.fg }}>{h.estado}</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ fontSize: 13, color: '#8781a0' }}>Gastado {money(h.spent)}</Text>
+                  <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>Reintegro {money(h.refund)} <Text style={{ color: colors.violet[300], fontSize: 16 }}>›</Text></Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      )}
     </ScrollView>
   );
 }

@@ -20,7 +20,14 @@ export type ProviderVM = {
   about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
 };
 export type BenefitVM = { id: string; name: string; cat: string; disc: string; icon: 'hospital' | 'store' | 'pill' | 'droplet' };
-export type ReintVM = { id: string; place: string; det: string; spent: number; refund: number; estado: string };
+/** El detalle necesita bastante más que la tarjeta del historial: el seguimiento,
+ *  el comprobante y los datos de acreditación. */
+export type ReintVM = {
+  id: string; place: string; det: string; concept: string; fecha: string;
+  spent: number; refund: number; refundPct: number; estado: string; estadoRaw: string;
+  pet: string; receiptNo: string | null; receiptPath: string | null;
+  bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
+};
 export type ForumPost = { id: string; cat: string; author: string; title: string; replies: number; likes: number };
 
 export type KumoData = {
@@ -114,7 +121,7 @@ export function useKumoData(userId: string | null) {
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
-      supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status, requested_on, created_at').eq('member_id', userId).order('requested_on', { ascending: false }),
+      supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, replies, likes, created_at, author_name').order('created_at', { ascending: false }).limit(20),
@@ -172,10 +179,20 @@ export function useKumoData(userId: string | null) {
       id: b.id, name: b.name, cat: b.category, disc: b.discount, icon: benefitIcon(b.category),
     }));
 
-    const reintegros: ReintVM[] = (reintRes.data ?? []).map((r) => ({
-      id: r.id, place: r.provider_name, det: `${r.concept} · ${fmtDate(r.requested_on)}`,
-      spent: r.amount, refund: r.refund, estado: ESTADO_REINT[r.status] ?? r.status,
-    }));
+    const reintegros: ReintVM[] = (reintRes.data ?? []).map((r) => {
+      const pet = Array.isArray(r.pets) ? r.pets[0] : r.pets;
+      return {
+        id: r.id, place: r.provider_name, det: `${r.concept} · ${fmtDate(r.requested_on)}`,
+        concept: r.concept, fecha: fmtDate(r.requested_on),
+        spent: r.amount, refund: r.refund, refundPct: r.refund_pct,
+        estado: ESTADO_REINT[r.status] ?? r.status, estadoRaw: r.status,
+        pet: pet?.name ?? '—', receiptNo: r.receipt_no, receiptPath: r.receipt_path,
+        bank: {
+          holder: r.bank_holder, dni: r.bank_holder_dni, cuit: r.bank_cuit,
+          name: r.bank_name, cbu: r.bank_cbu, alias: r.bank_alias,
+        },
+      };
+    });
     const reintTotal = (reintRes.data ?? []).filter((r) => r.status === 'acreditado').reduce((a, r) => a + r.refund, 0);
 
     // El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
