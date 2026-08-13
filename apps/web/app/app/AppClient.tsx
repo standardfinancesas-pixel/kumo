@@ -66,7 +66,7 @@ export type BenefitVM = {
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
-export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
+export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
 export type MisLikes = { posts: string[]; answers: string[] };
 
@@ -305,6 +305,17 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     setBusy(false);
   };
 
+  /** Borrar un contacto, que no se podia: un telefono mal cargado quedaba para
+   *  siempre, y en una urgencia eso es peor que no tener ninguno. */
+  const borrarContacto = async (c: EmergencyContact) => {
+    if (!confirm(`Borrar ${c.name} de tus contactos de emergencia?`)) return;
+    setBusy(true);
+    const { error } = await supabase.from('emergency_contacts').delete().eq('id', c.id);
+    if (error) alert('No pudimos borrarlo. Proba de nuevo.');
+    else router.refresh();
+    setBusy(false);
+  };
+
   const vacIcon = (kind: VaccineKind, stroke: string) => {
     const t = KIND_ICON[kind];
     const inner = t === 'shield' ? shieldPath : t === 'pill' ? pillPath : plusCircle;
@@ -418,6 +429,9 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
                 <a href={`tel:${c.phone}`} style={{ color: 'rgb(193,77,122)', fontWeight: 600, fontSize: 12, textDecoration: 'none' }}>{c.phone}</a>
                 <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginTop: 4 }}>{c.address} · {c.hours}</div>
               </div>
+              <button onClick={() => borrarContacto(c)} disabled={busy} style={{ background: 'none', border: 'none', color: 'rgb(135,129,160)', fontSize: 12, cursor: busy ? 'default' : 'pointer', padding: 0, alignSelf: 'flex-start', fontFamily: '"DM Sans"' }}>
+                Borrar
+              </button>
             </div>
           ))}
         </div>
@@ -954,7 +968,7 @@ export type ReintStatus = 'Acreditado' | 'Aprobado' | 'En revisión' | 'Rechazad
 export type Reint = {
   id: string; place: string; concept: string; detail: string; fecha: string;
   spent: number; refund: number; refundPct: number;
-  status: ReintStatus; statusRaw: string; requestedOn: string;
+  status: ReintStatus; statusRaw: string; requestedOn: string; resueltoEl: string;
   pet: string; receiptNo: string | null; receiptPath: string | null;
   bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
 };
@@ -971,7 +985,7 @@ const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU en hasta 30 días 
 function ReintegroDetalle({ r, planName, onVolver }: { r: Reint; planName: string; onVolver: () => void }) {
   const [verBusy, setVerBusy] = useState(false);
   const tone = reintTone(r.statusRaw);
-  const pasos = reintPasos(r.statusRaw, r.fecha);
+  const pasos = reintPasos(r.statusRaw, r.fecha, r.resueltoEl);
 
   /** El bucket es privado: se pide una URL firmada corta y se abre. */
   const verComprobante = async () => {
@@ -1501,6 +1515,26 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
     setBusy(false);
   };
 
+  /**
+   * Marca (o desmarca) la mejor respuesta. Solo puede quien preguntó: la política
+   * de `community_answers` lo habilita por fila y el trigger impide que el autor
+   * de la respuesta se la marque a sí mismo.
+   *
+   * Se desmarcan las otras primero: "la mejor" es una sola, y la base no tiene
+   * cómo saberlo —es una regla del producto, no una restricción de la tabla—.
+   */
+  const marcarMejor = async (a: ForumAnswer) => {
+    setBusy(true);
+    if (!a.best) {
+      const otras = p.answers.filter((x) => x.best && x.id !== a.id).map((x) => x.id);
+      if (otras.length) await supabase.from('community_answers').update({ best: false }).in('id', otras);
+    }
+    const { error } = await supabase.from('community_answers').update({ best: !a.best }).eq('id', a.id);
+    if (error) alert('No pudimos marcar la respuesta. Probá de nuevo.');
+    else router.refresh();
+    setBusy(false);
+  };
+
   /** Borra una respuesta propia. El contador `replies` lo baja el trigger. */
   const borrarRespuesta = async (id: string) => {
     if (!confirm('¿Borrar tu respuesta? No se puede deshacer.')) return;
@@ -1553,6 +1587,11 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
 
       <h1 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, lineHeight: 1.2, margin: '0 0 10px' }}>{p.title}</h1>
       <p style={{ fontSize: 14, color: 'rgb(74,69,96)', lineHeight: 1.6, margin: '0 0 14px' }}>{p.body}</p>
+      {/* `<img>` y no `next/image`: la URL sale del bucket y el dominio no está
+          en la whitelist de next.config, igual que el comprobante en el panel. */}
+      {p.photo && (
+        <img src={p.photo} alt="Foto de la publicación" style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 14, display: 'block', marginBottom: 14, background: 'rgb(240,237,249)' }} />
+      )}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         <button onClick={togglePostLike} style={{ display: 'flex', alignItems: 'center', gap: 7, background: likes.post ? 'rgb(251,232,239)' : 'rgb(240,237,249)', border: 'none', color: likes.post ? 'rgb(192,72,99)' : 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, padding: '9px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>
@@ -1591,6 +1630,14 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
                       Borrar
                     </button>
                   )}
+                  {/* Marcar la mejor respuesta la puede solo quien preguntó: la
+                      política de la base lo permite y el trigger impide que lo
+                      haga el autor de la respuesta. Faltaba el control. */}
+                  {p.propia && !a.propia && (
+                    <button onClick={() => marcarMejor(a)} disabled={busy} style={{ fontSize: 12, fontWeight: a.best ? 700 : 400, color: a.best ? 'rgb(47,143,91)' : 'rgb(135,129,160)', background: 'none', border: 'none', cursor: busy ? 'default' : 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>
+                      {a.best ? '★ Es la mejor' : 'Marcar como mejor'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1627,6 +1674,23 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listo, setListo] = useState(false);
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotoBusy, setFotoBusy] = useState(false);
+
+  /** El prototipo mostraba la foto elegida y la perdía al publicar (era un
+   *  data-URL en memoria): acá se sube al bucket y queda la URL pública, que es
+   *  lo que guarda `community_posts.photo_url`. */
+  const elegirFoto = async (f?: File) => {
+    if (!f) return;
+    const invalida = motivoFotoInvalida(f.type, f.size);
+    if (invalida) { setError(invalida); return; }
+    setFotoBusy(true); setError('');
+    const path = rutaFoto(profile.id, f.name.split('.').pop() ?? 'jpg', 'foro-');
+    const { error: subida } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
+    if (subida) { setError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    setFotoUrl(supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl);
+    setFotoBusy(false);
+  };
 
   const publicar = async () => {
     if (!titulo.trim()) { setError('Ponele un título a tu publicación.'); return; }
@@ -1634,6 +1698,7 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
     const { error: e } = await supabase.from('community_posts').insert({
       author_id: profile.id, author_name: profile.firstName, category: cat,
       title: titulo.trim(), body: cuerpo.trim() || titulo.trim(), zone: zona.trim() || null,
+      photo_url: fotoUrl,
     });
     if (e) { setError('No pudimos publicar. Probá de nuevo.'); setBusy(false); return; }
     setBusy(false);
@@ -1674,7 +1739,21 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
       <textarea id="fo-body" value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={5} placeholder="Escribí tu consulta o experiencia…" style={{ ...sheetInput, resize: 'none', marginBottom: 12 }} />
 
       <label style={sheetLabel} htmlFor="fo-zona">Zona <span style={{ fontWeight: 400, color: 'rgb(162,157,186)' }}>· opcional</span></label>
-      <input id="fo-zona" value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 18 }} />
+      <input id="fo-zona" value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 16 }} />
+
+      <label style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '11px 14px', marginBottom: 18, cursor: fotoBusy ? 'default' : 'pointer' }}>
+        <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} onChange={(e) => elegirFoto(e.target.files?.[0])} style={{ display: 'none' }} />
+        <div style={{ width: 32, height: 32, borderRadius: 9, background: fotoUrl ? `url(${fotoUrl}) center/cover` : 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', overflow: 'hidden' }}>
+          {!fotoUrl && (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#5D5491" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></svg>
+          )}
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontWeight: 600, fontSize: 13 }}>{fotoBusy ? 'Subiendo…' : fotoUrl ? 'Foto agregada' : 'Agregá una foto'}</div>
+          <div style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>Opcional</div>
+        </div>
+        <span style={{ color: 'rgb(93,84,145)', fontSize: 20, fontWeight: 700 }}>{fotoUrl ? '✓' : '+'}</span>
+      </label>
 
       {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
       <button onClick={publicar} disabled={busy} style={{ ...sheetBtn(true), width: '100%', boxShadow: '0 8px 20px rgba(93,84,145,0.28)', opacity: busy ? 0.6 : 1 }}>{busy ? 'Publicando…' : 'Publicar'}</button>

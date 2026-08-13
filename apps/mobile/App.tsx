@@ -11,12 +11,12 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { elegirYSubirFoto } from './lib/subirFoto';
-import { useKumoData, type Pet, type Vac, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
+import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
 /* Familias (Baloo 2 títulos, DM Sans cuerpo) — igual que la web. */
@@ -74,7 +74,7 @@ const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '
 const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
-type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone';
+type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone' | 'image';
 function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?: number; color?: string; fill?: boolean }) {
   const stroke = fill ? 'none' : color;
   const fillC = fill ? color : 'none';
@@ -103,6 +103,7 @@ function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?:
       {d === 'heart' && <Path d="M12 20s-7-4.3-9.2-8.6C1.3 8.3 2.6 5 6 5c2 0 3.3 1.2 4 2.3C10.7 6.2 12 5 14 5c3.4 0 4.7 3.3 3.2 6.4C19 15.7 12 20 12 20z" fill={fill ? color : 'none'} stroke={fill ? 'none' : color} strokeWidth={1.9} strokeLinejoin="round" />}
       {d === 'hospital' && <><Rect x="4" y="4" width="16" height="16" rx="3" {...common} /><Line x1="12" y1="8" x2="12" y2="16" {...common} /><Line x1="8" y1="12" x2="16" y2="12" {...common} /></>}
       {d === 'pill' && <><Rect x="3" y="8" width="18" height="8" rx="4" {...common} /><Line x1="12" y1="8" x2="12" y2="16" {...common} /></>}
+      {d === 'image' && <><Rect x="3" y="3" width="18" height="18" rx="2" {...common} /><Circle cx="8.5" cy="8.5" r="1.5" {...common} /><Path d="M21 15l-5-5L5 21" {...common} /></>}
       {d === 'droplet' && <Path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" {...common} />}
       {d === 'pin' && <><Path d="M12 21s7-5.6 7-11a7 7 0 0 0-14 0c0 5.4 7 11 7 11z" {...common} /><Circle cx="12" cy="10" r="2.5" {...common} /></>}
       {d === 'globe' && <><Circle cx="12" cy="12" r="10" {...common} /><Path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" {...common} /></>}
@@ -436,11 +437,43 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
   );
 }
 
-function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; reload: () => void; go: (t: Screen) => void }) {
+function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; contacts: EmergencyContact[]; userId: string; reload: () => void; go: (t: Screen) => void }) {
   const pet = pets[petIdx];
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [showCal, setShowCal] = useState(false);
+  const [addCon, setAddCon] = useState(false);
+  const [cn, setCn] = useState('');
+  const [cp, setCp] = useState('');
+
+  const addContacto = async () => {
+    if (!cn.trim()) return;
+    setBusy('contacto');
+    const { error } = await supabase.from('emergency_contacts').insert({
+      owner_id: userId, name: cn.trim(), type: 'Veterinaria', phone: cp.trim() || null,
+    });
+    if (!error) { setCn(''); setCp(''); setAddCon(false); await reload(); }
+    setBusy(null);
+  };
+
+  /** Borrar, que no se podía en ninguna de las dos superficies: un teléfono mal
+   *  cargado quedaba para siempre, y en una urgencia eso es peor que nada. */
+  const borrarContacto = (c: EmergencyContact) => {
+    Alert.alert(`Borrar ${c.name}`, 'Lo saco de tus contactos de emergencia.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(c.id);
+          const { error } = await supabase.from('emergency_contacts').delete().eq('id', c.id);
+          if (error) Alert.alert('No pudimos borrarlo', 'Probá de nuevo.');
+          else await reload();
+          setBusy(null);
+        },
+      },
+    ]);
+  };
 
   const markApplied = async (vacId: string) => {
     setBusy(vacId);
@@ -526,6 +559,57 @@ function Carnet({ pets, petIdx, setPetIdx, reload, go }: { pets: Pet[]; petIdx: 
           <Ic d="calendar" size={18} />
           <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Calendario</Text>
         </TouchableOpacity>
+      </View>
+
+      {/* Contactos de emergencia. La webapp los tenía en el carnet y en mobile no
+          existían — que es justo donde más se necesitan: el carnet es lo que
+          abrís en la veterinaria a las 3 de la mañana. */}
+      <View style={{ marginTop: 24, paddingTop: 20, borderTopWidth: 1, borderTopColor: colors.violet[200] }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>Contactos de emergencia</Text>
+          <TouchableOpacity onPress={() => setAddCon((v) => !v)}>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>{addCon ? 'Cancelar' : '+ Agregar'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {addCon && (
+          <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 14, marginBottom: 12, gap: 8 }}>
+            <TextInput value={cn} onChangeText={setCn} placeholder="Nombre (ej: Veterinaria Norte)" placeholderTextColor={colors.violet[400]}
+              style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
+            <TextInput value={cp} onChangeText={setCp} placeholder="Teléfono" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad"
+              style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
+            <TouchableOpacity disabled={busy === 'contacto'} onPress={addContacto} style={{ backgroundColor: LIME, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: busy === 'contacto' ? 0.6 : 1 }}>
+              <Text style={{ color: INK, fontWeight: '700', fontSize: 14 }}>{busy === 'contacto' ? 'Guardando…' : 'Guardar contacto'}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {contacts.length === 0 && !addCon ? (
+          <Text style={{ fontSize: 13, color: MUTED, lineHeight: 19 }}>
+            Cargá la veterinaria de tu mascota y el número que llamarías en una urgencia, para tenerlos acá cuando haga falta.
+          </Text>
+        ) : (
+          <View style={{ gap: 10 }}>
+            {contacts.map((c) => (
+              <View key={c.id} style={{ flexDirection: 'row', gap: 12, backgroundColor: '#fbe8ef', borderWidth: 1, borderColor: '#f5d6e3', borderRadius: 14, padding: 12 }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ic d="hospital" size={19} color="#c14d7a" />
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{c.name}</Text>
+                  <Text style={{ fontSize: 12, color: colors.violet[400], marginBottom: 3 }}>{c.type}</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${c.phone}`)}>
+                    <Text style={{ color: '#c14d7a', fontWeight: '700', fontSize: 12.5 }}>{c.phone}</Text>
+                  </TouchableOpacity>
+                  {c.address || c.hours ? <Text style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{[c.address, c.hours].filter(Boolean).join(' · ')}</Text> : null}
+                </View>
+                <TouchableOpacity onPress={() => borrarContacto(c)} disabled={busy === c.id}>
+                  <Text style={{ fontSize: 12, color: MUTED }}>{busy === c.id ? '…' : 'Borrar'}</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
     </ScrollView>
@@ -1106,10 +1190,104 @@ function MasSheet({ onClose, onGo }: { onClose: () => void; onGo: (t: Screen) =>
 }
 
 /* ── Sub-pantalla: Mi perfil ───────────────────────────────────── */
-function Perfil({ profile, go }: { profile: Profile | null; go: (t: Screen) => void }) {
+/**
+ * Mi perfil.
+ *
+ * Era solo lectura: mostraba los datos y dejaba cerrar sesión, nada más. La
+ * webapp ya permitía editar los datos, guardar la cuenta donde se cobran los
+ * reintegros, cambiar de plan y darse de baja, así que en mobile esas cuatro
+ * cosas simplemente no existían. No era que "decía guardado y no guardaba":
+ * faltaban.
+ */
+function Perfil({ profile, planes, go, reload }: { profile: Profile | null; planes: PlanVM[]; go: (t: Screen) => void; reload: () => void }) {
+  const [editando, setEditando] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [datos, setDatos] = useState({
+    nombre: '', dni: '', dom: '', localidad: '', provincia: '', tel: '',
+    bancoTitular: '', bancoCuit: '', bancoCbu: '',
+  });
+
+  /** Se carga al abrir la edición y no en el render: los "—" del display no son
+   *  datos, y guardarlos los convertiría en el valor real. */
+  const abrirEdicion = () => {
+    if (!profile) return;
+    const real = (v: string) => (v === '—' ? '' : v);
+    setDatos({
+      nombre: profile.fullName, dni: real(profile.dni), dom: real(profile.address),
+      localidad: real(profile.city), provincia: real(profile.province), tel: real(profile.phone),
+      bancoTitular: profile.banco.holder ?? '', bancoCuit: profile.banco.cuit ?? '', bancoCbu: profile.banco.cbu ?? '',
+    });
+    setError('');
+    setEditando(true);
+  };
+
+  const guardar = async () => {
+    if (!profile) return;
+    if (!datos.nombre.trim()) { setError('El nombre no puede quedar vacío.'); return; }
+    setBusy(true); setError('');
+    const { error: e, data } = await supabase.from('profiles').update({
+      full_name: datos.nombre.trim(),
+      dni: datos.dni.trim() || null,
+      address: datos.dom.trim() || null,
+      city: datos.localidad.trim() || null,
+      province: datos.provincia.trim() || null,
+      phone: datos.tel.trim() || null,
+      bank_holder: datos.bancoTitular.trim() || null,
+      bank_cuit: datos.bancoCuit.trim() || null,
+      bank_cbu: datos.bancoCbu.replace(/\D/g, '') || null,
+    }).eq('id', profile.id).select('id');
+    if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    setEditando(false);
+    await reload();
+    setBusy(false);
+  };
+
+  const cambiarPlan = (p: PlanVM) => {
+    if (!profile || p.name === profile.planName) return;
+    Alert.alert(`Cambiar al plan ${p.name}`, `Vas a pasar de ${profile.planName} a ${p.name}, ${money(p.basePrice)}/mes.`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Cambiar',
+        onPress: async () => {
+          setBusy(true);
+          const { error: e } = await supabase.from('profiles').update({ plan_id: p.id }).eq('id', profile.id);
+          if (e) Alert.alert('No pudimos cambiar el plan', 'Probá de nuevo.');
+          else await reload();
+          setBusy(false);
+        },
+      },
+    ]);
+  };
+
+  const darseDeBaja = () => {
+    if (!profile) return;
+    Alert.alert('Darte de baja', 'Perdés el acceso a los descuentos y a los reintegros. Tus datos y tu historial quedan guardados.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Darme de baja',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          const { error: e } = await supabase.from('profiles').update({ status: 'baja' }).eq('id', profile.id);
+          if (e) { Alert.alert('No pudimos darte de baja', 'Escribinos por WhatsApp y lo resolvemos.'); setBusy(false); return; }
+          await supabase.auth.signOut();
+        },
+      },
+    ]);
+  };
+
   const dato = (k: string, v: string) => (
     <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.violet[200] }}>
       <Text style={{ fontSize: 13, color: MUTED }}>{k}</Text><Text style={{ fontSize: 13, fontWeight: '600' }}>{v}</Text>
+    </View>
+  );
+  const campo = (label: string, valor: string, set: (v: string) => void, extra: object = {}) => (
+    <View style={{ marginBottom: 10 }}>
+      <Text style={{ fontSize: 12, color: MUTED, marginBottom: 5 }}>{label}</Text>
+      <TextInput value={valor} onChangeText={(t) => { set(t); setError(''); }} placeholderTextColor={colors.violet[400]}
+        style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: INK, backgroundColor: '#fff' }}
+        {...extra} />
     </View>
   );
   if (!profile) return <ScrollView contentContainerStyle={styles.screen}><H1>Mi perfil</H1></ScrollView>;
@@ -1134,11 +1312,69 @@ function Perfil({ profile, go }: { profile: Profile | null; go: (t: Screen) => v
         <View style={{ flex: 1 }}><Text style={{ fontWeight: '700', fontSize: 14 }}>Reintegros</Text><Text style={{ fontSize: 12.5, color: MUTED }}>Seguí tus pedidos</Text></View>
         <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
       </TouchableOpacity>
-      <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 4 }}>Datos personales</Text>
-      <View style={{ marginBottom: 20 }}>
-        {dato('DNI', profile.dni)}{dato('Domicilio', profile.address)}{dato('Localidad', profile.city)}{dato('Provincia', profile.province)}{dato('Teléfono', profile.phone)}{dato('Email', profile.email)}
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontWeight: '700', fontSize: 15 }}>Datos personales</Text>
+        <TouchableOpacity onPress={() => (editando ? setEditando(false) : abrirEdicion())}>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>{editando ? 'Cancelar' : 'Editar'}</Text>
+        </TouchableOpacity>
       </View>
+
+      {editando ? (
+        <View style={{ marginBottom: 20 }}>
+          {campo('Apellido y nombre', datos.nombre, (v) => setDatos({ ...datos, nombre: v }))}
+          {campo('DNI', datos.dni, (v) => setDatos({ ...datos, dni: v }), { keyboardType: 'numeric' })}
+          {campo('Domicilio', datos.dom, (v) => setDatos({ ...datos, dom: v }))}
+          {campo('Localidad', datos.localidad, (v) => setDatos({ ...datos, localidad: v }))}
+          {campo('Provincia', datos.provincia, (v) => setDatos({ ...datos, provincia: v }))}
+          {campo('Teléfono', datos.tel, (v) => setDatos({ ...datos, tel: v }), { keyboardType: 'phone-pad' })}
+
+          {/* La cuenta donde el club te transfiere los reintegros. Va acá y no en
+              cada solicitud: antes se pedía una y otra vez en cada pedido. */}
+          <Text style={{ fontWeight: '700', fontSize: 14, marginTop: 10, marginBottom: 2 }}>Dónde cobrás tus reintegros</Text>
+          <Text style={{ fontSize: 12, color: MUTED, marginBottom: 10, lineHeight: 17 }}>El club transfiere a esta cuenta. Si la completás acá, no te la volvemos a pedir en cada solicitud.</Text>
+          {campo('Titular de la cuenta', datos.bancoTitular, (v) => setDatos({ ...datos, bancoTitular: v }))}
+          {campo('CUIT / CUIL', datos.bancoCuit, (v) => setDatos({ ...datos, bancoCuit: v }), { keyboardType: 'numeric' })}
+          {campo('CBU o CVU', datos.bancoCbu, (v) => setDatos({ ...datos, bancoCbu: v }), { keyboardType: 'numeric' })}
+          {datos.bancoCbu.replace(/\D/g, '').length > 0 && !cbuValido(datos.bancoCbu) ? (
+            <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700', marginBottom: 8 }}>
+              El CBU/CVU tiene 22 dígitos y pusiste {datos.bancoCbu.replace(/\D/g, '').length}.
+            </Text>
+          ) : null}
+
+          {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700', marginBottom: 8 }}>{error}</Text> : null}
+          <TouchableOpacity disabled={busy} onPress={guardar} style={{ backgroundColor: LIME, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+            <Text style={{ color: INK, fontWeight: '700', fontSize: 14.5 }}>{busy ? 'Guardando…' : 'Guardar cambios'}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={{ marginBottom: 20 }}>
+          {dato('DNI', profile.dni)}{dato('Domicilio', profile.address)}{dato('Localidad', profile.city)}{dato('Provincia', profile.province)}{dato('Teléfono', profile.phone)}{dato('Email', profile.email)}
+          {dato('Cuenta para reintegros', profile.banco.cbu ? `····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Sin cargar')}
+          {dato('Medio de pago', profile.tarjeta ?? 'Sin configurar')}
+        </View>
+      )}
+
+      <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Cambiar de plan</Text>
+      <View style={{ gap: 8, marginBottom: 20 }}>
+        {planes.map((p) => {
+          const actual = p.name === profile.planName;
+          return (
+            <TouchableOpacity key={p.id} disabled={actual || busy} onPress={() => cambiarPlan(p)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: actual ? colors.violet[100] : '#fff', borderWidth: 1.5, borderColor: actual ? BRAND : colors.violet[200], borderRadius: 14, padding: 14 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.name}</Text>
+                <Text style={{ fontSize: 12.5, color: MUTED }}>{money(p.basePrice)}/mes</Text>
+              </View>
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: actual ? BRAND : colors.violet[400] }}>{actual ? 'Tu plan' : 'Elegir'}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
       <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ backgroundColor: colors.violet[100], borderRadius: 12, padding: 14, alignItems: 'center' }}><Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cerrar sesión</Text></TouchableOpacity>
+      <TouchableOpacity disabled={busy} onPress={darseDeBaja} style={{ paddingVertical: 16, alignItems: 'center' }}>
+        <Text style={{ color: '#b0483f', fontWeight: '700', fontSize: 13.5 }}>Darme de baja del club</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -1729,6 +1965,57 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
+  /**
+   * Editar el negocio publicado. En mobile no existía: había alta y baja, nada
+   * más, así que un prestador no podía corregir ni el teléfono. Y son campos que
+   * el socio ve en su ficha pública, así que un dato viejo lo paga en llamadas
+   * que no entran.
+   *
+   * `status` no se toca a propósito: lo decide el club, y hay un trigger en la
+   * base que lo impide igual.
+   */
+  const [editOpen, setEditOpen] = useState(false);
+  const [ed, setEd] = useState({ name: '', category: RUBROS[0]!, zone: '', phone: '', about: '', price: '', priceUnit: '', instagram: '', website: '' });
+
+  const abrirEdicion = async () => {
+    if (!negocio) return;
+    setError('');
+    // Los valores crudos de la base: la tarjeta no trae `about` ni las tarifas.
+    const { data } = await supabase
+      .from('providers')
+      .select('name, category, zone, phone, about, price, price_unit, instagram, website')
+      .eq('id', negocio.id)
+      .single();
+    setEd({
+      name: data?.name ?? negocio.name,
+      category: data?.category ?? negocio.category,
+      zone: data?.zone ?? negocio.zone,
+      phone: data?.phone ?? '',
+      about: data?.about ?? '',
+      price: data?.price != null ? String(data.price) : '',
+      priceUnit: data?.price_unit ?? '',
+      instagram: data?.instagram ?? '',
+      website: data?.website ?? '',
+    });
+    setEditOpen(true);
+  };
+
+  const guardarEdicion = async () => {
+    if (!negocio) return;
+    if (!ed.name.trim() || !ed.zone.trim()) { setError('El nombre y la zona no pueden quedar vacíos.'); return; }
+    setBusy(true); setError('');
+    const { error: e, data } = await supabase.from('providers').update({
+      name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),
+      phone: ed.phone.trim() || null, about: ed.about.trim(),
+      price: Number(ed.price.replace(/\D/g, '')) || null, price_unit: ed.priceUnit.trim() || null,
+      instagram: ed.instagram.trim() || null, website: ed.website.trim() || null,
+    }).eq('id', negocio.id).select('id');
+    if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    setEditOpen(false);
+    await reload();
+    setBusy(false);
+  };
+
   // El estado sale del negocio real, no de un selector de demo.
   const state: 'sin' | 'revision' | 'activo' | 'rechazado' =
     !negocio ? 'sin' : negocio.status === 'verificado' ? 'activo' : negocio.status === 'rechazado' ? 'rechazado' : 'revision';
@@ -1816,9 +2103,58 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
           <Text style={{ color: MUTED, fontSize: 13, marginTop: 8 }}>
             {negocio && negocio.reviews > 0 ? `★ ${negocio.rating.toFixed(1)} · ${negocio.reviews} reseñas` : 'Todavía sin reseñas'}
           </Text>
+          <TouchableOpacity onPress={abrirEdicion} style={{ marginTop: 16, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.success.fg, borderRadius: 13, paddingVertical: 12, alignItems: 'center' }}>
+            <Text style={{ color: colors.success.fg, fontWeight: '700', fontSize: 14 }}>Editar datos</Text>
+          </TouchableOpacity>
           <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
             <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Dando de baja…' : 'Dar de baja mi negocio'}</Text>
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Editar el negocio publicado. Los mismos campos que la webapp: hasta
+          ahora en mobile no se podía tocar nada después del alta. */}
+      {editOpen && (
+        <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], borderRadius: 20, padding: 18, marginBottom: 18, gap: 10 }}>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>Editar datos</Text>
+          {[
+            ['Nombre del negocio', ed.name, (v: string) => setEd({ ...ed, name: v }), {}],
+            ['Zona', ed.zone, (v: string) => setEd({ ...ed, zone: v }), {}],
+            ['Teléfono', ed.phone, (v: string) => setEd({ ...ed, phone: v }), { keyboardType: 'phone-pad' as const }],
+            ['Instagram', ed.instagram, (v: string) => setEd({ ...ed, instagram: v }), { autoCapitalize: 'none' as const }],
+            ['Sitio web', ed.website, (v: string) => setEd({ ...ed, website: v }), { autoCapitalize: 'none' as const }],
+            ['Precio (solo números)', ed.price, (v: string) => setEd({ ...ed, price: v }), { keyboardType: 'numeric' as const }],
+            ['Unidad (ej: /paseo, /noche)', ed.priceUnit, (v: string) => setEd({ ...ed, priceUnit: v }), {}],
+          ].map(([label, valor, set, extra]) => (
+            <View key={label as string}>
+              <Text style={{ fontSize: 12, color: MUTED, marginBottom: 5 }}>{label as string}</Text>
+              <TextInput value={valor as string} onChangeText={(t) => { (set as (v: string) => void)(t); setError(''); }}
+                placeholderTextColor={colors.violet[400]}
+                style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: INK, backgroundColor: '#fff' }}
+                {...(extra as object)} />
+            </View>
+          ))}
+          <Text style={{ fontSize: 12, color: MUTED, marginBottom: 5 }}>Rubro</Text>
+          <View style={{ gap: 6 }}>
+            {RUBROS.map((r) => (
+              <TouchableOpacity key={r} onPress={() => setEd({ ...ed, category: r })}
+                style={{ borderWidth: 1.5, borderColor: ed.category === r ? BRAND : colors.violet[200], backgroundColor: ed.category === r ? colors.violet[100] : '#fff', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14 }}>
+                <Text style={{ fontSize: 13.5, fontWeight: ed.category === r ? '700' : '500', color: ed.category === r ? BRAND : MUTED }}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ fontSize: 12, color: MUTED, marginBottom: 5, marginTop: 4 }}>Sobre tu servicio</Text>
+          <TextInput value={ed.about} onChangeText={(t) => { setEd({ ...ed, about: t }); setError(''); }} multiline
+            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, fontSize: 14, color: INK, backgroundColor: '#fff', minHeight: 90, textAlignVertical: 'top' }} />
+          {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700' }}>{error}</Text> : null}
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity onPress={() => setEditOpen(false)} style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 13, paddingVertical: 13, alignItems: 'center' }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: MUTED }}>Cancelar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity disabled={busy} onPress={guardarEdicion} style={{ flex: 1, backgroundColor: LIME, borderRadius: 13, paddingVertical: 13, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{busy ? 'Guardando…' : 'Guardar'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
       {state === 'rechazado' && (
@@ -1851,7 +2187,7 @@ const reintTone = (raw: string) => REINT_TONE[raw] ?? REINT_TONE.en_revision!;
 function ReintegroDetalle({ r, planName, onVolver }: { r: ReintVM; planName: string; onVolver: () => void }) {
   const [verBusy, setVerBusy] = useState(false);
   const tone = reintTone(r.estadoRaw);
-  const pasos = reintPasos(r.estadoRaw, r.fecha);
+  const pasos = reintPasos(r.estadoRaw, r.fecha, r.resueltoEl);
 
   /** El bucket es privado: se pide una URL firmada corta y se abre. */
   const verComprobante = async () => {
@@ -2180,6 +2516,24 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
     setBusy(false);
   };
 
+  /**
+   * Marca (o desmarca) la mejor respuesta. Solo puede quien preguntó: la política
+   * lo habilita por fila y el trigger impide que el autor de la respuesta se la
+   * marque a sí mismo. Se desmarcan las otras primero porque "la mejor" es una
+   * sola, y eso es una regla del producto, no de la tabla.
+   */
+  const marcarMejor = async (a: ForumAnswer) => {
+    setBusy(true);
+    if (!a.best) {
+      const otras = p.answers.filter((x) => x.best && x.id !== a.id).map((x) => x.id);
+      if (otras.length) await supabase.from('community_answers').update({ best: false }).in('id', otras);
+    }
+    const { error } = await supabase.from('community_answers').update({ best: !a.best }).eq('id', a.id);
+    if (error) Alert.alert('No pudimos marcar la respuesta', 'Probá de nuevo.');
+    else await reload();
+    setBusy(false);
+  };
+
   /** Borra una respuesta propia. El contador `replies` lo baja el trigger. */
   const borrarRespuesta = (id: string) => {
     Alert.alert('Borrar tu respuesta', 'No se puede deshacer.', [
@@ -2253,6 +2607,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
 
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, lineHeight: 25, color: INK, marginBottom: 10 }}>{p.title}</Text>
       <Text style={{ fontSize: 14, color: '#4a4560', lineHeight: 22, marginBottom: 14 }}>{p.body}</Text>
+      {p.photo ? <Image source={{ uri: p.photo }} style={{ width: '100%', height: 200, borderRadius: 14, marginBottom: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" /> : null}
 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
         <TouchableOpacity onPress={togglePost} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: likePost ? '#fbe9ee' : colors.violet[100], borderRadius: 100, paddingHorizontal: 14, paddingVertical: 9 }}>
@@ -2298,6 +2653,14 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
                       <Text style={{ fontSize: 12, color: MUTED }}>Borrar</Text>
                     </TouchableOpacity>
                   ) : null}
+                  {/* La mejor respuesta la marca solo quien preguntó. */}
+                  {p.propia && !a.propia ? (
+                    <TouchableOpacity onPress={() => marcarMejor(a)} disabled={busy}>
+                      <Text style={{ fontSize: 12, fontWeight: a.best ? '700' : '400', color: a.best ? '#2f8f5b' : MUTED }}>
+                        {a.best ? '★ Es la mejor' : 'Marcar como mejor'}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
                 </View>
               </View>
             </View>
@@ -2335,6 +2698,8 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listo, setListo] = useState(false);
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotoBusy, setFotoBusy] = useState(false);
 
   const ql = q.trim().toLowerCase();
   const list = posts.filter((p) => (filtro === 'Todos' || p.cat === filtro) && (!ql || `${p.title} ${p.body} ${p.author}`.toLowerCase().includes(ql)));
@@ -2344,15 +2709,25 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
 
   const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
 
+  /** Misma subida que la foto de mascota, con el prefijo del foro. */
+  const elegirFoto = async () => {
+    setFotoBusy(true); setError('');
+    const r = await elegirYSubirFoto(userId, 'foro-');
+    if ('url' in r) setFotoUrl(r.url);
+    else if ('error' in r) setError(r.error);
+    setFotoBusy(false);
+  };
+
   const publicar = async () => {
     if (!title.trim()) { setError('Ponele un título a tu publicación.'); return; }
     setBusy(true); setError('');
     const { error: e } = await supabase.from('community_posts').insert({
       author_id: userId, author_name: firstName, category: cat,
       title: title.trim(), body: body.trim() || title.trim(), zone: zona.trim() || null,
+      photo_url: fotoUrl,
     });
     if (e) { setError('No pudimos publicar. Probá de nuevo.'); setBusy(false); return; }
-    setTitle(''); setBody(''); setZona('');
+    setTitle(''); setBody(''); setZona(''); setFotoUrl(null);
     setBusy(false); setListo(true);
     await reload();
   };
@@ -2394,7 +2769,21 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
         <TextInput value={body} onChangeText={setBody} multiline placeholder="Escribí tu consulta o experiencia…" placeholderTextColor={colors.violet[400]} style={{ ...field, height: 120, textAlignVertical: 'top', marginBottom: 12 }} />
 
         <SheetLabel>Zona · opcional</SheetLabel>
-        <TextInput value={zona} onChangeText={setZona} placeholder="Palermo, CABA" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 18 }} />
+        <TextInput value={zona} onChangeText={setZona} placeholder="Palermo, CABA" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 16 }} />
+
+        {/* La fila de foto del prototipo: miniatura, texto y el "+". */}
+        <TouchableOpacity disabled={fotoBusy} onPress={elegirFoto} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingVertical: 11, paddingHorizontal: 14, marginBottom: 18 }}>
+          <View style={{ width: 32, height: 32, borderRadius: 9, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+            {fotoUrl
+              ? <Image source={{ uri: fotoUrl }} style={{ width: '100%', height: '100%' }} />
+              : <Ic d="image" size={17} color={BRAND} />}
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '600', fontSize: 13, color: INK }}>{fotoBusy ? 'Subiendo…' : fotoUrl ? 'Foto agregada' : 'Agregá una foto'}</Text>
+            <Text style={{ fontSize: 11, color: '#a29dba' }}>Opcional</Text>
+          </View>
+          <Text style={{ color: BRAND, fontSize: 20, fontWeight: '700' }}>{fotoUrl ? '✓' : '+'}</Text>
+        </TouchableOpacity>
 
         {!!error && <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text>}
         <TouchableOpacity disabled={busy} onPress={publicar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
@@ -2580,13 +2969,13 @@ export default function App() {
         </View>
         <View style={{ flex: 1 }}>
           {screen === 'inicio' && <Inicio profile={data.profile} pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
-          {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} reload={reload} go={go} />}
+          {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
           {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {screen === 'beneficios' && <Beneficios benefits={data.benefits} go={go} />}
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
-          {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
+          {screen === 'perfil' && <Perfil profile={data.profile} planes={data.planes} go={go} reload={reload} />}
           {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}

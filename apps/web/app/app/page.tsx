@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { urls, diaISO, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
@@ -108,7 +108,7 @@ function mapBenefit(row: BenefitRow): BenefitVM {
 }
 
 type AnswerRow = { id: string; text: string; likes: number; best: boolean; created_at: string; author_name: string; author_id: string | null };
-type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; author_name: string; author_id: string | null; community_answers: AnswerRow[] };
+type PostRow = { id: string; category: string; title: string; body: string; photo_url: string | null; zone: string | null; replies: number; likes: number; created_at: string; author_name: string; author_id: string | null; community_answers: AnswerRow[] };
 /** El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
  *  todos los autores salían como "Socio". */
 function authorName(nombre: string | null): string {
@@ -123,6 +123,7 @@ function mapPost(row: PostRow, userId: string): ForumPost {
     meta: `${row.zone ?? 'General'} · ${relTime(row.created_at)}`,
     title: row.title,
     body: row.body,
+    photo: row.photo_url,
     replies: row.replies,
     likes: row.likes,
     propia: row.author_id === userId,
@@ -136,7 +137,7 @@ function mapPost(row: PostRow, userId: string): ForumPost {
 const REINT_STATUS: Record<string, Reint['status']> = { en_revision: 'En revisión', aprobado: 'Aprobado', rechazado: 'Rechazado', acreditado: 'Acreditado' };
 type ReintRow = {
   id: string; provider_name: string; concept: string; amount: number; refund: number; refund_pct: number;
-  status: string; requested_on: string; created_at: string; receipt_no: string | null; receipt_path: string | null;
+  status: string; requested_on: string; resolved_at: string | null; created_at: string; receipt_no: string | null; receipt_path: string | null;
   bank_holder: string | null; bank_holder_dni: string | null; bank_cuit: string | null;
   bank_name: string | null; bank_cbu: string | null; bank_alias: string | null;
   pets: { name: string } | { name: string }[] | null;
@@ -155,6 +156,7 @@ function mapReint(row: ReintRow): Reint {
     status: REINT_STATUS[row.status] ?? 'En revisión',
     statusRaw: row.status,
     requestedOn: row.requested_on,
+    resueltoEl: row.resolved_at ? fmtDate(diaISO(row.resolved_at)) : '',
     pet: pet?.name ?? '—',
     receiptNo: row.receipt_no,
     receiptPath: row.receipt_path,
@@ -211,7 +213,7 @@ export default async function Page() {
 
   const { data: reintRows } = await supabase
     .from('reimbursements')
-    .select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)')
+    .select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)')
     .eq('member_id', auth.user.id)
     .order('requested_on', { ascending: false });
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
@@ -263,7 +265,7 @@ export default async function Page() {
 
   const { data: postRows } = await supabase
     .from('community_posts')
-    .select('id, category, title, body, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
+    .select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
     .order('created_at', { ascending: false });
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
 
@@ -286,7 +288,7 @@ export default async function Page() {
       vaccines: ((p.vaccinations ?? []) as VaccinationRow[]).map((v) => ({ id: v.id, name: v.name, status: v.status, dueOn: v.due_on })),
     })),
     reintegros: ((reintRows ?? []) as ReintRow[]).map((r) => ({
-      id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at,
+      id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
     })),
     negocio: negocioRow ? { name: negocioRow.name, status: negocioRow.status, createdAt: negocioRow.created_at } : null,
   };

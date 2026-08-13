@@ -55,17 +55,18 @@ export function notifTiempo(iso: string): string {
 
 export type NotifInput = {
   pets: { name: string; vaccines: { id: string; name: string; status: string; dueOn: string | null }[] }[];
-  reintegros: { id: string; providerName: string; refund: number; status: string; createdAt: string }[];
+  reintegros: { id: string; providerName: string; refund: number; status: string; createdAt: string; resolvedAt: string | null }[];
   negocio: { name: string; status: string; createdAt: string } | null;
 };
 
 /**
  * Arma las notificaciones y las agrupa por fecha.
  *
- * Nota: `reimbursements` no guarda cuándo se resolvió, solo cuándo se cargó, así
- * que los avisos de reintegro se ubican por la fecha del pedido. Lo mismo con el
- * negocio: se usa cuándo se dio de alta, no cuándo lo aprobaron. Si algún día se
- * agrega un `resolved_at`, usarlo acá.
+ * Nota: el aviso de un reintegro se fecha con `resolved_at` (cuándo el club lo
+ * resolvió), y solo cae al `created_at` si todavía está en revisión o si se
+ * resolvió antes de que existiera la columna. Antes se usaba siempre el pedido, y
+ * un "acreditado" resuelto hoy aparecía en "Antes" fechado semanas atrás. Con el
+ * negocio sigue pasando eso: se usa cuándo se dio de alta, no cuándo lo aprobaron.
  */
 export function buildNotifs(input: NotifInput): NotifGroup[] {
   const items: Notif[] = [];
@@ -94,7 +95,8 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
   }
 
   for (const r of input.reintegros) {
-    const cuando = r.createdAt;
+    // El hecho que se avisa es la resolución, no el pedido.
+    const cuando = r.resolvedAt ?? r.createdAt;
     if (r.status === 'acreditado') {
       items.push({ id: `re-${r.id}`, kind: 'reintegro-ok', title: 'Reintegro acreditado', body: `Se acreditaron ${money(r.refund)} por tu gasto en ${r.providerName}.`, date: cuando, to: 'reintegros' });
     } else if (r.status === 'aprobado') {

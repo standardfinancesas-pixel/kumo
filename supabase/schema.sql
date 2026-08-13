@@ -215,6 +215,10 @@ create table if not exists reimbursements (
   refund         integer not null,
   refund_pct     integer not null,
   status         reimbursement_status not null default 'en_revision',
+  -- Cuando el club lo acredito o rechazo. Null mientras esta en revision: el
+  -- seguimiento marcaba los pasos hechos pero sin fecha, y las notificaciones
+  -- fechaban "acreditado" con el dia del pedido.
+  resolved_at    timestamptz,
   requested_on   date not null default (now() at time zone 'America/Argentina/Buenos_Aires')::date,
   receipt_no     text,
   -- Path dentro del bucket privado 'receipts' (ver migración de comprobantes).
@@ -244,6 +248,9 @@ create table if not exists community_posts (
   replies     integer not null default 0,
   likes       integer not null default 0,
   reported    boolean not null default false,
+  -- Foto de la publicacion, en el bucket pet-photos. El prototipo la ofrece y la
+  -- tabla no tenia donde guardarla, asi que el boton no se podia construir.
+  photo_url   text,
   created_at  timestamptz not null default now()
 );
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { diaISO, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -38,6 +38,9 @@ export type ReintVM = {
   id: string; place: string; det: string; concept: string; fecha: string;
   spent: number; refund: number; refundPct: number; estado: string; estadoRaw: string;
   pet: string; receiptNo: string | null; receiptPath: string | null;
+  /** Cuando el club lo resolvio, ya formateada. Vacia si sigue en revision o si
+   *  se resolvio antes de que existiera la columna. */
+  resueltoEl: string;
   bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
 };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
@@ -45,6 +48,8 @@ export type ForumAnswer = { id: string; author: string; when: string; text: stri
 export type ForumPost = {
   id: string; cat: string; author: string; meta: string; title: string; body: string;
   replies: number; likes: number; trend: boolean; answers: ForumAnswer[];
+  /** Foto de la publicación, si el autor adjuntó una. */
+  photo: string | null;
   /** Para mostrar el botón de borrar solo en lo propio. */
   propia: boolean;
 };
@@ -57,6 +62,8 @@ export type KumoData = {
   reintegros: ReintVM[];
   reintTotal: number;
   posts: ForumPost[];
+  planes: PlanVM[];
+  contacts: EmergencyContact[];
   /** El negocio propio, si dio de alta uno. Puede estar pendiente o rechazado, así que no sale del listado de verificados. */
   negocio: MiNegocio | null;
   /** Materia prima de las notificaciones: la lista la arma `buildNotifs` de @kumo/shared, igual que la webapp. */
@@ -68,6 +75,13 @@ export type KumoData = {
   /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
   misLikes: { posts: string[]; answers: string[] };
 };
+
+/** Contactos de emergencia del carnet. La webapp ya los tenía; en mobile no
+ *  existían. */
+export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
+
+/** Los planes, para el cambio de plan de Mi perfil. */
+export type PlanVM = { id: string; name: string; basePrice: number };
 
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; status: string; rating: number; reviews: number };
 
@@ -141,18 +155,20 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async () => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
-      supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
+      supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
-      supabase.from('community_posts').select('id, category, title, body, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
+      supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
       supabase.from('post_likes').select('post_id').eq('member_id', userId),
       supabase.from('answer_likes').select('answer_id').eq('member_id', userId),
+      supabase.from('plans').select('id, name, base_price'),
+      supabase.from('emergency_contacts').select('id, name, phone, type, address, hours').eq('owner_id', userId),
     ]);
 
     /**
@@ -169,7 +185,7 @@ export function useKumoData(userId: string | null) {
         ['perfil', profileRes], ['mascotas', petsRes], ['reintegros', reintRes],
         ['prestadores', provRes], ['beneficios', benefRes], ['foro', postsRes],
         ['mi negocio', negocioRes], ['guardados', favRes], ['reseñas', revRes],
-        ['likes', plikeRes], ['likes de respuestas', alikeRes],
+        ['likes', plikeRes], ['likes de respuestas', alikeRes], ['planes', planesRes], ['contactos', contactosRes],
       ] as const
     )
       .filter(([, res]) => res.error)
@@ -236,7 +252,7 @@ export function useKumoData(userId: string | null) {
       const pet = Array.isArray(r.pets) ? r.pets[0] : r.pets;
       return {
         id: r.id, place: r.provider_name, det: `${r.concept} · ${fmtDate(r.requested_on)}`,
-        concept: r.concept, fecha: fmtDate(r.requested_on),
+        concept: r.concept, fecha: fmtDate(r.requested_on), resueltoEl: r.resolved_at ? fmtDate(diaISO(r.resolved_at)) : '',
         spent: r.amount, refund: r.refund, refundPct: r.refund_pct,
         estado: ESTADO_REINT[r.status] ?? r.status, estadoRaw: r.status,
         pet: pet?.name ?? '—', receiptNo: r.receipt_no, receiptPath: r.receipt_path,
@@ -252,7 +268,7 @@ export function useKumoData(userId: string | null) {
     // todos los autores salían como "Socio".
     type AnsRow = { id: string; text: string; likes: number; best: boolean; created_at: string; author_name: string; author_id: string | null };
     const posts: ForumPost[] = (postsRes.data ?? []).map((row) => ({
-      id: row.id, cat: row.category, title: row.title, body: row.body ?? '',
+      id: row.id, cat: row.category, title: row.title, body: row.body ?? '', photo: row.photo_url ?? null,
       author: row.author_name?.trim().split(' ')[0] || 'Socio',
       meta: `${row.zone || 'General'} · ${relTime(row.created_at)}`,
       replies: row.replies, likes: row.likes, trend: row.likes >= 20,
@@ -277,7 +293,7 @@ export function useKumoData(userId: string | null) {
         vaccines: ((row.vaccinations ?? []) as VacRow[]).map((v) => ({ id: v.id, name: v.name, status: v.status, dueOn: v.due_on })),
       })),
       reintegros: (reintRes.data ?? []).map((r) => ({
-        id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at,
+        id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
       })),
       negocio: n ? { name: n.name, status: n.status, createdAt: n.created_at } : null,
     };
@@ -297,7 +313,16 @@ export function useKumoData(userId: string | null) {
       answers: (alikeRes.data ?? []).map((l) => l.answer_id),
     };
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, negocio, notifInput, guardados, reviews, misLikes });
+    const planes: PlanVM[] = (planesRes.data ?? [])
+      .map((r) => ({ id: r.id, name: r.name, basePrice: r.base_price }))
+      .sort((a, b) => a.basePrice - b.basePrice);
+
+    const contacts: EmergencyContact[] = (contactosRes.data ?? []).map((c) => ({
+      id: c.id, name: c.name, phone: c.phone ?? '—', type: c.type ?? 'Veterinaria',
+      address: c.address ?? '', hours: c.hours ?? '',
+    }));
+
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, contacts, negocio, notifInput, guardados, reviews, misLikes });
     setLoading(false);
   }, [userId]);
 

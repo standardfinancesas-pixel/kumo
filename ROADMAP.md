@@ -57,12 +57,13 @@ de cada pantalla.
       es igual, porque Google no aporta plan, mascota, declaración ni CBU. La
       identidad sale de la SESIÓN del servidor y nunca del payload: probado
       mandando el mail de otra persona con la sesión propia, rechazado.
-- [ ] **Contactos de emergencia en mobile** (la webapp ya los tiene).
-- [ ] **Mi perfil y Mi negocio en mobile.** En la webapp quedaron funcionando de
-      verdad; en mobile hay que revisar la paridad, porque arrastran los mismos
-      defectos que tenía la web antes de arreglarla (guardar decía "listo" y no
-      escribía nada, y "dar de baja mi negocio" no hacía nada por falta de
-      políticas de UPDATE/DELETE sobre `providers`, ya corregidas en la base).
+- [x] **Contactos de emergencia en mobile.** El carnet los lista y se agregan y
+      borran desde ahí, igual que en la webapp.
+- [x] **Mi perfil y Mi negocio en mobile, a la par de la webapp.** Mi perfil edita
+      datos, cuenta bancaria y plan, y da de baja la membresía; Mi negocio edita
+      la ficha y la da de baja. Arrastraban los defectos que la web ya tenía
+      arreglados (guardar decía "listo" sin escribir nada, y la baja del negocio
+      no hacía nada por falta de políticas de UPDATE/DELETE sobre `providers`).
 - [x] **Foto de la mascota, unificada.** En mobile no existía NINGUNA forma de
       ponerla —el selector de imágenes estaba solo para el comprobante del
       reintegro— y en la webapp faltaba al agregar. Ahora hay foto al agregar en
@@ -141,9 +142,13 @@ de cada pantalla.
       paga a la tarjeta, sale por transferencia al CBU del socio, y **la hace el
       club a mano** desde su home banking. El sistema no mueve plata: solo le
       muestra al admin a dónde mandarla.
-- [ ] **Fecha de resolución de un reintegro** (`resolved_at`). Hoy solo se guarda
-      cuándo se pidió, así que el seguimiento del detalle marca los pasos hechos
-      pero sin fecha, y las notificaciones fechan el reintegro por el pedido.
+- [x] **Fecha de resolución de un reintegro** (`resolved_at`). La escribe el route
+      handler que resuelve, que es el único lugar donde un reintegro cambia de
+      estado. El seguimiento fecha el estado FINAL al que llegó y deja los
+      intermedios hechos pero sin fecha: con una sola fecha no se pueden inventar
+      dos. Las notificaciones ahora se fechan por la resolución y no por el pedido,
+      que podía ser semanas antes. Los reintegros resueltos antes de la columna
+      quedan sin fecha, que es la verdad.
 - [ ] **Definir si hay tope anual de reintegros.** La pantalla del prototipo dice
       "de $180.000 de tope anual", sus Términos dicen "No existe tope anual: los
       topes mensual y por evento reemplazan cualquier límite anual", y los perks
@@ -206,13 +211,19 @@ de cada pantalla.
       respuestas · 0 me gusta". Ahora en vez de congelar se recalcula, así los dos
       caminos convergen y un `PATCH` con `likes: 9999` igual termina en el número
       real. Verificado subiendo, bajando y tratando de inflarlo.
-- [ ] Marcar "mejor respuesta": falta el control en la UI. La base ya lo permite
-      — la política deja setear `best` al autor del post y el trigger impide que
-      lo haga el de la respuesta — pero en la webapp y en mobile el badge solo se
-      muestra, no hay con qué marcarla.
-- [ ] Foto en la publicación: el prototipo la ofrece pero `community_posts` no
-      tiene dónde guardarla.
-- [ ] Realtime con `subscribeTable` en la cola de reintegros del admin.
+- [x] Marcar "mejor respuesta", en las dos superficies: el control lo ve solo quien
+      preguntó, y sobre respuestas ajenas. Se desmarcan las otras primero, porque
+      "la mejor" es una sola y eso es regla del producto, no de la tabla.
+- [x] Foto en la publicación (`community_posts.photo_url`). La fila "Agregá una
+      foto · Opcional" del prototipo, en la webapp y en mobile: sube al bucket y
+      guarda la URL pública (el prototipo la perdía al publicar, era un data-URL
+      en memoria). Se muestra en el hilo.
+- [x] Realtime con `subscribeTable` en la cola de reintegros del admin: chip "En
+      vivo" —que solo aparece si el canal realmente se conectó— y un aviso de
+      "hay cambios nuevos" que refresca cuando el admin lo pide. No se reordena
+      sola: la lista no puede moverse debajo del cursor justo antes de un clic en
+      "Aprobar". Ignora los cambios que hizo este mismo panel. Verificado de
+      punta a punta: evento recibido, aviso, refresco y la solicitud en la cola.
 
 ## Fase 5 — Móvil nativo
 - [ ] Navegación con Expo Router (hoy es un `App.tsx` con estado local).

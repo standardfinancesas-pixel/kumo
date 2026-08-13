@@ -51,20 +51,32 @@ export function createServiceClient(url: string, serviceRoleKey: string): Supaba
 /**
  * Suscripción Realtime a los cambios de una tabla.
  * Ej: subscribeTable(supabase, 'reimbursements', (payload) => refetch())
+ *
+ * `onStatus` recibe el estado del canal ('SUBSCRIBED', 'CHANNEL_ERROR',
+ * 'TIMED_OUT', 'CLOSED'). Sirve para no decirle a nadie que está viendo algo
+ * "en vivo" cuando el socket en realidad no llegó a conectarse.
+ *
+ * Ojo: los eventos respetan la RLS, así que cada quien recibe solo los cambios
+ * de las filas que podría leer. Y la tabla tiene que estar publicada en
+ * `supabase_realtime` (ver el final de supabase/schema.sql), si no el canal se
+ * suscribe bien pero nunca llega nada.
  */
 export function subscribeTable(
   client: SupabaseClient,
   table: string,
   onChange: (payload: unknown) => void,
-  filter?: string
+  filter?: string,
+  onStatus?: (status: string) => void
 ): RealtimeChannel {
+  // El filtro va en el nombre del canal: dos pantallas escuchando la misma tabla
+  // con filtros distintos necesitan canales distintos.
   const channel = client
-    .channel(`realtime:${table}`)
+    .channel(filter ? `realtime:${table}:${filter}` : `realtime:${table}`)
     .on(
       'postgres_changes' as never,
       { event: '*', schema: 'public', table, filter } as never,
       onChange as never
     )
-    .subscribe();
+    .subscribe((status) => onStatus?.(status));
   return channel;
 }

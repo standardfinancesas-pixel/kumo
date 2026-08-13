@@ -1,9 +1,9 @@
 'use client';
 import type { CSSProperties, ReactNode } from 'react';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { urls } from '@kumo/shared';
+import { subscribeTable, urls } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /*
@@ -427,12 +427,44 @@ function Reintegros({ cola, hist }: { cola: ColaRow[]; hist: HistRow[] }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [detalle, setDetalle] = useState<ColaRow | null>(null);
   const [aviso, setAviso] = useState('');
+  const [enVivo, setEnVivo] = useState(false);
+  /** Lo que el propio panel acaba de resolver: su evento de Realtime no tiene
+   *  que anunciarse como novedad, porque ya lo hizo esta pantalla. */
+  const propios = useRef<Set<string>>(new Set());
+  const [novedades, setNovedades] = useState(0);
+
+  /*
+   * La cola en vivo. Sin esto, dos personas del club revisando al mismo tiempo
+   * se pisaban: la segunda seguía viendo una solicitud ya resuelta y la resolvía
+   * de nuevo (mandándole al socio un segundo mail).
+   *
+   * No se refresca sola: se avisa y el refresco lo pide quien está mirando. Si la
+   * lista se reordenara sola debajo del cursor, el botón "Aprobar" que se está a
+   * punto de tocar podría pasar a ser el de otra solicitud.
+   */
+  useEffect(() => {
+    const canal = subscribeTable(
+      supabase,
+      'reimbursements',
+      (payload) => {
+        const fila = (payload as { new?: { id?: string } } | null)?.new;
+        if (fila?.id && propios.current.has(fila.id)) { propios.current.delete(fila.id); return; }
+        setNovedades((n) => n + 1);
+      },
+      undefined,
+      (estado) => setEnVivo(estado === 'SUBSCRIBED'),
+    );
+    return () => { void supabase.removeChannel(canal); };
+  }, []);
+
+  const verNovedades = () => { setNovedades(0); router.refresh(); };
 
   // Pasa por el endpoint (no por supabase directo) porque además de resolver le
   // manda el mail al socio, y la API key de Resend es solo de servidor.
   const act = async (id: string, status: 'acreditado' | 'rechazado') => {
     setBusyId(id);
     setAviso('');
+    propios.current.add(id);
     try {
       const res = await fetch('/api/reintegros/resolver', {
         method: 'POST',
@@ -453,7 +485,20 @@ function Reintegros({ cola, hist }: { cola: ColaRow[]; hist: HistRow[] }) {
     <div>
       {detalle && <ComprobanteModal row={detalle} onClose={() => setDetalle(null)} />}
       <h1 className="adm-h1" style={h1}>Cola de reintegros</h1>
-      <p style={sub}>Revisá y acreditá las solicitudes de los socios</p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+        <p style={{ ...sub, margin: 0 }}>Revisá y acreditá las solicitudes de los socios</p>
+        {enVivo && (
+          <span title="La cola se actualiza sola cuando entra o se resuelve una solicitud" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600, color: 'rgb(47,143,91)', background: 'rgb(226,245,234)', borderRadius: 100, padding: '4px 10px' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'rgb(47,143,91)' }} />
+            En vivo
+          </span>
+        )}
+      </div>
+      {novedades > 0 && (
+        <button onClick={verNovedades} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left', background: 'rgb(240,237,249)', border: '1px solid rgb(223,217,242)', color: 'rgb(93,84,145)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, fontWeight: 600, marginBottom: 16, cursor: 'pointer', fontFamily: '"DM Sans"' }}>
+          {novedades === 1 ? 'Hay un cambio nuevo en la cola' : `Hay ${novedades} cambios nuevos en la cola`} · Actualizar
+        </button>
+      )}
       {aviso && (
         <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', border: '1px solid rgb(240,226,190)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, fontWeight: 600, marginBottom: 16 }}>
           {aviso}

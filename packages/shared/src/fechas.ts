@@ -30,6 +30,22 @@ export function mesActualISO(): string {
 }
 
 /**
+ * El día argentino de un instante, como "YYYY-MM-DD".
+ *
+ * Para las columnas `timestamptz` (`resolved_at`, `created_at`): guardan un
+ * momento exacto en UTC, y el producto muestra días. Sin esto, un reintegro
+ * resuelto a las 22:00 de Buenos Aires se mostraba fechado al día siguiente.
+ * Devuelve "" si el texto no es una fecha, para que quien lo use pueda decidir
+ * no mostrar nada en lugar de mostrar "Invalid Date".
+ */
+export function diaISO(ts: string | null): string {
+  if (!ts) return '';
+  const t = Date.parse(ts);
+  if (Number.isNaN(t)) return '';
+  return new Date(t - AR_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/**
  * Días enteros desde hoy (Argentina) hasta una fecha "YYYY-MM-DD".
  * Negativo si ya pasó, 0 si es hoy. Es aritmética de fechas, no de horas: no
  * depende de la hora a la que se pregunte.

@@ -28,7 +28,9 @@ export async function POST(req: Request) {
   // El update devuelve la fila: si vuelve vacía, la RLS lo bloqueó.
   const { data: fila, error } = await supabase
     .from('reimbursements')
-    .update({ status })
+    // La fecha de resolucion: es el unico lugar donde un reintegro cambia de
+    // estado, asi que es el unico que puede saberla.
+    .update({ status, resolved_at: new Date().toISOString() })
     .eq('id', id)
     .select('provider_name, concept, amount, refund, profiles(email, full_name)')
     .single();
