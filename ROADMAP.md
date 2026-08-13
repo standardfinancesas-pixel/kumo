@@ -72,12 +72,27 @@ de cada pantalla.
       protegidos por trigger: la UI lo escribe. Definir si el cambio pasa por la
       pasarela, desde cuándo aplica (¿ciclo siguiente?) y si el downgrade tiene
       restricciones. Va atado al cobro de la cuota.
-- [ ] **Repasar campo por campo los datos que pide el alta.** Hoy guarda nombre,
-      email, teléfono, DNI, fecha de nacimiento y domicilio. El domicilio se
-      concatena en una sola columna (`address` = domicilio + localidad +
-      provincia), así que no se puede filtrar ni segmentar por localidad ni por
-      provincia — y el club se organiza por zonas. Definir qué campos se piden,
-      cuáles son obligatorios y cuáles conviene separar.
+- [x] **El alta guarda los 5 pasos** (antes guardaba dos y medio). Se agregaron:
+      la declaración jurada completa en `health_declarations` —con el texto de
+      cada pregunta al lado de la respuesta, armado en el servidor, y sin
+      políticas de update/delete para que no se pueda reescribir—, la cobertura
+      odontológica, la cuota aceptada (calculada en el servidor), el medio de
+      pago, y el domicilio partido en `address` / `city` / `province`. El alta
+      ahora **exige** la declaración: sin ella responde 400 y no crea la cuenta.
+      De la tarjeta se guarda solo marca, últimos 4, vencimiento y titular,
+      calculados en el navegador; el número completo no llega al servidor ni de
+      paso y el CVV no sale del formulario (PCI DSS).
+      Los datos bancarios pasaron al perfil: el club transfiere el reintegro a
+      mano y ahora los ve en la ficha desde el alta, en vez de tener que abrir una
+      solicitud. El formulario de reintegro los prefija en web y en mobile.
+- [ ] **Los socios que ya existen no tienen declaración jurada.** No se puede
+      inventar: hay que pedírsela. La ficha del panel lo dice explícitamente en
+      vez de mostrar un vacío ambiguo. Falta definir si la app se la pide al
+      entrar.
+- [ ] **"Agregar mascota" no pide declaración.** Desde Mis mascotas y desde mobile
+      se agrega una segunda mascota sin declarar nada, así que se puede sumar una
+      mascota enferma después del alta y esquivar el paso 4. Las preguntas son por
+      mascota, así que corresponde pedirla ahí también.
 - [ ] **Bloque de contacto del prestador: falta el email.** `instagram` y
       `website` ya están en `providers`, se editan desde Mi negocio y se muestran
       en la ficha de Servicios, en web y en mobile. Pero el bloque de contacto del
@@ -90,17 +105,24 @@ de cada pantalla.
       mails saliendo de `kumo.pet`, la página legal manda a los socios a otro
       dominio. Va a `hola@kumo.pet` y /legal debería leerlo de `club_settings`
       como hace la landing, no tenerlo escrito a mano.
-- [ ] **Cobro de la cuota mensual — no existe.** El paso 5 del alta pide número,
-      vencimiento y CVV, los valida y los descarta: al servidor solo viajan
-      `{ socio, pet, plan }`. Está bien que no se guarden (el CVV no se puede
-      almacenar y guardar el número obliga a certificar PCI DSS), pero significa
-      que **el socio queda `activo` sin que se le cobre nada**. Lo que falta:
-      tokenizar la tarjeta contra la pasarela (Mercado Pago) y guardar solo el
-      token y los últimos 4 dígitos; suscripción recurrente; webhook de pago que
-      mueva el socio entre `activo` y `moroso`; y mostrar el medio de pago en Mi
-      perfil. Necesita las credenciales del cliente.
-      Ojo: el reintegro **no** se paga a la tarjeta sino por transferencia al
-      CBU/CVU que ahora se pide en la solicitud. Son dos flujos distintos.
+- [ ] **Cobro de la cuota mensual — no existe.** El paso 5 valida la tarjeta y la
+      descarta (bien: el CVV no se puede almacenar y el número obliga a certificar
+      PCI DSS), así que **el socio queda `activo` sin que se le cobre nada**. El
+      medio de pago ya queda identificado en el perfil (marca, últimos 4,
+      vencimiento) y la cuota aceptada también, así que lo que falta es el cobro
+      en sí: **suscripción de Mercado Pago** (decidido) — tokenizar con el SDK de
+      MP en el navegador, crear el `preapproval`, guardar su id, y un webhook con
+      validación HMAC que mueva al socio entre `activo` y `moroso`. Necesita el
+      Access Token y la Public Key de la cuenta del cliente, y definir si se cobra
+      desde el día 1 o hay período de gracia.
+      **A confirmar con la API de MP** (no de memoria; hay un MCP de Mercado Pago
+      que hay que autorizar desde una sesión interactiva): si el preapproval
+      soporta debitar de un CBU. Hoy el paso 5 ofrece "Débito por CBU/CVU" y a
+      quien lo elige no se le guarda tarjeta, así que no habría con qué debitarle.
+      Ojo, son dos flujos opuestos y no hay que mezclarlos: el reintegro **no** se
+      paga a la tarjeta, sale por transferencia al CBU del socio, y **la hace el
+      club a mano** desde su home banking. El sistema no mueve plata: solo le
+      muestra al admin a dónde mandarla.
 - [ ] **Fecha de resolución de un reintegro** (`resolved_at`). Hoy solo se guarda
       cuándo se pidió, así que el seguimiento del detalle marca los pasos hechos
       pero sin fecha, y las notificaciones fechan el reintegro por el pedido.
