@@ -875,14 +875,53 @@ function Ajustes({ settings }: { settings: SettingsVM }) {
 }
 
 /* ── Prestadores / Negocios (misma tabla, distinto recorte) ────── */
+
+/**
+ * Publica o rechaza un negocio, y de paso le avisa al dueño por mail.
+ *
+ * Pasa por el endpoint y no por supabase directo por lo mismo que los
+ * reintegros: la API key de Resend es de servidor, y resolver sin avisar dejaba
+ * al prestador mirando "en revisión" cuando ya estaba publicado.
+ *
+ * Devuelve el motivo cuando el mail no salió — el caso más común no es un error
+ * sino un negocio que el club cargó a mano y no tiene cuenta asociada, así que no
+ * hay a quién escribirle.
+ */
+async function resolverNegocio(id: string, status: 'verificado' | 'rechazado'): Promise<string> {
+  try {
+    const res = await fetch('/api/prestadores/resolver', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status }),
+    });
+    const data = await res.json();
+    if (!res.ok) return data.error ?? 'No pudimos actualizar el negocio.';
+    if (!data.mailEnviado) return data.motivo ?? 'Se guardó, pero no salió el mail al prestador. Avisale por otro canal.';
+    return '';
+  } catch {
+    return 'No pudimos actualizar el negocio. Revisá la conexión.';
+  }
+}
+
+/** Cartel de aviso del panel (mismo estilo que el de la cola de reintegros). */
+function Aviso({ texto }: { texto: string }) {
+  if (!texto) return null;
+  return (
+    <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', border: '1px solid rgb(240,226,190)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, fontWeight: 600, marginBottom: 16 }}>
+      {texto}
+    </div>
+  );
+}
+
 function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [aviso, setAviso] = useState('');
   /** Sin rechazo, una solicitud que no pasa la validación quedaba pendiente para
    *  siempre: el socio nunca se enteraba y al club le quedaba en la cola. */
   const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
     setBusyId(id);
-    await supabase.from('providers').update({ status }).eq('id', id);
+    setAviso(await resolverNegocio(id, status));
     router.refresh();
     setBusyId(null);
   };
@@ -890,6 +929,7 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
     <div>
       <h1 className="adm-h1" style={h1}>Prestadores</h1>
       <p style={sub}>Validá la identidad y documentación de quienes ofrecen servicios</p>
+      <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>{['NOMBRE', 'RUBRO', 'ZONA', 'RATING', 'ESTADO', ''].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>
@@ -920,10 +960,11 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
 function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [aviso, setAviso] = useState('');
   const pendientes = providers.filter((r) => r.estado === 'Pendiente');
   const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
     setBusyId(id);
-    await supabase.from('providers').update({ status }).eq('id', id);
+    setAviso(await resolverNegocio(id, status));
     router.refresh();
     setBusyId(null);
   };
@@ -931,6 +972,7 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
     <div>
       <h1 className="adm-h1" style={h1}>Negocios</h1>
       <p style={sub}>{pendientes.length} solicitudes de alta pendientes de validación</p>
+      <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>{['NOMBRE', 'RUBRO', 'ZONA', 'SOLICITADO', 'ESTADO', ''].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>

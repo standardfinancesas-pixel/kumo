@@ -13,6 +13,19 @@ export const urls = {
 } as const;
 
 /**
+ * Origen del sitio en producción.
+ *
+ * La app móvil necesita URLs absolutas para hablar con los route handlers (los
+ * mails salen de ahí, porque la API key de Resend es de servidor) y no tiene
+ * dónde leerlas: los `EXPO_PUBLIC_*` se hornean en el bundle y agregar uno nuevo
+ * obliga a tocar las variables de la cuenta de Expo, que no está en el repo. Va
+ * como constante porque para la app instalada este valor no cambia nunca: siempre
+ * habla con producción. Para probar contra la máquina local, `EXPO_PUBLIC_SITE_URL`
+ * lo pisa (ver `apiKumo` en apps/mobile/lib/avisos.ts).
+ */
+export const SITIO = 'https://www.kumo.pet';
+
+/**
  * Link de WhatsApp a partir del número que el admin carga en `club_settings`.
  *
  * wa.me solo acepta dígitos, y el número se guarda con el formato legible

@@ -38,6 +38,33 @@ de cada pantalla.
       La casilla no recibe (un dominio verificado sirve para mandar, y sin MX la
       respuesta rebota), así que los mails mandan al WhatsApp del club, leído de
       `club_settings`.
+- [x] **Los 13 mails del ciclo completo**, escritos en `lib/mail.ts`. Enganchados
+      donde el disparador ya existe: acuse del pedido de reintegro, baja de la
+      membresía y alta de negocio (los tres desde la webapp y desde mobile, vía
+      `/api/avisos`), y publicado/rechazado del negocio desde el panel (vía
+      `/api/prestadores/resolver`, que ahora resuelve y avisa en la misma
+      operación, como el de reintegros). Los de vacuna, cambio de plan y cobro
+      quedan escritos y sin llamador a propósito: el primero necesita el cron y
+      los otros el cobro, y cada uno lo dice en su comentario.
+      Detalles que costaron: los textos estaban en **femenino** para todo el mundo
+      ("¡Bienvenida!", "sos la socia #55") y el club nunca pregunta el género, así
+      que van en neutro; y mobile no tiene cookies, así que manda la sesión en
+      `Authorization: Bearer` (ver `lib/avisos.ts` y `lib/quien-pide.ts`) — sin eso
+      el mismo botón mandaba o no mandaba el aviso según el aparato.
+      **Falta**: la plantilla de recuperar contraseña sigue siendo la de Supabase,
+      en inglés y sin la marca. Se cambia en el panel de Supabase, no en el código.
+- [x] **El número de socio es de los socios.** Era un `serial` que corría para
+      cualquier perfil: un admin quedaba como "socio #60" y cada usuario de prueba
+      se llevaba un número, dejando huecos. Ahora lo asigna un trigger solo si el
+      perfil es de un socio, una vez, y no cambia nunca más —ni al cambiar de rol,
+      porque un número que cambia no identifica a nadie—. Los tres socios se
+      renumeraron a 1, 2 y 3, que era la última oportunidad: ninguno había visto su
+      número en un carnet. De acá en adelante los huecos se aceptan.
+      Ojo con dos cosas al tocar esto: el trigger se llama
+      `profiles_numero_de_socio` para que corra DESPUÉS de `profiles_campos_guard`
+      (Postgres los ordena alfabéticamente y el guard congela `member_no`), y ese
+      mismo guard obliga a apagarlo un instante en cualquier corrección hecha desde
+      el editor de SQL, donde `is_admin()` da false.
 - [x] **Login con Google**, solo para entrar: quien no es socio recibe un aviso
       y se le cierra la sesión, porque el alta pide plan, mascota y medio de pago.
       **Falta config**: crear las credenciales en Google Cloud (redirect

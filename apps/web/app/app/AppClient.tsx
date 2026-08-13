@@ -22,6 +22,27 @@ import { supabase } from '@/lib/supabase-browser';
 /** Landing: login, planes y destino al cerrar sesión. */
 const LANDING = urls.landing;
 
+/**
+ * Le pide al servidor que mande un mail: la API key de Resend no puede llegar al
+ * navegador, así que la escritura la sigue haciendo Supabase desde acá y el aviso
+ * pasa por `/api/avisos`.
+ *
+ * No hace fallar nada: cuando se llama, lo que el socio pidió ya está hecho. Un
+ * mail que no sale no es motivo para mostrarle un error sobre algo que sí
+ * funcionó, así que se dispara sin esperarlo (`void`) y se traga la excepción.
+ */
+async function avisar(tipo: string, id?: string) {
+  try {
+    await fetch('/api/avisos', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tipo, id }),
+    });
+  } catch {
+    /* sin conexión: el socio no tiene por qué enterarse por esto */
+  }
+}
+
 /* ── Iconos ────────────────────────────────────────────────────── */
 const ic = (inner: ReactNode, filled = false, size = 19) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>{inner}</svg>
@@ -80,7 +101,7 @@ export type ProfileBanco = { holder: string | null; cuit: string | null; cbu: st
 
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
-export type Profile = { id: string; firstName: string; fullName: string; memberNo: number; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
+export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
 
 /** Las mismas cinco promos que la app móvil, con sus colores: eran tres y con
  *  otras fotos, así que las dos superficies mostraban cosas distintas. */
@@ -1126,14 +1147,14 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
       return;
     }
 
-    const { error: insErr } = await supabase.from('reimbursements').insert({
+    const { data: nuevo, error: insErr } = await supabase.from('reimbursements').insert({
       member_id: memberId, pet_id: petId || null, plan_name: planName,
       provider_name: place || 'Comprobante', concept: detail || 'Comprobante',
       amount: s, refund: Math.round(s * 0.5), refund_pct: 50, status: 'en_revision', receipt_path: path,
       bank_holder: titular.trim() || null, bank_cuit: cuit.trim() || null,
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
       ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
-    });
+    }).select('id').single();
 
     // Si el socio no tenía cuenta en el perfil (se dio de alta antes de que se
     // pidiera), queda guardada para la próxima solicitud y para que el admin la
@@ -1152,6 +1173,9 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
       setBusy(false);
       return;
     }
+
+    // Acuse del pedido: el socio se entera de que llegó sin tener que preguntar.
+    if (nuevo?.id) void avisar('reintegro-recibido', nuevo.id);
 
     setPlace(''); setDetail(''); setSpent(''); setTitular(''); setCuit(''); setCbu(''); setFile(null);
     setOpen(false); setEnviado(true);
@@ -1905,11 +1929,12 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
     if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
     setBusy(true); setError('');
-    const { error: e2 } = await supabase.from('providers').insert({
+    const { data: alta, error: e2 } = await supabase.from('providers').insert({
       owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
       phone: tel.trim() || null, status: 'pendiente',
-    });
+    }).select('id').single();
     if (e2) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    if (alta?.id) void avisar('negocio-recibido', alta.id);
     setShowAlta(false);
     router.refresh();
     setBusy(false);
@@ -2172,6 +2197,9 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
   const confirmarBaja = async () => {
     setBusy(true);
     await supabase.from('profiles').update({ status: 'baja' }).eq('id', profile.id);
+    // El comprobante de la baja: que no se cobra más y, si está dentro de los 10
+    // días de la Ley 24.240, que se devuelve la cuota.
+    void avisar('baja');
     setBajaHecha(true);
     router.refresh();
     setBusy(false);
@@ -2209,7 +2237,11 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
         <div style={{ width: 60, height: 60, borderRadius: '50%', flex: 'none', border: '2px solid rgba(255,255,255,0.25)', background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: '#5D5491' }}>{profile.firstName.slice(0, 1).toUpperCase()}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21 }}>{profile.fullName}</div>
-          <div style={{ color: 'rgb(201,195,227)', fontSize: 12.5 }}>Socio #{profile.memberNo} · Plan {profile.planName}</div>
+          {/* Sin número no se escribe "Socio #": una cuenta que no es de socio
+              (el admin, mañana un prestador) no tiene número y no es socio. */}
+          <div style={{ color: 'rgb(201,195,227)', fontSize: 12.5 }}>
+            {profile.memberNo ? `Socio #${profile.memberNo} · ` : ''}Plan {profile.planName}
+          </div>
         </div>
         <button onClick={() => setEditando((s) => !s)} style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontWeight: 600, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', flex: 'none', fontFamily: '"DM Sans"' }}>{editando ? 'Cancelar' : 'Editar'}</button>
       </div>

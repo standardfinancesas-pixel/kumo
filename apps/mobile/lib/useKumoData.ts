@@ -197,7 +197,7 @@ export function useKumoData(userId: string | null) {
     const p = profileRes.data;
     const plan = p ? (Array.isArray(p.plans) ? p.plans[0] : p.plans) : null;
     const planName = plan?.name ?? '—';
-    const memberNo = p ? `#${p.member_no}` : '—';
+    const memberNo = p?.member_no ? `#${p.member_no}` : '—';
 
     const profile: Profile | null = p ? {
       id: p.id, firstName: p.full_name.split(' ')[0] ?? p.full_name, fullName: p.full_name, memberNo,

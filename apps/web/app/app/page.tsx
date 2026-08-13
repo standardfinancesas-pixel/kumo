@@ -43,12 +43,14 @@ function imgSrc(photoUrl: string | null, fallback = 'default-pet.webp'): string 
 }
 
 type PetRow = { id: string; name: string; breed: string | null; age_years: number | null; weight_kg: number | null; microchip: string | null; neutered: boolean; photo_url: string | null; vaccinations: VaccinationRow[] };
-function mapPet(row: PetRow, memberNo: number, planName: string): Pet {
+/** `socio` viene armado y no como número: un perfil que no es de socio no tiene
+ *  número, y "#null" en el carnet es peor que un guion. */
+function mapPet(row: PetRow, socio: string, planName: string): Pet {
   return {
     id: row.id,
     name: row.name,
     plan: planName,
-    socio: `#${memberNo}`,
+    socio,
     photo: imgSrc(row.photo_url),
     breed: [row.breed ?? 'Mestizo', row.age_years != null ? `${row.age_years} años` : null, row.weight_kg != null ? `${row.weight_kg} kg` : null].filter(Boolean).join(' · '),
     microchip: row.microchip ?? 'Sin chip',
@@ -209,7 +211,7 @@ export default async function Page() {
     .from('pets')
     .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)')
     .eq('owner_id', auth.user.id);
-  const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(r as PetRow, profile.memberNo, profile.planName));
+  const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(r as PetRow, profile.memberNo ? `#${profile.memberNo}` : '—', profile.planName));
 
   const { data: reintRows } = await supabase
     .from('reimbursements')

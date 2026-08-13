@@ -50,7 +50,11 @@ exception when duplicate_object then null; end $$;
 create table if not exists profiles (
   id           uuid primary key references auth.users(id) on delete cascade,
   role         user_role   not null default 'socio',
-  member_no    serial,
+  -- Solo los socios tienen número, y lo asigna el trigger
+  -- `profiles_numero_de_socio` (más abajo) una vez y para siempre. No es un
+  -- `serial`: como contador de todos los perfiles, un admin quedaba como
+  -- "socio #60" y cada usuario de prueba se llevaba un número.
+  member_no    integer unique,
   full_name    text        not null,
   email        text        not null,
   phone        text,
@@ -335,6 +339,29 @@ create table if not exists provider_reviews (
   created_at  timestamptz not null default now(),
   unique (provider_id, member_id)
 );
+
+-- ============================================================
+--  El número de socio: solo para socios, y una sola vez
+-- ============================================================
+create sequence if not exists profiles_member_no_seq as integer start 1;
+
+create or replace function profiles_numero_de_socio()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.role = 'socio' and new.member_no is null then
+    new.member_no := nextval('profiles_member_no_seq');
+  end if;
+  return new;
+end $$;
+
+-- OJO CON EL NOMBRE: con varios triggers BEFORE del mismo tipo, Postgres los
+-- corre en orden alfabético, y este tiene que ir DESPUÉS de
+-- `profiles_campos_guard` (ver las migraciones), que para quien no es admin hace
+-- `new.member_no := old.member_no`. Si corriera antes, el guard borraría el
+-- número recién asignado. 'profiles_campos_guard' < 'profiles_numero_de_socio'.
+drop trigger if exists profiles_numero_de_socio on profiles;
+create trigger profiles_numero_de_socio before insert or update on profiles
+  for each row execute function profiles_numero_de_socio();
 
 -- ============================================================
 --  Helper: ¿el usuario actual es admin?

@@ -16,6 +16,7 @@ import {
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { elegirYSubirFoto } from './lib/subirFoto';
+import { avisar } from './lib/avisos';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
@@ -1271,6 +1272,9 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
           setBusy(true);
           const { error: e } = await supabase.from('profiles').update({ status: 'baja' }).eq('id', profile.id);
           if (e) { Alert.alert('No pudimos darte de baja', 'Escribinos por WhatsApp y lo resolvemos.'); setBusy(false); return; }
+          // El mail va ANTES de cerrar la sesión: el aviso viaja con el token, y
+          // después del signOut ya no hay con qué autenticarlo.
+          await avisar('baja');
           await supabase.auth.signOut();
         },
       },
@@ -1299,7 +1303,11 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
         <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontFamily: FH, fontWeight: '800', fontSize: 24 }}>{profile.firstName.charAt(0).toUpperCase()}</Text></View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK }}>{profile.fullName}</Text>
-          <Text style={{ fontSize: 13, color: MUTED }}>Socio {profile.memberNo} · Plan {profile.planName}</Text>
+          {/* `memberNo` ya viene con el "#" o con un guion si la cuenta no es de
+              socio, así que no se prefija "Socio" sobre un guion. */}
+          <Text style={{ fontSize: 13, color: MUTED }}>
+            {profile.memberNo === '—' ? '' : `Socio ${profile.memberNo} · `}Plan {profile.planName}
+          </Text>
         </View>
       </View>
       <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Membresía</Text>
@@ -1831,11 +1839,12 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
     if (!nombre.trim()) { setError('Poné el nombre o la marca de tu servicio.'); return; }
     if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
     setBusy(true); setError('');
-    const { error: e } = await supabase.from('providers').insert({
+    const { data: alta, error: e } = await supabase.from('providers').insert({
       owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
       phone: tel.trim() || null, about: about.trim(), status: 'pendiente',
-    });
+    }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    if (alta?.id) void avisar('negocio-recibido', alta.id);
     setBusy(false);
     setEnviado(true);
     await reload();
@@ -2340,14 +2349,14 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       return;
     }
 
-    const { error: insErr } = await supabase.from('reimbursements').insert({
+    const { data: nuevo, error: insErr } = await supabase.from('reimbursements').insert({
       member_id: userId, pet_id: pets[0]?.id ?? null, plan_name: profile.planName,
       provider_name: place.trim(), concept: concept.trim(), amount: n,
       refund: Math.round((n * pct) / 100), refund_pct: pct, status: 'en_revision', receipt_path: path,
       bank_holder: titular.trim() || null, bank_cuit: cuit.trim() || null,
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
       ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
-    });
+    }).select('id').single();
     if (insErr) {
       // No dejamos el archivo huérfano si falla la solicitud.
       await supabase.storage.from('receipts').remove([path]);
@@ -2355,6 +2364,9 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       setBusy(false);
       return;
     }
+
+    // Acuse del pedido: el socio se entera de que llegó sin tener que preguntar.
+    if (nuevo?.id) void avisar('reintegro-recibido', nuevo.id);
 
     setPlace(''); setConcept(''); setAmount(''); setTitular(''); setCuit(''); setCbu(''); setPhoto(null);
     setOpen(false); setEnviado(true);
