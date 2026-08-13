@@ -33,7 +33,9 @@ export const colors = {
   warning: { fg: '#B8860B', bg: '#FBF3E2' },
   info: { fg: '#3B6FB0', bg: '#E6F0FB' },
   // Base
-  background: '#FAF9F5',
+  /** Fondo de la app. Es el #F7F6FA del sistema de diseño (V1 2026): antes
+   *  estaba en #FAF9F5, un crema más cálido que no era el gris violáceo del kit. */
+  background: '#F7F6FA',
   surface: '#FFFFFF',
   text: '#211E33',
   textMuted: '#5B5670',

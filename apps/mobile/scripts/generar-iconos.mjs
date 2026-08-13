@@ -8,9 +8,10 @@
  * archivos con las medidas y las zonas seguras que pide cada plataforma. Un ícono
  * dibujado a ojo en un editor no se puede volver a hacer igual.
  *
- * El logo es el mismo de la web (`apps/web/app/icon.svg`): cuadrado violeta con
- * la gota lima. La gota es un cuadrado con tres esquinas redondeadas y una en
- * punta, girado 45°.
+ * La marca sale del sistema de diseño (V1 2026): el avatar, el icono de la app y
+ * el favicon son la "K" lima sobre el cuadrado violeta; el splash lleva el
+ * wordmark "Kumo" en blanco. La gota que estaba antes (y que sigue en el header
+ * de la web, de `apps/web/app/icon.svg`) no figura en ninguna variante del kit.
  *
  * sharp no es dependencia del proyecto (la trae Next para optimizar imágenes),
  * así que se resuelve desde el store de pnpm. Si falla, instalarlo suelto:
@@ -75,6 +76,31 @@ const gotaCentrada = async (lado, color) => {
     .toBuffer();
 };
 
+/**
+ * La "K" del avatar, recortada a su caja real y escalada al lado pedido.
+ *
+ * El sistema de diseño (V1 2026) define que el avatar, el ícono de la app y el
+ * favicon son la "K" en el cuadrado violeta — no la gota, que no aparece en
+ * ninguna de las variantes de marca del kit. La gota se sigue usando en el
+ * header de la web, que viene del prototipo.
+ *
+ * Se recorta con `trim` por lo mismo que la gota: la caja de una letra trae
+ * mucho aire arriba y abajo (ascendentes y descendentes), y sin recortar queda
+ * chica y desalineada respecto del centro óptico del ícono.
+ */
+const letraCentrada = async (lado, color) => {
+  const grande = await sharp({
+    text: { text: `<span foreground="${color}">K</span>`, font: 'Baloo 2 ExtraBold 200', fontfile, dpi: 300, rgba: true },
+  })
+    .png()
+    .toBuffer();
+  const tight = await sharp(grande).trim().toBuffer();
+  return sharp(tight)
+    .resize({ width: lado, height: lado, fit: 'contain', background: '#00000000' })
+    .png()
+    .toBuffer();
+};
+
 const sharp = cargarSharp();
 const fontfile = buscarFuente();
 mkdirSync(assets, { recursive: true });
@@ -104,62 +130,55 @@ const salidas = [];
 //    el sistema le aplica la máscara redondeada, así que las esquinas no van acá.
 {
   const L = 1024;
-  const g = await gotaCentrada(Math.round(L * 0.62), LIMA);
+  const g = await letraCentrada(Math.round(L * 0.5), LIMA);
   await fondo(L, VIOLETA)
     .composite([{ input: g, gravity: 'centre' }])
     .png()
     .toFile(join(assets, 'icon.png'));
-  salidas.push(['icon.png', `${L}×${L}`, 'violeta a sangre + gota']);
+  salidas.push(['icon.png', `${L}×${L}`, 'violeta a sangre + la K']);
 }
 
 // 2. adaptive-icon.png — Android recorta con máscaras distintas (círculo, squircle,
-//    trébol) y solo garantiza el 66% central. La gota va chica y centrada; el
+//    trébol) y solo garantiza el 66% central. La K va chica y centrada; el
 //    violeta lo pone `backgroundColor` en app.json, no la imagen.
 {
   const L = 1024;
-  const g = await gotaCentrada(Math.round(L * 0.45), LIMA);
+  const g = await letraCentrada(Math.round(L * 0.42), LIMA);
   await sharp({ create: { width: L, height: L, channels: 4, background: '#00000000' } })
     .composite([{ input: g, gravity: 'centre' }])
     .png()
     .toFile(join(assets, 'adaptive-icon.png'));
-  salidas.push(['adaptive-icon.png', `${L}×${L}`, 'gota al 45% (zona segura del 66%)']);
+  salidas.push(['adaptive-icon.png', `${L}×${L}`, 'la K al 42% (zona segura del 66%)']);
 }
 
-// 3. splash.png — acá SÍ va la palabra: el ícono se ve a 48dp y cuatro letras
-//    ahí no se leen, pero el splash ocupa la pantalla. Transparente, sobre el
-//    violeta que pone app.json.
+// 3. splash.png — el wordmark solo, en blanco sobre el violeta que pone
+//    app.json. Va la palabra y no la "K" porque el splash ocupa la pantalla: la
+//    versión avatar existe para donde la marca se ve del tamaño de una uña. Y no
+//    lleva la gota: no aparece en ninguna variante del sistema de diseño.
 {
   const L = 1024;
-  const gLado = Math.round(L * 0.3);
-  const g = await gotaCentrada(gLado, LIMA);
-  const texto = await wordmark(Math.round(L * 0.5), '#FFFFFF');
+  const texto = await wordmark(Math.round(L * 0.56), '#FFFFFF');
   const { width: tw, height: th } = await sharp(texto).metadata();
-  const gap = Math.round(L * 0.06);
-  const altoTotal = gLado + gap + th;
-  const top = Math.round((L - altoTotal) / 2);
   await sharp({ create: { width: L, height: L, channels: 4, background: '#00000000' } })
-    .composite([
-      { input: g, top, left: Math.round((L - gLado) / 2) },
-      { input: texto, top: top + gLado + gap, left: Math.round((L - tw) / 2) },
-    ])
+    .composite([{ input: texto, gravity: 'centre' }])
     .png()
     .toFile(join(assets, 'splash.png'));
-  salidas.push(['splash.png', `${L}×${L}`, `gota + "Kumo" en Baloo 2 (${tw}×${th})`]);
+  salidas.push(['splash.png', `${L}×${L}`, `"Kumo" en Baloo 2 (${tw}×${th})`]);
 }
 
 // 4. favicon.png — para la versión web de Expo.
 {
   const L = 196;
-  const g = await gotaCentrada(Math.round(L * 0.6), LIMA);
+  const g = await letraCentrada(Math.round(L * 0.56), LIMA);
   await fondo(L, VIOLETA).composite([{ input: g, gravity: 'centre' }]).png().toFile(join(assets, 'favicon.png'));
-  salidas.push(['favicon.png', `${L}×${L}`, 'violeta + gota']);
+  salidas.push(['favicon.png', `${L}×${L}`, 'violeta + la K']);
 }
 
 // 5. notification-icon.png — Android lo pinta de un solo color, así que va la
 //    silueta en blanco sobre transparente. Con color se ve un cuadrado gris.
 {
   const L = 96;
-  const g = await gotaCentrada(Math.round(L * 0.8), '#FFFFFF');
+  const g = await letraCentrada(Math.round(L * 0.72), '#FFFFFF');
   await sharp({ create: { width: L, height: L, channels: 4, background: '#00000000' } })
     .composite([{ input: g, gravity: 'centre' }])
     .png()
