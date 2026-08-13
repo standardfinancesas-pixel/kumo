@@ -117,6 +117,12 @@ const TONE: Record<'green' | 'lime' | 'amber', { bg: string; fg: string }> = {
   amber: { bg: '#fbf3e2', fg: '#b8860b' },
 };
 
+/** "3 años" o "18,5 kg" → número, para los campos que la base guarda numéricos. */
+const numero = (s: string): number | null => {
+  const m = /(\d+([.,]\d+)?)/.exec(s ?? '');
+  return m?.[1] ? Number(m[1].replace(',', '.')) : null;
+};
+
 /* La foto puede venir del bundle (seed) o de Storage (subida por el socio). */
 const petImg = (photo: string): ImageSourcePropType =>
   IMG[photo] ?? (photo.startsWith('http') ? { uri: photo } : IMG['happy-dog.webp']!);
@@ -1150,6 +1156,14 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
   const [name, setName] = useState('');
   const [breed, setBreed] = useState('');
   const [tipo, setTipo] = useState<'perro' | 'gato'>('perro');
+  // Los mismos datos que pide el alta. Faltaban: se cargaba una mascota nueva con
+  // nombre y raza nada más, y su carnet quedaba a medias respecto de la primera.
+  const [sexo, setSexo] = useState<'macho' | 'hembra'>('macho');
+  const [castrado, setCastrado] = useState(false);
+  const [edad, setEdad] = useState('');
+  const [peso, setPeso] = useState('');
+  const [chip, setChip] = useState('');
+  const [vet, setVet] = useState('');
   const [busy, setBusy] = useState(false);
   // Declaración jurada de la mascota nueva: las preguntas son por mascota.
   const [health, setHealth] = useState<Record<number, string>>({});
@@ -1226,13 +1240,15 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
     if (!declaracion) { setAddError('Completá y firmá la declaración jurada de salud.'); return; }
     setBusy(true); setAddError('');
     const { error } = await supabase.rpc('agregar_mascota', {
-      p_name: name, p_type: tipo, p_breed: breed, p_sex: null, p_neutered: false,
-      p_age_years: null, p_weight_kg: null, p_microchip: null, p_vet_name: null, p_photo_url: null,
+      p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
+      p_age_years: numero(edad), p_weight_kg: numero(peso), p_microchip: chip, p_vet_name: vet, p_photo_url: null,
       p_version: declaracion.version, p_answers: declaracion.answers,
       p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
     });
     if (error) { setAddError('No pudimos agregar la mascota. Probá de nuevo.'); setBusy(false); return; }
-    setName(''); setBreed(''); setTipo('perro'); setHealth({}); setSanit({}); setFirma(''); setAdding(false);
+    setName(''); setBreed(''); setTipo('perro'); setSexo('macho'); setCastrado(false);
+    setEdad(''); setPeso(''); setChip(''); setVet('');
+    setHealth({}); setSanit({}); setFirma(''); setAdding(false);
     await reload();
     setBusy(false);
   };
@@ -1252,9 +1268,36 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
           <TextInput value={breed} onChangeText={setBreed} placeholder="Raza (opcional)" placeholderTextColor={colors.violet[400]}
             style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
           <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TextInput value={edad} onChangeText={setEdad} placeholder="Edad (años)" placeholderTextColor={colors.violet[400]} keyboardType="numeric"
+              style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
+            <TextInput value={peso} onChangeText={setPeso} placeholder="Peso (kg)" placeholderTextColor={colors.violet[400]} keyboardType="numeric"
+              style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
+          </View>
+          <TextInput value={chip} onChangeText={setChip} placeholder="Microchip (opcional)" placeholderTextColor={colors.violet[400]}
+            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
+          <TextInput value={vet} onChangeText={setVet} placeholder="Veterinaria de cabecera (opcional)" placeholderTextColor={colors.violet[400]}
+            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
+          <Text style={{ fontSize: 12, color: MUTED }}>Especie</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
             {(['perro', 'gato'] as const).map((t) => (
               <TouchableOpacity key={t} onPress={() => setTipo(t)} style={{ flex: 1, backgroundColor: tipo === t ? BRAND : '#fff', borderWidth: 1.5, borderColor: tipo === t ? BRAND : colors.violet[200], borderRadius: 12, paddingVertical: 11, alignItems: 'center' }}>
                 <Text style={{ fontWeight: '700', fontSize: 13.5, color: tipo === t ? '#fff' : MUTED }}>{t === 'perro' ? 'Perro' : 'Gato'}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ fontSize: 12, color: MUTED }}>Sexo</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([['macho', 'Macho'], ['hembra', 'Hembra']] as const).map(([v, l]) => (
+              <TouchableOpacity key={v} onPress={() => setSexo(v)} style={{ flex: 1, backgroundColor: sexo === v ? BRAND : '#fff', borderWidth: 1.5, borderColor: sexo === v ? BRAND : colors.violet[200], borderRadius: 12, paddingVertical: 11, alignItems: 'center' }}>
+                <Text style={{ fontWeight: '700', fontSize: 13.5, color: sexo === v ? '#fff' : MUTED }}>{l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={{ fontSize: 12, color: MUTED }}>¿Está castrada?</Text>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {([[true, 'Sí'], [false, 'No']] as const).map(([v, l]) => (
+              <TouchableOpacity key={l} onPress={() => setCastrado(v)} style={{ flex: 1, backgroundColor: castrado === v ? BRAND : '#fff', borderWidth: 1.5, borderColor: castrado === v ? BRAND : colors.violet[200], borderRadius: 12, paddingVertical: 11, alignItems: 'center' }}>
+                <Text style={{ fontWeight: '700', fontSize: 13.5, color: castrado === v ? '#fff' : MUTED }}>{l}</Text>
               </TouchableOpacity>
             ))}
           </View>
