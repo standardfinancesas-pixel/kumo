@@ -51,15 +51,27 @@ de cada pantalla.
       pendiente), el admin lo valida en Negocios y aparece en Servicios. El
       estado sale de la base, no del selector DEMO del prototipo, que se
       eliminó de la web y de mobile.
+- [x] **Registrarse con Google, no solo entrar.** Antes una cuenta de Google sin
+      perfil se rechazaba y se le cerraba la sesión. Ahora arranca el alta con el
+      nombre y el mail cargados y sin paso de contraseña; el resto del formulario
+      es igual, porque Google no aporta plan, mascota, declaración ni CBU. La
+      identidad sale de la SESIÓN del servidor y nunca del payload: probado
+      mandando el mail de otra persona con la sesión propia, rechazado.
 - [ ] **Contactos de emergencia en mobile** (la webapp ya los tiene).
 - [ ] **Mi perfil y Mi negocio en mobile.** En la webapp quedaron funcionando de
       verdad; en mobile hay que revisar la paridad, porque arrastran los mismos
       defectos que tenía la web antes de arreglarla (guardar decía "listo" y no
       escribía nada, y "dar de baja mi negocio" no hacía nada por falta de
       políticas de UPDATE/DELETE sobre `providers`, ya corregidas en la base).
-- [ ] **Cambiar la foto de la mascota desde la tarjeta del Inicio.** Se salteó a
-      propósito: el path de subida ya está escrito tres veces (alta, Mis mascotas
-      y mobile) y una cuarta copia pide antes unificarlo en un helper.
+- [x] **Foto de la mascota, unificada.** En mobile no existía NINGUNA forma de
+      ponerla —el selector de imágenes estaba solo para el comprobante del
+      reintegro— y en la webapp faltaba al agregar. Ahora hay foto al agregar en
+      las dos, y en mobile se cambia tocándola en la ficha. Las reglas de formato
+      y peso y la convención de ruta viven en `@kumo/shared`
+      (`motivoFotoInvalida`, `rutaFoto`): el mensaje estaba escrito dos veces y
+      había empezado a divergir. En mobile los bytes salen del base64 del picker,
+      con un decodificador a mano, para no meter `expo-file-system` —un módulo
+      nativo obligaría a un build en vez de salir por OTA.
 - [ ] **Cuatro decisiones de schema para Mi negocio**, todas cosas que el
       prototipo muestra y la base no tiene dónde guardar: galería de fotos (tabla
       aparte), logo del negocio (columna), horarios de atención (hoy solo hay
@@ -89,10 +101,16 @@ de cada pantalla.
       inventar: hay que pedírsela. La ficha del panel lo dice explícitamente en
       vez de mostrar un vacío ambiguo. Falta definir si la app se la pide al
       entrar.
-- [ ] **"Agregar mascota" no pide declaración.** Desde Mis mascotas y desde mobile
-      se agrega una segunda mascota sin declarar nada, así que se puede sumar una
-      mascota enferma después del alta y esquivar el paso 4. Las preguntas son por
-      mascota, así que corresponde pedirla ahí también.
+- [x] **Editar y borrar mascotas, y borrar lo propio en el foro.** Las políticas
+      estaban (menos la de borrar respuestas, que faltaba entera); lo que no había
+      era interfaz. Editar reusa el formulario del alta sin volver a pedir la
+      declaración: se firma una vez y no se reescribe. Ojo con un detalle que casi
+      se colaba: la tarjeta muestra la raza armada ("Mestizo · 3 años · 18 kg") y
+      "Sin chip" cuando está vacío, así que prellenar con lo que se ve convertía
+      esos textos en datos reales al guardar. La hoja lee los valores CRUDOS.
+      Los borrados avisan qué se llevan: un post arrastra las respuestas de otros
+      (cascada) y una mascota su carnet; los reintegros y la declaración jurada
+      sobreviven porque son `on delete set null`.
 - [ ] **Bloque de contacto del prestador: falta el email.** `instagram` y
       `website` ya están en `providers`, se editan desde Mi negocio y se muestran
       en la ficha de Servicios, en web y en mobile. Pero el bloque de contacto del
@@ -180,6 +198,14 @@ de cada pantalla.
       (`post_likes` / `answer_likes`), uno por socio. Los contadores `likes` y
       `replies` los mantienen triggers, así que la tarjeta del listado y el hilo
       no se desfasan.
+- [x] **Borrar lo propio en el foro** y **los contadores, que nunca se movían**.
+      Este último salió midiendo el borrado: dos triggers se pisaban. El que
+      protege las columnas del club congelaba `likes` y `replies` para que nadie
+      los infle, y con eso descartaba el recuento del trigger de sincronización,
+      que pasa por el mismo BEFORE UPDATE. Resultado: todo el foro decía "0
+      respuestas · 0 me gusta". Ahora en vez de congelar se recalcula, así los dos
+      caminos convergen y un `PATCH` con `likes: 9999` igual termina en el número
+      real. Verificado subiendo, bajando y tratando de inflarlo.
 - [ ] Marcar "mejor respuesta": falta el control en la UI. La base ya lo permite
       — la política deja setear `best` al autor del post y el trigger impide que
       lo haga el de la respuesta — pero en la webapp y en mobile el badge solo se
@@ -190,8 +216,21 @@ de cada pantalla.
 
 ## Fase 5 — Móvil nativo
 - [ ] Navegación con Expo Router (hoy es un `App.tsx` con estado local).
-- [ ] Íconos, splash y assets nativos (faltan en `app.json`).
-- [ ] Builds con EAS y publicación en App Store y Google Play.
+- [x] **Íconos, splash y assets nativos.** Generados desde el logo vectorial con
+      `scripts/generar-iconos.mjs` y el TTF real de Baloo 2, no dibujados a mano.
+      El ícono lleva solo la gota: cuatro letras a 48dp son un manchón, y el
+      launcher ya escribe "Kumo" debajo. La palabra va en el splash.
+- [x] **Builds con EAS y OTA.** APK andando (`pet.kumo.app`, proyecto
+      `@flor2021/kumo`) y `expo-updates` configurado: los cambios de JS y de
+      assets salen con `eas update --branch apk` y llegan sin reinstalar. Lo
+      nativo (ícono, splash, package name, módulos nuevos) sigue necesitando
+      build. Ojo: `runtimeVersion` está atado a la versión de la app, así que
+      subir `version` en `app.json` corta los updates para los celulares que
+      tengan la anterior.
+- [ ] **Publicar en Google Play**: perfil `production` (genera el .aab, que es lo
+      único que acepta la tienda). Necesita la cuenta de desarrollador de Google
+      del cliente (USD 25 únicos) y decidir si el proyecto de Expo se transfiere a
+      su nombre. Para iOS hace falta cuenta de Apple Developer.
 
 ## Pendiente de diseño
 - [x] Responsividad de las 3 superficies web. Abajo de 1024px el sidebar de la
