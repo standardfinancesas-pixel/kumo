@@ -7,15 +7,28 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FAF9F5",
+    "icon": "./assets/icon.png",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#5D5491"
+    },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "ar.com.kumoclub.app"
+      "bundleIdentifier": "pet.kumo.app"
     },
     "android": {
-      "package": "ar.com.kumoclub.app"
+      "package": "pet.kumo.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#5D5491"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "extra": {
-      "note": "Configurá EXPO_PUBLIC_* en .env.local (Supabase, Google Maps)."
+      "note": "Los EXPO_PUBLIC_* van en .env para correr local y en variables de la cuenta de Expo para los builds de EAS: .env está gitignoreado y EAS solo sube lo que está en git."
     },
     "plugins": [
       "expo-font"
