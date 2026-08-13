@@ -186,6 +186,22 @@ const salidas = [];
   salidas.push(['notification-icon.png', `${L}×${L}`, 'silueta blanca (Android la tiñe)']);
 }
 
+// 6. El favicon del navegador, que vive en la web pero es la MISMA marca que el
+//    ícono de la app. Sale de acá y no de un SVG aparte justamente para que no se
+//    separen: antes eran dos dibujos distintos mantenidos a mano y terminaron
+//    siendo la gota en el navegador y la K en el celular.
+//
+//    Va como PNG y no como SVG porque un favicon no puede cargar la tipografía:
+//    la "K" hay que rasterizarla con Baloo 2 acá. Next lo toma solo por estar en
+//    `app/icon.png`.
+{
+  const L = 512;
+  const g = await letraCentrada(Math.round(L * 0.5), LIMA);
+  const destino = resolve(raiz, 'apps/web/app/icon.png');
+  await fondo(L, VIOLETA).composite([{ input: g, gravity: 'centre' }]).png().toFile(destino);
+  salidas.push(['../../web/app/icon.png', `${L}×${L}`, 'favicon del navegador, la misma K']);
+}
+
 for (const [archivo, medida, que] of salidas) {
-  console.log(`  ${archivo.padEnd(24)} ${medida.padEnd(11)} ${que}`);
+  console.log(`  ${archivo.padEnd(28)} ${medida.padEnd(11)} ${que}`);
 }
