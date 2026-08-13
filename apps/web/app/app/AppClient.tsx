@@ -66,7 +66,7 @@ export type BenefitVM = {
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
-export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: ForumAnswer[] };
+export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
 export type MisLikes = { posts: string[]; answers: string[] };
 
@@ -1501,11 +1501,46 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
     setBusy(false);
   };
 
+  /** Borra una respuesta propia. El contador `replies` lo baja el trigger. */
+  const borrarRespuesta = async (id: string) => {
+    if (!confirm('¿Borrar tu respuesta? No se puede deshacer.')) return;
+    setBusy(true);
+    const { error } = await supabase.from('community_answers').delete().eq('id', id);
+    if (error) alert('No pudimos borrar la respuesta. Probá de nuevo.');
+    else router.refresh();
+    setBusy(false);
+  };
+
+  /**
+   * Borra la publicación propia. Se avisa cuántas respuestas se lleva: la clave
+   * ajena de `community_answers` es ON DELETE CASCADE, así que arrastra también
+   * lo que escribieron otros socios. Borrar el trabajo de otra persona sin
+   * decirlo sería peor que no poder borrar.
+   */
+  const borrarPost = async () => {
+    const conRespuestas = p.answers.length > 0
+      ? ` Se van a borrar también las ${p.answers.length} respuesta${p.answers.length === 1 ? '' : 's'} que escribieron otros.`
+      : '';
+    if (!confirm(`¿Borrar tu publicación?${conRespuestas} No se puede deshacer.`)) return;
+    setBusy(true);
+    const { error } = await supabase.from('community_posts').delete().eq('id', p.id);
+    if (error) { alert('No pudimos borrar la publicación. Probá de nuevo.'); setBusy(false); return; }
+    onVolver();
+    router.refresh();
+  };
+
   const likesPost = p.likes + (likes.post && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likes.post && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
-      <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 8 }}>← Comunidad</button>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0' }}>← Comunidad</button>
+        {p.propia && (
+          <button onClick={borrarPost} disabled={busy} style={{ background: 'none', border: 'none', color: 'rgb(176,72,63)', fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', padding: '6px 0' }}>
+            Borrar publicación
+          </button>
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
         <div style={{ width: 38, height: 38, borderRadius: 11, background: cfg.tagBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: cfg.tagFg }}>{ic(person, false, 19)}</div>
@@ -1551,6 +1586,11 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
                   <button onClick={() => toggleAnswerLike(a.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: yo ? 'rgb(192,72,99)' : 'rgb(135,129,160)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>
                     <svg width="13" height="13" viewBox="0 0 24 24" fill={yo ? '#c04863' : 'none'} stroke={yo ? '#c04863' : '#8781a0'} strokeWidth="2">{heartFill}</svg>{n}
                   </button>
+                  {a.propia && (
+                    <button onClick={() => borrarRespuesta(a.id)} style={{ fontSize: 12, color: 'rgb(135,129,160)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>
+                      Borrar
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -2257,6 +2297,27 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
   const router = useRouter();
   const [selId, setSelId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [borrando, setBorrando] = useState(false);
+
+  /**
+   * Borra una mascota. Avisa qué se lleva: `vaccinations.pet_id` es ON DELETE
+   * CASCADE, así que se va el carnet entero. Los reintegros y la declaración
+   * jurada son ON DELETE SET NULL y quedan — son plata y un registro firmado,
+   * no pueden desaparecer porque alguien borre la mascota.
+   */
+  const borrarMascota = async (p: Pet) => {
+    const n = p.vaccines.length;
+    const conVacunas = n > 0 ? ` Se borra también su carnet, con ${n} vacuna${n === 1 ? '' : 's'} cargada${n === 1 ? '' : 's'}.` : '';
+    if (!confirm(`¿Borrar a ${p.name}?${conVacunas} Los reintegros que pediste quedan. No se puede deshacer.`)) return;
+    setBorrando(true);
+    const { error, data } = await supabase.from('pets').delete().eq('id', p.id).select('id');
+    if (error || !data?.length) { alert('No pudimos borrar la mascota. Probá de nuevo.'); setBorrando(false); return; }
+    setSelId(null);
+    setPetIdx(0);
+    router.refresh();
+    setBorrando(false);
+  };
 
   const sel = pets.find((p) => p.id === selId);
   const idx = pets.findIndex((p) => p.id === selId);
@@ -2279,7 +2340,13 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
           </div>
         </div>
 
-        <button onClick={() => { if (idx >= 0) setPetIdx(idx); go('carnet'); }} style={{ ...sheetBtn(true), width: '100%', marginBottom: 20 }}>Ver carnet digital</button>
+        <button onClick={() => { if (idx >= 0) setPetIdx(idx); go('carnet'); }} style={{ ...sheetBtn(true), width: '100%', marginBottom: 10 }}>Ver carnet digital</button>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <button onClick={() => setEditId(sel.id)} style={{ ...sheetBtn(false), flex: 1 }}>Editar datos</button>
+          <button onClick={() => borrarMascota(sel)} disabled={borrando} style={{ ...sheetBtn(false), flex: 1, color: 'rgb(176,72,63)', borderColor: 'rgb(232,203,199)', cursor: borrando ? 'default' : 'pointer' }}>
+            {borrando ? 'Borrando…' : 'Borrar mascota'}
+          </button>
+        </div>
 
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Historial</div>
         {historial.length === 0 ? (
@@ -2319,6 +2386,7 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
       </div>
 
       {showAdd && <AgregarMascotaSheet ownerId={ownerId} onClose={() => setShowAdd(false)} onListo={() => { setShowAdd(false); router.refresh(); }} />}
+      {editId && <AgregarMascotaSheet ownerId={ownerId} petId={editId} onClose={() => setEditId(null)} onListo={() => { setEditId(null); router.refresh(); }} />}
 
       {pets.length === 0 ? (
         <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 20, padding: 30, textAlign: 'center' }}>
@@ -2460,7 +2528,9 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
  * que crea las dos filas en la misma transacción; el socio ya no puede insertar
  * en `pets` directamente, así que la pantalla no es la única defensa.
  */
-function AgregarMascotaSheet({ ownerId, onClose, onListo }: { ownerId: string; onClose: () => void; onListo: () => void }) {
+function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: string; petId?: string | null; onClose: () => void; onListo: () => void }) {
+  const editando = !!petId;
+  const [cargando, setCargando] = useState(editando);
   const [name, setName] = useState('');
   const [tipo, setTipo] = useState('perro');
   const [breed, setBreed] = useState('');
@@ -2491,16 +2561,61 @@ function AgregarMascotaSheet({ ownerId, onClose, onListo }: { ownerId: string; o
     setFotoBusy(false);
   };
 
+  /**
+   * Editando se prefijan los valores CRUDOS de la base y no los de la tarjeta:
+   * ahí `breed` viene armado ("Mestizo · 3 años · 18 kg") y `microchip` dice
+   * "Sin chip" cuando está vacío. Guardar eso los convertiría en datos reales.
+   */
+  useEffect(() => {
+    if (!petId) return;
+    let vigente = true;
+    (async () => {
+      const { data } = await supabase
+        .from('pets')
+        .select('name, type, breed, sex, neutered, age_years, weight_kg, microchip, vet_name, photo_url')
+        .eq('id', petId)
+        .single();
+      if (!vigente || !data) { setCargando(false); return; }
+      setName(data.name ?? '');
+      setTipo(data.type ?? 'perro');
+      setBreed(data.breed ?? '');
+      setSexo(data.sex ?? 'macho');
+      setCastrado(!!data.neutered);
+      setEdad(data.age_years != null ? String(data.age_years) : '');
+      setPeso(data.weight_kg != null ? String(data.weight_kg) : '');
+      setChip(data.microchip ?? '');
+      setVet(data.vet_name ?? '');
+      if (data.photo_url?.startsWith('http')) setFotoUrl(data.photo_url);
+      setCargando(false);
+    })();
+    return () => { vigente = false; };
+  }, [petId]);
+
   const declaracion = armarDeclaracion({ health, sanit, firma });
-  const puedeGuardar = name.trim().length > 0 && declaracion !== null && !busy;
+  const puedeGuardar = name.trim().length > 0 && (editando || declaracion !== null) && !busy && !cargando;
+
+  const num = (s: string) => {
+    const m = /(\d+([.,]\d+)?)/.exec(s);
+    return m?.[1] ? Number(m[1].replace(',', '.')) : null;
+  };
 
   const guardar = async () => {
-    if (!declaracion) { setError('Completá y firmá la declaración jurada de la mascota.'); return; }
     setBusy(true); setError('');
-    const num = (s: string) => {
-      const m = /(\d+([.,]\d+)?)/.exec(s);
-      return m?.[1] ? Number(m[1].replace(',', '.')) : null;
-    };
+
+    // Editando: un UPDATE común y no la función. La declaración no se vuelve a
+    // pedir —ya está firmada— y por eso tampoco se puede tocar desde acá.
+    if (editando) {
+      const { error: e, data } = await supabase.from('pets').update({
+        name: name.trim(), type: tipo, breed: breed.trim() || null, sex: sexo, neutered: castrado,
+        age_years: num(edad), weight_kg: num(peso), microchip: chip.trim() || null, vet_name: vet.trim() || null,
+        ...(fotoUrl ? { photo_url: fotoUrl } : {}),
+      }).eq('id', petId).select('id');
+      if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+      onListo();
+      return;
+    }
+
+    if (!declaracion) { setError('Completá y firmá la declaración jurada de la mascota.'); return; }
     const { error: e } = await supabase.rpc('agregar_mascota', {
       p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
       p_age_years: num(edad), p_weight_kg: num(peso), p_microchip: chip, p_vet_name: vet,
@@ -2524,8 +2639,12 @@ function AgregarMascotaSheet({ ownerId, onClose, onListo }: { ownerId: string; o
 
   return (
     <Sheet onClose={onClose}>
-      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Agregar una mascota</div>
-      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Como en el alta, necesitamos su declaración de salud: es por mascota, no por socio.</div>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>{editando ? 'Editar mascota' : 'Agregar una mascota'}</div>
+      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>
+        {editando
+          ? 'Cambiá lo que necesites. La declaración jurada que firmaste al sumarla no se toca.'
+          : 'Como en el alta, necesitamos su declaración de salud: es por mascota, no por socio.'}
+      </div>
 
       <label style={sheetLabel}>Foto</label>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
@@ -2578,19 +2697,25 @@ function AgregarMascotaSheet({ ownerId, onClose, onListo }: { ownerId: string; o
       <label style={sheetLabel} htmlFor="am-vet">Veterinaria de cabecera</label>
       <input id="am-vet" value={vet} onChange={(e) => setVet(e.target.value)} placeholder="Opcional" style={{ ...sheetInput, marginBottom: 20 }} />
 
-      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Declaración jurada de salud</div>
-      <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginBottom: 8 }}>Contestá las {HEALTH_Q.length} preguntas. Declarar una condición no te deja afuera del club: define qué cubre el plan.</div>
-      {HEALTH_Q.map((q, i) => pregunta(q, health[i], (v) => { setHealth({ ...health, [i]: v }); setError(''); }))}
+      {/* La declaración solo al agregar: la de una mascota que ya está se firmó
+          una vez y no se reescribe (por eso la tabla no tiene update). */}
+      {!editando && (
+        <>
+          <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Declaración jurada de salud</div>
+          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginBottom: 8 }}>Contestá las {HEALTH_Q.length} preguntas. Declarar una condición no te deja afuera del club: define qué cubre el plan.</div>
+          {HEALTH_Q.map((q, i) => pregunta(q, health[i], (v) => { setHealth({ ...health, [i]: v }); setError(''); }))}
 
-      <div style={{ fontWeight: 700, fontSize: 15, margin: '18px 0 8px' }}>Plan sanitario</div>
-      {SANITARIO_Q.map((q, i) => pregunta(q, sanit[i], (v) => { setSanit({ ...sanit, [i]: v }); setError(''); }))}
+          <div style={{ fontWeight: 700, fontSize: 15, margin: '18px 0 8px' }}>Plan sanitario</div>
+          {SANITARIO_Q.map((q, i) => pregunta(q, sanit[i], (v) => { setSanit({ ...sanit, [i]: v }); setError(''); }))}
 
-      <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '18px 0 8px' }}>Escribí tu nombre completo tal cual figura en tu DNI. Equivale a tu firma según la Ley 25.506.</div>
-      <input id="am-firma" value={firma} onChange={(e) => { setFirma(e.target.value); setError(''); }} placeholder="Tu nombre y apellido" style={{ ...sheetInput, textAlign: 'center', fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 17, marginBottom: 16 }} />
+          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '18px 0 8px' }}>Escribí tu nombre completo tal cual figura en tu DNI. Equivale a tu firma según la Ley 25.506.</div>
+          <input id="am-firma" value={firma} onChange={(e) => { setFirma(e.target.value); setError(''); }} placeholder="Tu nombre y apellido" style={{ ...sheetInput, textAlign: 'center', fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 17, marginBottom: 16 }} />
+        </>
+      )}
 
       {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 10 }}>{error}</div>}
       <button onClick={guardar} disabled={!puedeGuardar} style={{ ...sheetBtn(true), width: '100%', opacity: puedeGuardar ? 1 : 0.5, cursor: puedeGuardar ? 'pointer' : 'default' }}>
-        {busy ? 'Agregando…' : 'Firmar y agregar'}
+        {cargando ? 'Cargando…' : busy ? 'Guardando…' : editando ? 'Guardar cambios' : 'Firmar y agregar'}
       </button>
     </Sheet>
   );

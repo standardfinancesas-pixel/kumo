@@ -491,6 +491,8 @@ create policy "posts borrar"    on community_posts for delete using (author_id =
 create policy "respuestas visibles" on community_answers for select using (true);
 create policy "respuestas crear"    on community_answers for insert with check (author_id = auth.uid());
 create policy "respuestas moderar"  on community_answers for update using (author_id = auth.uid() or is_admin());
+-- Sin política de delete nadie borra: la respuesta propia quedaba para siempre.
+create policy "respuestas borrar"   on community_answers for delete using (author_id = auth.uid() or is_admin());
 create policy "respuestas borrar"   on community_answers for delete using (author_id = auth.uid() or is_admin());
 
 -- Likes: se cuentan en público, cada socio maneja los suyos

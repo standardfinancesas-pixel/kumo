@@ -1,6 +1,6 @@
 import { useState, useEffect, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { Alert, SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
@@ -1167,6 +1167,69 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
   const [vet, setVet] = useState('');
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
   const [fotoBusy, setFotoBusy] = useState(false);
+  /** Id de la mascota que se está editando: reusa el mismo formulario. */
+  const [editId, setEditId] = useState<string | null>(null);
+  const [borrando, setBorrando] = useState(false);
+
+  /**
+   * Al editar se prefijan los valores CRUDOS de la base y no los de la tarjeta:
+   * ahí `breed` viene armado ("Mestizo · 3 años · 18 kg") y `microchip` dice
+   * "Sin chip" cuando está vacío. Guardar eso los convertiría en datos reales.
+   */
+  useEffect(() => {
+    if (!editId) return;
+    let vigente = true;
+    (async () => {
+      const { data } = await supabase
+        .from('pets')
+        .select('name, type, breed, sex, neutered, age_years, weight_kg, microchip, vet_name, photo_url')
+        .eq('id', editId)
+        .single();
+      if (!vigente || !data) return;
+      setName(data.name ?? '');
+      setTipo(data.type === 'gato' ? 'gato' : 'perro');
+      setBreed(data.breed ?? '');
+      setSexo(data.sex === 'hembra' ? 'hembra' : 'macho');
+      setCastrado(!!data.neutered);
+      setEdad(data.age_years != null ? String(data.age_years) : '');
+      setPeso(data.weight_kg != null ? String(data.weight_kg) : '');
+      setChip(data.microchip ?? '');
+      setVet(data.vet_name ?? '');
+      setFotoUrl(data.photo_url?.startsWith('http') ? data.photo_url : null);
+      setSelId(null);
+      setAdding(true);
+    })();
+    return () => { vigente = false; };
+  }, [editId]);
+
+  /**
+   * Borra una mascota. Avisa qué se lleva: `vaccinations.pet_id` es ON DELETE
+   * CASCADE, así que se va el carnet entero. Los reintegros y la declaración
+   * jurada son ON DELETE SET NULL y quedan: son plata y un registro firmado.
+   */
+  const borrarMascota = (p: Pet) => {
+    const n = p.vaccines.length;
+    Alert.alert(
+      `Borrar a ${p.name}`,
+      `${n > 0 ? `Se borra también su carnet, con ${n} vacuna${n === 1 ? '' : 's'}. ` : ''}Los reintegros que pediste quedan. No se puede deshacer.`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Borrar',
+          style: 'destructive',
+          onPress: async () => {
+            setBorrando(true);
+            const { error, data } = await supabase.from('pets').delete().eq('id', p.id).select('id');
+            if (error || !data?.length) { Alert.alert('No pudimos borrar la mascota', 'Probá de nuevo.'); setBorrando(false); return; }
+            setSelId(null);
+            setPetIdx(0);
+            await reload();
+            setBorrando(false);
+          },
+        },
+      ]
+    );
+  };
   const [busy, setBusy] = useState(false);
   // Declaración jurada de la mascota nueva: las preguntas son por mascota.
   const [health, setHealth] = useState<Record<number, string>>({});
@@ -1214,6 +1277,15 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ver carnet digital</Text>
         </TouchableOpacity>
 
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
+          <TouchableOpacity onPress={() => setEditId(sel.id)} style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: '#fff' }}>
+            <Text style={{ fontWeight: '700', fontSize: 14, color: BRAND }}>Editar datos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => borrarMascota(sel)} disabled={borrando} style={{ flex: 1, borderWidth: 1.5, borderColor: '#e8cbc7', borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: '#fff', opacity: borrando ? 0.6 : 1 }}>
+            <Text style={{ fontWeight: '700', fontSize: 14, color: '#b0483f' }}>{borrando ? 'Borrando…' : 'Borrar'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Historial</Text>
         {historial.length === 0 ? (
           <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 26, alignItems: 'center' }}>
@@ -1254,8 +1326,31 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
    * `agregar_mascota`, que crea la mascota y su declaración en la misma
    * transacción: el socio ya no puede insertar en `pets` directamente.
    */
+  const limpiarForm = () => {
+    setName(''); setBreed(''); setTipo('perro'); setSexo('macho'); setCastrado(false);
+    setEdad(''); setPeso(''); setChip(''); setVet(''); setFotoUrl(null);
+    setHealth({}); setSanit({}); setFirma(''); setAdding(false); setEditId(null);
+  };
+
   const add = async () => {
     if (!name.trim()) { setAddError('Ponele un nombre a la mascota.'); return; }
+
+    // Editando no se vuelve a pedir la declaración: ya está firmada y no se
+    // reescribe (la tabla no tiene política de update, a propósito).
+    if (editId) {
+      setBusy(true); setAddError('');
+      const { error, data } = await supabase.from('pets').update({
+        name: name.trim(), type: tipo, breed: breed.trim() || null, sex: sexo, neutered: castrado,
+        age_years: numero(edad), weight_kg: numero(peso), microchip: chip.trim() || null, vet_name: vet.trim() || null,
+        ...(fotoUrl ? { photo_url: fotoUrl } : {}),
+      }).eq('id', editId).select('id');
+      if (error || !data?.length) { setAddError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+      limpiarForm();
+      await reload();
+      setBusy(false);
+      return;
+    }
+
     const declaracion = armarDeclaracion({ health, sanit, firma });
     if (!declaracion) { setAddError('Completá y firmá la declaración jurada de salud.'); return; }
     setBusy(true); setAddError('');
@@ -1266,9 +1361,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
       p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
     });
     if (error) { setAddError('No pudimos agregar la mascota. Probá de nuevo.'); setBusy(false); return; }
-    setName(''); setBreed(''); setTipo('perro'); setSexo('macho'); setCastrado(false);
-    setEdad(''); setPeso(''); setChip(''); setVet(''); setFotoUrl(null);
-    setHealth({}); setSanit({}); setFirma(''); setAdding(false);
+    limpiarForm();
     await reload();
     setBusy(false);
   };
@@ -1277,7 +1370,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
         <H1>Mis mascotas</H1>
-        <TouchableOpacity onPress={() => setAdding((v) => !v)} style={{ backgroundColor: BRAND, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14 }}>
+        <TouchableOpacity onPress={() => (adding ? limpiarForm() : setAdding(true))} style={{ backgroundColor: BRAND, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14 }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12.5 }}>{adding ? 'Cancelar' : '+ Agregar mascota'}</Text>
         </TouchableOpacity>
       </View>
@@ -1344,7 +1437,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={{ fontWeight: '700', fontSize: 14.5, color: INK, marginTop: 6 }}>Declaración jurada de salud</Text>
+          {editId ? null : (<><Text style={{ fontWeight: '700', fontSize: 14.5, color: INK, marginTop: 6 }}>Declaración jurada de salud</Text>
           <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
             Contestá las {HEALTH_Q.length} preguntas. Declarar una condición no te deja afuera del club: define qué cubre el plan.
           </Text>
@@ -1383,9 +1476,10 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
           <TextInput value={firma} onChangeText={(t) => { setFirma(t); setAddError(''); }} placeholder="Tu nombre y apellido" placeholderTextColor={colors.violet[400]}
             style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, fontFamily: FH, fontWeight: '700', textAlign: 'center', color: INK, backgroundColor: '#fff' }} />
 
+          </>)}
           {addError ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700' }}>{addError}</Text> : null}
           <TouchableOpacity disabled={busy} onPress={add} style={{ backgroundColor: LIME, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-            <Text style={{ color: INK, fontWeight: '700', fontSize: 14.5 }}>{busy ? 'Agregando…' : 'Firmar y agregar'}</Text>
+            <Text style={{ color: INK, fontWeight: '700', fontSize: 14.5 }}>{busy ? 'Guardando…' : editId ? 'Guardar cambios' : 'Firmar y agregar'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2086,11 +2180,63 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
     setBusy(false);
   };
 
+  /** Borra una respuesta propia. El contador `replies` lo baja el trigger. */
+  const borrarRespuesta = (id: string) => {
+    Alert.alert('Borrar tu respuesta', 'No se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: async () => {
+          setBusy(true);
+          const { error } = await supabase.from('community_answers').delete().eq('id', id);
+          if (error) Alert.alert('No pudimos borrar la respuesta', 'Probá de nuevo.');
+          else await reload();
+          setBusy(false);
+        },
+      },
+    ]);
+  };
+
+  /**
+   * Borra la publicación propia. Se avisa cuántas respuestas se lleva: la clave
+   * ajena de `community_answers` es ON DELETE CASCADE, así que arrastra también
+   * lo que escribieron otros socios.
+   */
+  const borrarPost = () => {
+    const n = p.answers.length;
+    Alert.alert(
+      'Borrar tu publicación',
+      n > 0 ? `Se van a borrar también las ${n} respuesta${n === 1 ? '' : 's'} que escribieron otros. No se puede deshacer.` : 'No se puede deshacer.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Borrar',
+          style: 'destructive',
+          onPress: async () => {
+            setBusy(true);
+            const { error } = await supabase.from('community_posts').delete().eq('id', p.id);
+            if (error) { Alert.alert('No pudimos borrar la publicación', 'Probá de nuevo.'); setBusy(false); return; }
+            onVolver();
+            await reload();
+          },
+        },
+      ]
+    );
+  };
+
   const nPost = p.likes + (likePost && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likePost && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <BackLink label="Comunidad" onPress={onVolver} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <BackLink label="Comunidad" onPress={onVolver} />
+        {p.propia ? (
+          <TouchableOpacity onPress={borrarPost} disabled={busy} style={{ marginBottom: 6 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#b0483f' }}>Borrar publicación</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
@@ -2142,10 +2288,17 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
                   </View>
                   <Text style={{ fontSize: 13.5, color: '#4a4560', lineHeight: 21 }}>{a.text}</Text>
                 </View>
-                <TouchableOpacity onPress={() => toggleAns(a.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 6, paddingLeft: 4 }}>
-                  <Ic d="heart" size={13} color={yo ? '#c04863' : '#8781a0'} fill={yo} />
-                  <Text style={{ fontSize: 12, color: yo ? '#c04863' : '#8781a0' }}>{n}</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6, paddingLeft: 4 }}>
+                  <TouchableOpacity onPress={() => toggleAns(a.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                    <Ic d="heart" size={13} color={yo ? '#c04863' : '#8781a0'} fill={yo} />
+                    <Text style={{ fontSize: 12, color: yo ? '#c04863' : '#8781a0' }}>{n}</Text>
+                  </TouchableOpacity>
+                  {a.propia ? (
+                    <TouchableOpacity onPress={() => borrarRespuesta(a.id)} disabled={busy}>
+                      <Text style={{ fontSize: 12, color: MUTED }}>Borrar</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               </View>
             </View>
           );

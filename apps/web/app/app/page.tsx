@@ -108,7 +108,7 @@ function mapBenefit(row: BenefitRow): BenefitVM {
 }
 
 type AnswerRow = { id: string; text: string; likes: number; best: boolean; created_at: string; author_name: string; author_id: string | null };
-type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; author_name: string; community_answers: AnswerRow[] };
+type PostRow = { id: string; category: string; title: string; body: string; zone: string | null; replies: number; likes: number; created_at: string; author_name: string; author_id: string | null; community_answers: AnswerRow[] };
 /** El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
  *  todos los autores salían como "Socio". */
 function authorName(nombre: string | null): string {
@@ -125,6 +125,7 @@ function mapPost(row: PostRow, userId: string): ForumPost {
     body: row.body,
     replies: row.replies,
     likes: row.likes,
+    propia: row.author_id === userId,
     answers: (row.community_answers ?? [])
       .slice()
       .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
@@ -262,7 +263,7 @@ export default async function Page() {
 
   const { data: postRows } = await supabase
     .from('community_posts')
-    .select('id, category, title, body, zone, replies, likes, created_at, author_name, community_answers(id, text, likes, best, created_at, author_name, author_id)')
+    .select('id, category, title, body, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
     .order('created_at', { ascending: false });
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
 

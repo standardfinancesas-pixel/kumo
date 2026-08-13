@@ -45,6 +45,8 @@ export type ForumAnswer = { id: string; author: string; when: string; text: stri
 export type ForumPost = {
   id: string; cat: string; author: string; meta: string; title: string; body: string;
   replies: number; likes: number; trend: boolean; answers: ForumAnswer[];
+  /** Para mostrar el botón de borrar solo en lo propio. */
+  propia: boolean;
 };
 
 export type KumoData = {
@@ -145,7 +147,7 @@ export function useKumoData(userId: string | null) {
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
-      supabase.from('community_posts').select('id, category, title, body, zone, replies, likes, created_at, author_name, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
+      supabase.from('community_posts').select('id, category, title, body, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
@@ -254,6 +256,7 @@ export function useKumoData(userId: string | null) {
       author: row.author_name?.trim().split(' ')[0] || 'Socio',
       meta: `${row.zone || 'General'} · ${relTime(row.created_at)}`,
       replies: row.replies, likes: row.likes, trend: row.likes >= 20,
+      propia: row.author_id === userId,
       answers: ((row.community_answers ?? []) as AnsRow[])
         .slice()
         .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
