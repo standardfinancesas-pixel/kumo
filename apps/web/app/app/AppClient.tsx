@@ -2374,6 +2374,11 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
             })}
           </div>
         )}
+
+        {/* La hoja también acá: "Editar datos" se toca desde la ficha, y este
+            return sale antes que el de la lista. Estaba solo abajo, así que el
+            botón seteaba el id y no aparecía nada. */}
+        {editId && <AgregarMascotaSheet ownerId={ownerId} petId={editId} onClose={() => setEditId(null)} onListo={() => { setEditId(null); router.refresh(); }} />}
       </div>
     );
   }
@@ -2386,7 +2391,6 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
       </div>
 
       {showAdd && <AgregarMascotaSheet ownerId={ownerId} onClose={() => setShowAdd(false)} onListo={() => { setShowAdd(false); router.refresh(); }} />}
-      {editId && <AgregarMascotaSheet ownerId={ownerId} petId={editId} onClose={() => setEditId(null)} onListo={() => { setEditId(null); router.refresh(); }} />}
 
       {pets.length === 0 ? (
         <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 20, padding: 30, textAlign: 'center' }}>
