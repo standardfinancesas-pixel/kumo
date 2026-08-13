@@ -2287,13 +2287,20 @@ export default function App() {
     <SafeAreaView style={styles.root}>
       <StatusBar style="dark" />
       <View style={styles.phone}>
-        <View style={styles.statusbar}>
-          <Text style={styles.statusTime}>9:41</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
-            <Svg width={17} height={17} viewBox="0 0 24 24" fill={INK}><Path d="M12 5C7.5 5 3.7 6.8 1.5 9.6L12 21 22.5 9.6C20.3 6.8 16.5 5 12 5z" /></Svg>
-            <Svg width={24} height={12} viewBox="0 0 27 12"><Rect x="1" y="1" width="22" height="10" rx="3" fill="none" stroke={INK} strokeWidth={1.4} /><Rect x="3" y="3" width="16" height="6" rx="1.5" fill={INK} /><Rect x="24" y="4" width="2.4" height="4" rx="1" fill={INK} /></Svg>
+        {/* Status bar dibujada: hora, señal y batería. Va SOLO en web, donde la
+            app se muestra dentro de un marco de teléfono y esto completa la
+            simulación del prototipo. En el celular real el sistema ya pone la
+            suya con la hora y la batería de verdad, así que dejarla acá mostraba
+            dos, una arriba de la otra, y la falsa marcando 9:41 para siempre. */}
+        {isWeb && (
+          <View style={styles.statusbar}>
+            <Text style={styles.statusTime}>9:41</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Svg width={17} height={17} viewBox="0 0 24 24" fill={INK}><Path d="M12 5C7.5 5 3.7 6.8 1.5 9.6L12 21 22.5 9.6C20.3 6.8 16.5 5 12 5z" /></Svg>
+              <Svg width={24} height={12} viewBox="0 0 27 12"><Rect x="1" y="1" width="22" height="10" rx="3" fill="none" stroke={INK} strokeWidth={1.4} /><Rect x="3" y="3" width="16" height="6" rx="1.5" fill={INK} /><Rect x="24" y="4" width="2.4" height="4" rx="1" fill={INK} /></Svg>
+            </View>
           </View>
-        </View>
+        )}
         {!userId ? (
           <Login />
         ) : loading || !data ? (
@@ -2364,7 +2371,10 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: isWeb ? '#e7e4f0' : '#fff', alignItems: 'center' },
   phone: isWeb
     ? { flex: 1, width: '100%', maxWidth: 392, backgroundColor: '#fff', borderRadius: 40, overflow: 'hidden', marginVertical: 12 }
-    : { flex: 1, width: '100%', backgroundColor: '#fff' },
+    // En nativo el padding de arriba reemplaza el aire que daba la status bar
+    // dibujada, que acá no va: sin esto el saludo queda pegado a la barra real
+    // del sistema.
+    : { flex: 1, width: '100%', backgroundColor: '#fff', paddingTop: 6 },
   statusbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 4 },
   statusTime: { fontSize: 13, fontWeight: '700', color: INK },
   screen: { padding: 20, paddingBottom: 40 },
