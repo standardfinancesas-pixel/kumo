@@ -1,17 +1,27 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
+import { createClient } from '@/lib/supabase-server';
 import { FOTO_TIPOS, FOTO_MAX, armarDeclaracion, cuotaMensual } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
 /**
- * Alta real de socio. Corre en el servidor con la service-role key:
- * crea el usuario de auth ya confirmado (sin depender del mail de
- * verificación) e inserta su perfil, su mascota y la declaración jurada. El
- * cliente hace login normal después con el mismo email/contraseña.
+ * Alta real de socio. Corre en el servidor con la service-role key e inserta el
+ * perfil, la mascota y la declaración jurada. Guarda los 5 pasos.
  *
- * Guarda los 5 pasos. De la tarjeta llega solo el medio elegido: el CVV no se
- * puede almacenar y el número obliga a certificar PCI DSS. Cuando entre Mercado
- * Pago se guardan el token y los últimos 4 dígitos.
+ * Tiene dos modos, según cómo se identifique la persona:
+ *
+ *   - **Con contraseña**: crea el usuario de auth ya confirmado (sin depender
+ *     del mail de verificación) y el cliente hace login después con ese mail y
+ *     esa contraseña.
+ *   - **Con Google**: el usuario de auth YA existe —lo creó Google— y llega con
+ *     la sesión puesta desde /auth/callback. Acá no se crea nada de auth: se le
+ *     cuelga el perfil a esa identidad. El id y el mail se leen de la sesión del
+ *     servidor, nunca de lo que manda el navegador, así que nadie puede pedir un
+ *     alta a nombre de otro.
+ *
+ * De la tarjeta llega solo el medio elegido: el CVV no se puede almacenar y el
+ * número obliga a certificar PCI DSS. Cuando entre Mercado Pago se guardan el
+ * token y los últimos 4 dígitos.
  */
 
 type Body = {
@@ -51,7 +61,15 @@ export async function POST(req: Request) {
   const { socio, pet, plan, odonto, declaracion, pago } = JSON.parse(form.get('payload') as string) as Body;
   const photoFile = form.get('photo');
 
-  if (!socio?.email || !socio?.password || socio.password.length < 6 || !socio?.nombre || !pet?.nombre || !plan) {
+  // Sin contraseña en el payload = alta con Google. No hace falta un flag del
+  // cliente: en ese modo la identidad sale de la sesión, así que no hay nada que
+  // pueda falsear declarándose de un modo u otro.
+  const conGoogle = !socio?.password;
+
+  if (!socio?.nombre || !pet?.nombre || !plan) {
+    return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
+  }
+  if (!conGoogle && (!socio?.email || socio.password.length < 6)) {
     return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
   }
 
@@ -108,23 +126,65 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Plan inválido.' }, { status: 400 });
   }
 
-  const { data: created, error: createErr } = await db.auth.admin.createUser({
-    email: socio.email,
-    password: socio.password,
-    email_confirm: true,
-  });
-  if (createErr || !created?.user) {
-    const msg = /already registered|already exists/i.test(createErr?.message ?? '') ? 'Ya existe una cuenta con ese email.' : (createErr?.message ?? 'No se pudo crear la cuenta.');
-    return NextResponse.json({ error: msg }, { status: 400 });
+  /** Con Google la identidad ya existe; con contraseña hay que crearla. */
+  let userId: string;
+  let email: string;
+
+  if (conGoogle) {
+    // El id y el mail salen de la SESIÓN, no del payload: si vinieran del
+    // navegador, cualquiera podría pedir un alta a nombre de otra persona.
+    const sesion = await createClient();
+    const { data: auth } = await sesion.auth.getUser();
+    if (!auth.user?.email) {
+      return NextResponse.json({ error: 'Se cerró la sesión de Google. Volvé a entrar con Google y seguí desde ahí.' }, { status: 401 });
+    }
+    userId = auth.user.id;
+    email = auth.user.email;
+
+    // Que no se dé de alta dos veces. La restricción real es la clave primaria
+    // de `profiles`, pero así el mensaje es entendible en vez de un error de
+    // base de datos.
+    const { data: yaEsta } = await db.from('profiles').select('id').eq('id', userId).maybeSingle();
+    if (yaEsta) {
+      return NextResponse.json({ error: 'Esa cuenta ya es socia de Kumo. Entrá con Google.' }, { status: 400 });
+    }
+  } else {
+    const { data: created, error: createErr } = await db.auth.admin.createUser({
+      email: socio.email,
+      password: socio.password,
+      email_confirm: true,
+    });
+    if (createErr || !created?.user) {
+      const msg = /already registered|already exists/i.test(createErr?.message ?? '') ? 'Ya existe una cuenta con ese email.' : (createErr?.message ?? 'No se pudo crear la cuenta.');
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+    userId = created.user.id;
+    email = socio.email;
   }
-  const userId = created.user.id;
+
+  /**
+   * Deshacer un alta a medio hacer.
+   *
+   * Con contraseña alcanza con borrar el usuario de auth: `profiles.id` lo
+   * referencia con ON DELETE CASCADE, así que se lleva el perfil y las mascotas.
+   * Con Google el usuario de auth es de la persona y preexiste al alta, así que
+   * borrarlo sería sacarle la cuenta: se limpian solo las filas que creamos acá.
+   */
+  const revertir = async () => {
+    if (conGoogle) {
+      await db.from('pets').delete().eq('owner_id', userId);
+      await db.from('profiles').delete().eq('id', userId);
+    } else {
+      await db.auth.admin.deleteUser(userId);
+    }
+  };
 
   const { data: profileRow, error: profileErr } = await db
     .from('profiles')
     .insert({
       id: userId,
       full_name: socio.nombre,
-      email: socio.email,
+      email,
       phone: socio.tel || null,
       // El domicilio va en tres columnas: concatenado no se puede segmentar por
       // localidad ni provincia, y el club se organiza por zonas.
@@ -158,7 +218,7 @@ export async function POST(req: Request) {
     .single();
 
   if (profileErr || !profileRow) {
-    await db.auth.admin.deleteUser(userId);
+    await revertir();
     return NextResponse.json({ error: 'No se pudo crear el perfil del socio.' }, { status: 500 });
   }
 
@@ -179,7 +239,7 @@ export async function POST(req: Request) {
     .single();
 
   if (petErr || !petRow) {
-    await db.auth.admin.deleteUser(userId);
+    await revertir();
     return NextResponse.json({ error: 'No se pudo crear la mascota.' }, { status: 500 });
   }
 
@@ -198,7 +258,7 @@ export async function POST(req: Request) {
 
   if (decErr) {
     console.error('[onboarding] health declaration failed', decErr);
-    await db.auth.admin.deleteUser(userId);
+    await revertir();
     return NextResponse.json({ error: 'No se pudo guardar la declaración jurada. No se creó la cuenta.' }, { status: 500 });
   }
 
@@ -206,7 +266,7 @@ export async function POST(req: Request) {
   // se le devuelve error al socio: quedaría afuera del club por un problema de
   // mails, que sería peor.
   await sendBienvenida({
-    to: socio.email,
+    to: email,
     firstName: socio.nombre.split(' ')[0] || socio.nombre,
     petName: pet.nombre,
     memberNo: profileRow.member_no,

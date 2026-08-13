@@ -69,7 +69,18 @@ function Segmented({ options, value, onChange }: { options: string[]; value: str
   );
 }
 
-export function Onboarding({ open, onClose, initialPet, initialType, plans = data.plans }: { open: boolean; onClose: () => void; initialPet?: string; initialType?: string; plans?: typeof data.plans }) {
+/**
+ * Alta de socio.
+ *
+ * `identidad` llega cuando la persona entró con Google y todavía no es socia:
+ * viene de /auth/callback con la sesión ya puesta. En ese caso el mail está
+ * verificado por Google y no se edita —cambiarlo desharía el vínculo con esa
+ * cuenta—, no hay paso de contraseña, y al confirmar no hay que loguear a nadie
+ * porque ya está identificado. Todo el resto del alta es igual: Google no aporta
+ * plan, mascota, declaración de salud ni medio de pago.
+ */
+export function Onboarding({ open, onClose, initialPet, initialType, plans = data.plans, identidad }: { open: boolean; onClose: () => void; initialPet?: string; initialType?: string; plans?: typeof data.plans; identidad?: { nombre: string; email: string } | null }) {
+  const conGoogle = !!identidad;
   const [step, setStep] = useState(1);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [done, setDone] = useState(false);
@@ -106,7 +117,12 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
     setPetPhotoFile(null);
   };
   // paso 2
-  const [socio, setSocio] = useState({ nombre: '', dni: '', fnac: '', domicilio: '', localidad: '', provincia: '', tel: '', email: '', password: '' });
+  const [socio, setSocio] = useState({
+    nombre: identidad?.nombre ?? '',
+    dni: '', fnac: '', domicilio: '', localidad: '', provincia: '', tel: '',
+    email: identidad?.email ?? '',
+    password: '',
+  });
   // paso 3
   const [plan, setPlan] = useState<string | null>(null);
   const [odonto, setOdonto] = useState(false);
@@ -141,7 +157,8 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
   // por el autocompletado) y el saludo de su cuenta quedó mostrando el mail.
   const nombreOk = socio.nombre.trim().length > 1 && !socio.nombre.includes('@');
   const step1Ok = pet.nombre.trim().length > 0;
-  const step2Ok = nombreOk && dniOk && fnacOk && socio.domicilio.trim() && socio.localidad.trim() && socio.provincia && telOk && emailOk && passwordOk;
+  // Con Google no hay contraseña que validar: la identidad ya está resuelta.
+  const step2Ok = nombreOk && dniOk && fnacOk && socio.domicilio.trim() && socio.localidad.trim() && socio.provincia && telOk && emailOk && (conGoogle || passwordOk);
   const step3Ok = !!plan;
   const step4Ok = Object.keys(health).length === HEALTH_Q.length && Object.keys(sanit).length === SANITARIO_Q.length && firma.trim().length > 2 && acepta;
   const step5Ok = cardNum.replace(/\D/g, '').length >= 13 && cardExp.trim().length >= 4 && cardCvv.trim().length >= 3 && acceptaCuota;
@@ -182,7 +199,11 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
       const res = await fetch('/api/onboarding', { method: 'POST', body: form });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || 'No se pudo completar el alta.');
-      await supabase.auth.signInWithPassword({ email: socio.email, password: socio.password });
+      // Con Google la sesión ya está abierta desde /auth/callback; loguear con
+      // contraseña acá fallaría, porque esa cuenta no tiene ninguna.
+      if (!conGoogle) {
+        await supabase.auth.signInWithPassword({ email: socio.email, password: socio.password });
+      }
       setMemberNo(json.memberNo);
       setAvisoFoto(json.photoError ?? null);
       setConfirmOpen(false);
@@ -278,10 +299,21 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>{field('Teléfono', <input autoComplete="tel" value={socio.tel} onChange={(e) => setSocio({ ...socio, tel: formatTel(e.target.value) })} placeholder="11 5555 2024" style={{ ...input, borderColor: socio.tel && !telOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
-              <div style={{ flex: 1 }}>{field('Email', <input type="email" autoComplete="email" value={socio.email} onChange={(e) => setSocio({ ...socio, email: e.target.value })} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !emailOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Email', <input type="email" autoComplete="email" value={socio.email} onChange={(e) => setSocio({ ...socio, email: e.target.value })} readOnly={conGoogle} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !emailOk ? '#c14d7a' : '#e6e3f0', background: conGoogle ? '#faf9fd' : '#fff', color: conGoogle ? '#5b5670' : undefined }} />)}</div>
             </div>
-            {field('Contraseña', <input type="password" autoComplete="new-password" value={socio.password} onChange={(e) => setSocio({ ...socio, password: e.target.value })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !passwordOk ? '#c14d7a' : '#e6e3f0' }} />)}
-            <p style={{ fontSize: 12.5, color: '#a29dba', margin: '-8px 0 0' }}>La vas a usar para entrar a la app cuando quieras.</p>
+            {/* Con Google no se pide contraseña: la persona ya está identificada
+                y de ahí en adelante entra con el botón. Pedirle una sería
+                inventarle una credencial que no va a usar nunca. */}
+            {conGoogle ? (
+              <p style={{ fontSize: 12.5, color: '#5b5670', background: '#faf9fd', border: '1px solid #eeecf5', borderRadius: 10, padding: '10px 12px', margin: 0, lineHeight: 1.5 }}>
+                Tu cuenta va a quedar asociada a <strong>{socio.email}</strong> de Google, así que no necesitás contraseña: entrás siempre con el botón de Google.
+              </p>
+            ) : (
+              <>
+                {field('Contraseña', <input type="password" autoComplete="new-password" value={socio.password} onChange={(e) => setSocio({ ...socio, password: e.target.value })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !passwordOk ? '#c14d7a' : '#e6e3f0' }} />)}
+                <p style={{ fontSize: 12.5, color: '#a29dba', margin: '-8px 0 0' }}>La vas a usar para entrar a la app cuando quieras.</p>
+              </>
+            )}
           </div>
         )}
 

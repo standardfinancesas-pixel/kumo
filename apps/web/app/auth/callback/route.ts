@@ -5,10 +5,17 @@ import { createClient } from '@/lib/supabase-server';
 /**
  * Vuelta del login con Google.
  *
- * Google solo sirve para ENTRAR, no para asociarse: el alta pide plan, mascota,
- * DNI y medio de pago, y eso no se puede saltear con un click. Así que si la
- * cuenta no tiene perfil de socio se cierra la sesión y se explica en la
- * portada, en lugar de dejarla en un limbo con sesión pero sin club.
+ * Google sirve para entrar Y para arrancar el alta. Lo que no puede es
+ * reemplazarla: solo aporta nombre y mail, mientras el alta necesita plan,
+ * mascota, declaración jurada de salud y medio de pago. Así que una cuenta de
+ * Google sin perfil de socio no se rechaza —como hacía antes, cerrándole la
+ * sesión— sino que se manda al formulario con la identidad ya resuelta y sin
+ * paso de contraseña.
+ *
+ * La sesión queda abierta a propósito. Un usuario autenticado sin perfil no
+ * puede hacer nada más que crear el suyo: la RLS de `profiles` solo deja
+ * insertar la fila cuyo id es su propio `auth.uid()`, no puede leer perfiles
+ * ajenos, y `/app` lo devuelve a la portada mientras no tenga uno.
  */
 export async function GET(req: Request) {
   const url = new URL(req.url);
@@ -32,11 +39,9 @@ export async function GET(req: Request) {
     .eq('id', data.user.id)
     .maybeSingle();
 
+  // Tiene Google pero todavía no es socio: al alta, con la sesión puesta.
   if (!perfil) {
-    // Tiene cuenta de Google pero no es socio: se deshace la sesión para no
-    // dejarlo a medio camino.
-    await supabase.auth.signOut();
-    return NextResponse.redirect(new URL('/?login=no-socio', url.origin));
+    return NextResponse.redirect(new URL('/?alta=google', url.origin));
   }
 
   const destino = perfil.role === 'admin' ? urls.admin : urls.webapp;

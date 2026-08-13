@@ -57,7 +57,15 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
     const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
     if (signInError || !signInData.user) {
       setLoading(false);
-      setError(signInError && /invalid login credentials/i.test(signInError.message) ? 'Email o contraseña incorrectos.' : signInError?.message ?? 'No se pudo iniciar sesión.');
+      // Se nombran las dos causas posibles porque desde acá no se pueden
+      // distinguir: quien se dio de alta con Google no tiene contraseña, y
+      // Supabase devuelve el mismo "invalid login credentials" que con una
+      // contraseña equivocada. Decir solo "incorrectos" lo dejaría probando de
+      // nuevo una contraseña que nunca existió. Y no se puede revelar si el mail
+      // está registrado o no, así que la frase cubre los dos casos.
+      setError(signInError && /invalid login credentials/i.test(signInError.message)
+        ? 'Email o contraseña incorrectos. Si te asociaste con Google, entrá con el botón de Google.'
+        : signInError?.message ?? 'No se pudo iniciar sesión.');
       return;
     }
     const { data: profile } = await supabase.from('profiles').select('role').eq('id', signInData.user.id).single();
@@ -755,7 +763,6 @@ function Footer() {
 }
 
 const AVISOS_LOGIN: Record<string, string> = {
-  'no-socio': 'Esa cuenta de Google todavía no es socia de Kumo. Asociate primero y después podés entrar con Google.',
   cancelado: 'Cancelaste el ingreso con Google.',
   error: 'No pudimos completar el ingreso con Google. Probá de nuevo.',
 };
@@ -764,17 +771,44 @@ export default function LandingClient({ content }: { content: LandingContent }) 
   // 'login' → modal de login; 'register' → onboarding de socio; 'prestador' → landing de prestadores
   const [view, setView] = useState<View | null>(null);
   const [avisoLogin, setAvisoLogin] = useState('');
+  /** Identidad de Google de alguien que entró pero todavía no es socio. */
+  const [identidadGoogle, setIdentidadGoogle] = useState<{ nombre: string; email: string } | null>(null);
 
-  // Cuando /auth/callback rebota (por ejemplo, una cuenta de Google que no es
-  // socia) vuelve con ?login=… : se abre el modal para explicarlo ahí mismo.
+  // /auth/callback vuelve con ?login=… si el ingreso con Google falló, o con
+  // ?alta=google si la cuenta todavía no es socia: en ese caso se abre el alta
+  // con el nombre y el mail ya cargados.
+  //
   // Se lee de window en vez de useSearchParams para no forzar el render en
   // cliente de una página que es estática.
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get('login');
-    if (!p) return;
-    setAvisoLogin(AVISOS_LOGIN[p] ?? AVISOS_LOGIN.error!);
-    setView('login');
-    window.history.replaceState({}, '', window.location.pathname);
+    const params = new URLSearchParams(window.location.search);
+    const limpiarUrl = () => window.history.replaceState({}, '', window.location.pathname);
+
+    const p = params.get('login');
+    if (p) {
+      setAvisoLogin(AVISOS_LOGIN[p] ?? AVISOS_LOGIN.error!);
+      setView('login');
+      limpiarUrl();
+      return;
+    }
+
+    if (params.get('alta') !== 'google') return;
+    limpiarUrl();
+    // El nombre y el mail se leen de la sesión y no de la URL: son datos
+    // personales y no tienen por qué viajar en la barra de direcciones.
+    (async () => {
+      const { data } = await supabase.auth.getUser();
+      const u = data.user;
+      if (!u?.email) {
+        setAvisoLogin(AVISOS_LOGIN.error!);
+        setView('login');
+        return;
+      }
+      const meta = u.user_metadata ?? {};
+      const nombre = (meta.full_name || meta.name || '') as string;
+      setIdentidadGoogle({ nombre, email: u.email });
+      setView('register');
+    })();
   }, []);
 
   return (
@@ -797,7 +831,7 @@ export default function LandingClient({ content }: { content: LandingContent }) 
         <Footer />
       </main>
       <AuthModal mode={view === 'login' ? 'login' : null} onClose={() => { setView(null); setAvisoLogin(''); }} aviso={avisoLogin} />
-      <Onboarding open={view === 'register'} onClose={() => setView(null)} plans={content.plans} />
+      <Onboarding open={view === 'register'} onClose={() => { setView(null); setIdentidadGoogle(null); }} plans={content.plans} identidad={identidadGoogle} />
       <PrestadoresPage open={view === 'prestador'} onClose={() => setView(null)} />
     </AuthCtx.Provider>
     </ContentCtx.Provider>
