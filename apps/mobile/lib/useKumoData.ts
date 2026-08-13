@@ -133,9 +133,11 @@ function mapVac(v: VacRow): Vac {
 export function useKumoData(userId: string | null) {
   const [data, setData] = useState<KumoData | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Mensaje de las consultas que fallaron, para que no quede en silencio. */
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!userId) { setData(null); setLoading(false); return; }
+    if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
@@ -150,6 +152,29 @@ export function useKumoData(userId: string | null) {
       supabase.from('post_likes').select('post_id').eq('member_id', userId),
       supabase.from('answer_likes').select('answer_id').eq('member_id', userId),
     ]);
+
+    /**
+     * Si una consulta falla, que se sepa.
+     *
+     * Supabase no lanza: devuelve `{ data: null, error }`. Con el `?? []` de más
+     * abajo, un error de permisos o de una columna que no existe se veía igual
+     * que "todavía no cargaste nada", y la pantalla mostraba el vacío como si
+     * fuera la verdad. Eso hizo perder un buen rato averiguando por qué un socio
+     * con mascota no la veía.
+     */
+    const fallas = (
+      [
+        ['perfil', profileRes], ['mascotas', petsRes], ['reintegros', reintRes],
+        ['prestadores', provRes], ['beneficios', benefRes], ['foro', postsRes],
+        ['mi negocio', negocioRes], ['guardados', favRes], ['reseñas', revRes],
+        ['likes', plikeRes], ['likes de respuestas', alikeRes],
+      ] as const
+    )
+      .filter(([, res]) => res.error)
+      .map(([que, res]) => `${que}: ${res.error!.message}`);
+
+    if (fallas.length) console.warn('[kumo] consultas con error →', fallas.join(' · '));
+    setError(fallas.length ? fallas.join('\n') : null);
 
     const p = profileRes.data;
     const plan = p ? (Array.isArray(p.plans) ? p.plans[0] : p.plans) : null;
@@ -275,5 +300,5 @@ export function useKumoData(userId: string | null) {
 
   useEffect(() => { setLoading(true); load(); }, [load]);
 
-  return { data, loading, reload: load };
+  return { data, loading, error, reload: load };
 }

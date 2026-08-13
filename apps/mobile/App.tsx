@@ -1,6 +1,6 @@
 import { useState, useEffect, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaView, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
@@ -2245,7 +2245,7 @@ export default function App() {
   /** null = todavía no se tocó nada, vale lo que trajo la base. */
   const [optimistaGuardados, setOptimistaGuardados] = useState<string[] | null>(null);
   const [fontsLoaded] = useFonts({ Baloo2_700Bold, Baloo2_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
-  const { data, loading, reload } = useKumoData(userId);
+  const { data, loading, error: errorDatos, reload } = useKumoData(userId);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: s }) => { setUserId(s.session?.user.id ?? null); setAuthReady(true); });
@@ -2301,6 +2301,15 @@ export default function App() {
             </View>
           </View>
         )}
+        {/* Si una consulta falló, se dice. Antes el error se tragaba y la
+            pantalla mostraba el estado vacío como si la cuenta no tuviera nada:
+            un socio con mascota veía "todavía no cargaste mascotas". */}
+        {userId && errorDatos ? (
+          <View style={{ backgroundColor: '#fbeceb', borderBottomWidth: 1, borderBottomColor: '#efd3cf', paddingHorizontal: 20, paddingVertical: 10 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#9c3b32', marginBottom: 2 }}>No pudimos traer todos tus datos</Text>
+            <Text style={{ fontSize: 11.5, color: '#9c3b32', lineHeight: 16 }}>{errorDatos}</Text>
+          </View>
+        ) : null}
         {!userId ? (
           <Login />
         ) : loading || !data ? (
@@ -2371,10 +2380,15 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: isWeb ? '#e7e4f0' : '#fff', alignItems: 'center' },
   phone: isWeb
     ? { flex: 1, width: '100%', maxWidth: 392, backgroundColor: '#fff', borderRadius: 40, overflow: 'hidden', marginVertical: 12 }
-    // En nativo el padding de arriba reemplaza el aire que daba la status bar
-    // dibujada, que acá no va: sin esto el saludo queda pegado a la barra real
-    // del sistema.
-    : { flex: 1, width: '100%', backgroundColor: '#fff', paddingTop: 6 },
+    // El SafeAreaView de react-native NO reserva el alto de la barra de estado
+    // en Android: ahí es una View común, solo hace algo en iOS. Por eso el
+    // contenido quedaba debajo de la hora y la señal. Se reserva a mano con la
+    // altura real que informa el sistema, más un poco de aire. En iOS no se suma
+    // nada porque ahí el SafeAreaView ya lo hace y quedaría el doble.
+    : {
+        flex: 1, width: '100%', backgroundColor: '#fff',
+        paddingTop: Platform.OS === 'android' ? (BarraSistema.currentHeight ?? 24) + 6 : 6,
+      },
   statusbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 4 },
   statusTime: { fontSize: 13, fontWeight: '700', color: INK },
   screen: { padding: 20, paddingBottom: 40 },
