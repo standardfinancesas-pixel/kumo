@@ -1118,7 +1118,7 @@ function Perfil({ profile, go }: { profile: Profile | null; go: (t: Screen) => v
       </View>
       <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Membresía</Text>
       <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 15, marginBottom: 12 }}>
-        <Text style={{ fontWeight: '700', fontSize: 14 }}>Plan {profile.planName} · {money(profile.planPrice)}/mes</Text>
+        <Text style={{ fontWeight: '700', fontSize: 14 }}>Plan {profile.planName}{profile.addonOdonto ? ' + odontológica' : ''} · {money(profile.planPrice)}/mes</Text>
         <Text style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>Cuota mensual al día</Text>
       </View>
       <TouchableOpacity onPress={() => go('reintegros')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 15, marginBottom: 18 }}>
@@ -1128,7 +1128,7 @@ function Perfil({ profile, go }: { profile: Profile | null; go: (t: Screen) => v
       </TouchableOpacity>
       <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 4 }}>Datos personales</Text>
       <View style={{ marginBottom: 20 }}>
-        {dato('DNI', profile.dni)}{dato('Domicilio', profile.address)}{dato('Teléfono', profile.phone)}{dato('Email', profile.email)}
+        {dato('DNI', profile.dni)}{dato('Domicilio', profile.address)}{dato('Localidad', profile.city)}{dato('Provincia', profile.province)}{dato('Teléfono', profile.phone)}{dato('Email', profile.email)}
       </View>
       <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ backgroundColor: colors.violet[100], borderRadius: 12, padding: 14, alignItems: 'center' }}><Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cerrar sesión</Text></TouchableOpacity>
     </ScrollView>
@@ -1722,9 +1722,11 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
   const [place, setPlace] = useState('');
   const [concept, setConcept] = useState('');
   const [amount, setAmount] = useState('');
-  const [titular, setTitular] = useState('');
-  const [cuit, setCuit] = useState('');
-  const [cbu, setCbu] = useState('');
+  // Prefijados con la cuenta del perfil, que se pide en el alta: antes había que
+  // retipear titular, CUIT y CBU en cada solicitud. Igual que en la webapp.
+  const [titular, setTitular] = useState(profile?.banco.holder ?? '');
+  const [cuit, setCuit] = useState(profile?.banco.cuit ?? '');
+  const [cbu, setCbu] = useState(profile?.banco.cbu ?? profile?.banco.alias ?? '');
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);

@@ -73,7 +73,13 @@ export type MisLikes = { posts: string[]; answers: string[] };
 export type PlanVM = { id: string; name: string; price: number; tagline: string };
 
 /** Datos del socio logueado, resueltos en el Server Component (app/page.tsx). */
-export type Profile = { id: string; firstName: string; fullName: string; memberNo: number; planName: string; planPrice: number; email: string; phone: string | null; address: string | null; dni: string | null };
+/** La cuenta donde el club le transfiere los reintegros. Se pide en el alta y el
+ *  formulario de reintegro la prefija, así no se retipea en cada solicitud. */
+export type ProfileBanco = { holder: string | null; cuit: string | null; cbu: string | null; alias: string | null };
+
+/** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
+ *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
+export type Profile = { id: string; firstName: string; fullName: string; memberNo: number; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
 
 /** Las mismas cinco promos que la app móvil, con sus colores: eran tres y con
  *  otras fotos, así que las dos superficies mostraban cosas distintas. */
@@ -1063,7 +1069,7 @@ function ReintegroDetalle({ r, planName, onVolver }: { r: Reint; planName: strin
 }
 
 /* ── Pantalla: Reintegros ──────────────────────────────────────── */
-function Reintegros({ initialReintegros, planName, memberId, pets }: { initialReintegros: Reint[]; planName: string; memberId: string; pets: Pet[] }) {
+function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { initialReintegros: Reint[]; planName: string; memberId: string; pets: Pet[]; banco: ProfileBanco }) {
   const router = useRouter();
   const items = initialReintegros;
   const [selId, setSelId] = useState<string | null>(null);
@@ -1073,9 +1079,11 @@ function Reintegros({ initialReintegros, planName, memberId, pets }: { initialRe
   const [detail, setDetail] = useState('');
   const [spent, setSpent] = useState('');
   const [petId, setPetId] = useState(pets[0]?.id ?? '');
-  const [titular, setTitular] = useState('');
-  const [cuit, setCuit] = useState('');
-  const [cbu, setCbu] = useState('');
+  // Prefijados con la cuenta del perfil, que se pide en el alta: antes había que
+  // retipear titular, CUIT y CBU en cada solicitud.
+  const [titular, setTitular] = useState(banco.holder ?? '');
+  const [cuit, setCuit] = useState(banco.cuit ?? '');
+  const [cbu, setCbu] = useState(banco.cbu ?? banco.alias ?? '');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1111,6 +1119,17 @@ function Reintegros({ initialReintegros, planName, memberId, pets }: { initialRe
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
       ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
     });
+
+    // Si el socio no tenía cuenta en el perfil (se dio de alta antes de que se
+    // pidiera), queda guardada para la próxima solicitud y para que el admin la
+    // vea en la ficha sin abrir el reintegro.
+    if (!insErr && !banco.cbu && !banco.alias) {
+      await supabase.from('profiles').update({
+        bank_holder: titular.trim() || null,
+        bank_cuit: cuit.trim() || null,
+        ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.replace(/\D/g, '') } : { bank_alias: cbu.trim() }),
+      }).eq('id', memberId);
+    }
     if (insErr) {
       // Si falla la solicitud, no dejamos el archivo huérfano en el bucket.
       await supabase.storage.from('receipts').remove([path]);
@@ -1561,7 +1580,9 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
   const [cat, setCat] = useState(cats[0]!);
   const [titulo, setTitulo] = useState('');
   const [cuerpo, setCuerpo] = useState('');
-  const [zona, setZona] = useState(profile.address ?? '');
+  // La zona del post es la localidad, no la calle: antes prefijaba el domicilio
+  // completo porque era la única columna que había.
+  const [zona, setZona] = useState(profile.city ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [listo, setListo] = useState(false);
@@ -1996,7 +2017,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(false);
-  const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', tel: profile.phone ?? '', email: profile.email });
+  const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email });
   const [planOpen, setPlanOpen] = useState(false);
   const [planSel, setPlanSel] = useState(profile.planName);
   const [bajaOpen, setBajaOpen] = useState(false);
@@ -2018,7 +2039,10 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
     setBusy(true); setError('');
     const { error: e } = await supabase.from('profiles').update({
       full_name: datos.nombre.trim(), dni: datos.dni.trim() || null,
-      address: datos.dom.trim() || null, phone: datos.tel.trim() || null, email: datos.email.trim(),
+      address: datos.dom.trim() || null,
+      city: datos.localidad.trim() || null,
+      province: datos.provincia.trim() || null,
+      phone: datos.tel.trim() || null, email: datos.email.trim(),
     }).eq('id', profile.id);
     if (e) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
     setEditando(false);
@@ -2115,10 +2139,19 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {row(ic(storeIcon, false, 19), 'Mi negocio', negocioHint, chevron, () => go('negocio'))}
         {row(ic(wallet, false, 19), 'Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros'))}
-        {row(ic(tagIcon, false, 19), 'Membresía', `Plan ${profile.planName} · ${m$(profile.planPrice)}/mes`, accion('Cambiar'), () => { setPlanSel(profile.planName); setPlanOpen(true); })}
-        {/* El cobro no está conectado, así que no hay tarjeta que mostrar. Antes
-            decía "Visa ····4287", un número fijo escrito en el código. */}
-        {row(ic(cardIcon, false, 19), 'Medio de pago', 'Todavía no configurado', <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>Pendiente</span>)}
+        {row(ic(tagIcon, false, 19), 'Membresía', `Plan ${profile.planName}${profile.addonOdonto ? ' + odontológica' : ''} · ${m$(profile.planPrice)}/mes`, accion('Cambiar'), () => { setPlanSel(profile.planName); setPlanOpen(true); })}
+        {/* El medio de pago sale del alta. Antes decía "Visa ····4287", un número
+            fijo escrito en el código; después "Todavía no configurado", porque no
+            se guardaba nada. El cobro sigue sin conectarse: esto identifica con
+            qué se va a cobrar, no que ya se esté cobrando. */}
+        {row(ic(cardIcon, false, 19), 'Medio de pago',
+          profile.tarjeta ?? (profile.banco.cbu ? `Débito de CBU ····${profile.banco.cbu.slice(-4)}` : 'Todavía no configurado'),
+          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.tarjeta || profile.banco.cbu ? 'Sin cobro activo' : 'Pendiente'}</span>)}
+        {/* Dónde cobra los reintegros: es plata que le entra, así que verlo acá
+            evita que descubra un CBU mal cargado cuando ya esperaba el dinero. */}
+        {row(ic(wallet, false, 19), 'Cuenta para reintegros',
+          profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Se pide al cargar el primer reintegro',
+          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.banco.cbu || profile.banco.alias ? 'Cargada' : 'Pendiente'}</span>)}
       </div>
 
       {/* Datos personales */}
@@ -2131,7 +2164,11 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
             <label style={sheetLabel} htmlFor="pf-dni">DNI</label>
             <input id="pf-dni" value={datos.dni} onChange={(e) => setDatos((d) => ({ ...d, dni: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-dom">Domicilio</label>
-            <input id="pf-dom" value={datos.dom} onChange={(e) => setDatos((d) => ({ ...d, dom: e.target.value }))} style={inputEdit} />
+            <input id="pf-dom" value={datos.dom} onChange={(e) => setDatos((d) => ({ ...d, dom: e.target.value }))} placeholder="Calle y número" style={inputEdit} />
+            <label style={sheetLabel} htmlFor="pf-loc">Localidad</label>
+            <input id="pf-loc" value={datos.localidad} onChange={(e) => setDatos((d) => ({ ...d, localidad: e.target.value }))} style={inputEdit} />
+            <label style={sheetLabel} htmlFor="pf-prov">Provincia</label>
+            <input id="pf-prov" value={datos.provincia} onChange={(e) => setDatos((d) => ({ ...d, provincia: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-tel">Teléfono</label>
             <input id="pf-tel" value={datos.tel} onChange={(e) => setDatos((d) => ({ ...d, tel: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-mail">Email</label>
@@ -2143,6 +2180,8 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
           <>
             {dato('DNI', profile.dni ?? '')}
             {dato('Domicilio', profile.address ?? '')}
+            {dato('Localidad', profile.city ?? '')}
+            {dato('Provincia', profile.province ?? '')}
             {dato('Teléfono', profile.phone ?? '')}
             {dato('Email', profile.email, true)}
           </>
@@ -2634,7 +2673,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
           {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
-          {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} />}
+          {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}

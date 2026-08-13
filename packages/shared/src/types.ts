@@ -51,18 +51,50 @@ export type Vaccination = {
   nextOn: string | null; // ISO date
 };
 
+import type { TarjetaMeta } from './pagos';
+
 export type Member = {
   id: string;
   memberNo: number; // #10428
   fullName: string;
   email: string;
   phone: string | null;
-  address: string | null;
+  address: string | null; // calle y número
+  city: string | null;
+  province: string | null;
   dni: string | null;
   birthDate: string | null; // ISO date
   planId: string;
   status: 'activo' | 'moroso' | 'baja';
   joinedOn: string; // ISO date
+  // Lo contratado y aceptado en el alta. `monthlyFeeAgreed` es la cuota que
+  // firmó, no la de hoy: el precio del plan cambia.
+  addonOdonto: boolean;
+  monthlyFeeAgreed: number | null;
+  payMethod: 'tarjeta' | 'cbu' | null;
+  contractAcceptedAt: string | null; // ISO timestamp
+  /** Club → socio: a dónde se le transfiere el reintegro (la transferencia la
+   *  hace el club a mano). Es el mismo `BankDetails` de la solicitud. */
+  bank: BankDetails | null;
+  /** Socio → club: con qué se le cobra la cuota. Solo metadata — el número
+   *  completo y el CVV no se guardan (PCI DSS). */
+  card: TarjetaMeta | null;
+};
+
+/**
+ * Declaración jurada de salud firmada en el alta. Inmutable: se inserta y se
+ * lee, nunca se edita (ver las políticas de `health_declarations`).
+ */
+export type HealthDeclaration = {
+  id: string;
+  memberId: string;
+  petId: string | null;
+  petName: string;
+  version: number;
+  answers: { pregunta: string; respuesta: 'Sí' | 'No' }[];
+  sanitary: { pregunta: string; respuesta: 'Sí' | 'No' }[];
+  signature: string;
+  signedAt: string; // ISO timestamp
 };
 
 export type ReimbursementStatus = 'en_revision' | 'aprobado' | 'rechazado' | 'acreditado';

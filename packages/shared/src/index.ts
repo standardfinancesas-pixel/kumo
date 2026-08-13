@@ -9,4 +9,7 @@ export * from './carnet';
 export * from './prestadores';
 export * from './reintegros';
 export * from './mascotas';
+export * from './declaracion';
+export * from './planes';
+export * from './pagos';
 export * as data from './data';

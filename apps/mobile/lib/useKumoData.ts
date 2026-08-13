@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diasHasta, providerBadge, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -10,8 +10,15 @@ export type Pet = {
   breed: string; age: string; microchip: string; castrado: string; odonto: string; next: string; vaccines: Vac[];
 };
 export type Profile = {
-  id: string; firstName: string; fullName: string; memberNo: string; planName: string; planPrice: number;
-  email: string; phone: string; address: string; dni: string;
+  id: string; firstName: string; fullName: string; memberNo: string; planName: string;
+  // `planPrice` es la cuota que aceptó al firmar (plan + add-ons), no el precio
+  // de lista: con la cobertura odontológica paga $12.000 más.
+  planPrice: number; addonOdonto: boolean;
+  email: string; phone: string; address: string; city: string; province: string; dni: string;
+  /** La cuenta donde el club le transfiere los reintegros: se pide en el alta y
+   *  el formulario de reintegro la prefija. */
+  banco: { holder: string | null; cuit: string | null; cbu: string | null; alias: string | null };
+  tarjeta: string | null;
 };
 export type ProviderVM = {
   id: string; name: string; category: string; zone: string; km: number; badge?: string;
@@ -131,7 +138,7 @@ export function useKumoData(userId: string | null) {
     if (!userId) { setData(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, dni, plans(name, base_price)').eq('id', userId).single(),
+      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
@@ -151,8 +158,11 @@ export function useKumoData(userId: string | null) {
 
     const profile: Profile | null = p ? {
       id: p.id, firstName: p.full_name.split(' ')[0] ?? p.full_name, fullName: p.full_name, memberNo,
-      planName, planPrice: plan?.base_price ?? 0, email: p.email, phone: p.phone ?? '—',
-      address: p.address ?? '—', dni: p.dni ?? '—',
+      planName, planPrice: p.monthly_fee_agreed ?? plan?.base_price ?? 0,
+      addonOdonto: p.addon_odonto ?? false, email: p.email, phone: p.phone ?? '—',
+      address: p.address ?? '—', city: p.city ?? '—', province: p.province ?? '—', dni: p.dni ?? '—',
+      banco: { holder: p.bank_holder, cuit: p.bank_cuit, cbu: p.bank_cbu, alias: p.bank_alias },
+      tarjeta: tarjetaLabel(p.card_brand, p.card_last4),
     } : null;
 
     const pets: Pet[] = (petsRes.data ?? []).map((row, i) => {

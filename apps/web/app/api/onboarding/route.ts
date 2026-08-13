@@ -1,19 +1,35 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
-import { FOTO_TIPOS, FOTO_MAX } from '@kumo/shared';
+import { FOTO_TIPOS, FOTO_MAX, armarDeclaracion, cuotaMensual } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
 /**
  * Alta real de socio. Corre en el servidor con la service-role key:
  * crea el usuario de auth ya confirmado (sin depender del mail de
- * verificación) e inserta su perfil y mascota. El cliente hace login
- * normal después con el mismo email/contraseña.
+ * verificación) e inserta su perfil, su mascota y la declaración jurada. El
+ * cliente hace login normal después con el mismo email/contraseña.
+ *
+ * Guarda los 5 pasos. De la tarjeta llega solo el medio elegido: el CVV no se
+ * puede almacenar y el número obliga a certificar PCI DSS. Cuando entre Mercado
+ * Pago se guardan el token y los últimos 4 dígitos.
  */
 
 type Body = {
   socio: { nombre: string; dni: string; fnac: string; domicilio: string; localidad: string; provincia: string; tel: string; email: string; password: string };
   pet: { nombre: string; especie: string; sexo: string; castrado: string; raza: string; edad: string; peso: string; microchip: string; vet: string; foto: string };
   plan: string;
+  odonto?: boolean;
+  declaracion?: { health: Record<number, string>; sanit: Record<number, string>; firma: string };
+  pago?: {
+    metodo?: string;
+    aceptaCuota?: boolean;
+    /** A dónde el club le transfiere los reintegros. La transferencia la hace el
+     *  club a mano: el sistema no mueve plata, solo guarda el destino. */
+    banco?: { holder?: string; holderDni?: string; cuit?: string; bank?: string; cbu?: string; alias?: string };
+    /** Marca, últimos 4 y vencimiento, ya calculados en el navegador. El número
+     *  completo y el CVV no llegan hasta acá a propósito (PCI DSS). */
+    tarjeta?: { brand: string; last4: string; exp: string; holder: string } | null;
+  };
 };
 
 const PET_TYPE: Record<string, string> = { Perro: 'perro', Gato: 'gato', Otro: 'otro' };
@@ -32,12 +48,34 @@ function leadingNumber(s: string): number | null {
 
 export async function POST(req: Request) {
   const form = await req.formData();
-  const { socio, pet, plan } = JSON.parse(form.get('payload') as string) as Body;
+  const { socio, pet, plan, odonto, declaracion, pago } = JSON.parse(form.get('payload') as string) as Body;
   const photoFile = form.get('photo');
 
   if (!socio?.email || !socio?.password || socio.password.length < 6 || !socio?.nombre || !pet?.nombre || !plan) {
     return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
   }
+
+  // La declaración jurada se arma acá con la lista canónica de preguntas, no con
+  // el enunciado que manda el navegador. Y se exige: es la base para resolver un
+  // reintegro por preexistencia, así que un alta sin ella dejaría al club sin
+  // nada firmado (el paso 4 ya la pide en la pantalla, esto cierra el atajo de
+  // postear al endpoint directo).
+  const firmada = armarDeclaracion({
+    health: declaracion?.health ?? {},
+    sanit: declaracion?.sanit ?? {},
+    firma: declaracion?.firma ?? '',
+  });
+  if (!firmada) {
+    return NextResponse.json({ error: 'Falta completar y firmar la declaración jurada de salud.' }, { status: 400 });
+  }
+
+  const payMethod = pago?.metodo === 'cbu' ? 'cbu' : pago?.metodo === 'tarjeta' ? 'tarjeta' : null;
+
+  const limpio = (v?: string) => v?.trim() || null;
+  const banco = pago?.banco;
+  // Los últimos 4 se guardan solo si son 4 dígitos: la columna tiene un check y
+  // un "últimos 4" de dos dígitos es peor que no tener nada.
+  const tarjeta = pago?.tarjeta && /^\d{4}$/.test(pago.tarjeta.last4) ? pago.tarjeta : null;
 
   const db = getServiceClient();
 
@@ -64,7 +102,7 @@ export async function POST(req: Request) {
     }
   }
 
-  const { data: planRow, error: planErr } = await db.from('plans').select('id').eq('name', plan).single();
+  const { data: planRow, error: planErr } = await db.from('plans').select('id, base_price').eq('name', plan).single();
   if (planErr || !planRow) {
     console.error('[onboarding] plan lookup failed', { plan, planErr });
     return NextResponse.json({ error: 'Plan inválido.' }, { status: 400 });
@@ -81,7 +119,6 @@ export async function POST(req: Request) {
   }
   const userId = created.user.id;
 
-  const address = [socio.domicilio, socio.localidad, socio.provincia].filter(Boolean).join(', ');
   const { data: profileRow, error: profileErr } = await db
     .from('profiles')
     .insert({
@@ -89,10 +126,33 @@ export async function POST(req: Request) {
       full_name: socio.nombre,
       email: socio.email,
       phone: socio.tel || null,
-      address: address || null,
+      // El domicilio va en tres columnas: concatenado no se puede segmentar por
+      // localidad ni provincia, y el club se organiza por zonas.
+      address: socio.domicilio || null,
+      city: socio.localidad || null,
+      province: socio.provincia || null,
       dni: socio.dni || null,
       birth_date: fnacToIso(socio.fnac),
       plan_id: planRow.id,
+      addon_odonto: odonto === true,
+      // La cuota la calcula el servidor con el precio real del plan: si la
+      // mandara el cliente, se podría firmar por una cuota de $1.
+      monthly_fee_agreed: cuotaMensual(planRow.base_price, odonto === true),
+      pay_method: payMethod,
+      contract_accepted_at: pago?.aceptaCuota ? new Date().toISOString() : null,
+      // Destino de los reintegros. El club transfiere a mano, así que esto es
+      // todo lo que necesita saber para pagarle.
+      bank_holder: limpio(banco?.holder),
+      bank_holder_dni: limpio(banco?.holderDni),
+      bank_cuit: limpio(banco?.cuit),
+      bank_name: limpio(banco?.bank),
+      bank_cbu: limpio(banco?.cbu)?.replace(/\D/g, '') || null,
+      bank_alias: limpio(banco?.alias),
+      // Medio de cobro de la cuota: metadata, no el instrumento.
+      card_brand: tarjeta?.brand ?? null,
+      card_last4: tarjeta?.last4 ?? null,
+      card_exp: tarjeta?.exp ?? null,
+      card_holder: tarjeta?.holder ?? null,
     })
     .select('member_no')
     .single();
@@ -102,7 +162,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'No se pudo crear el perfil del socio.' }, { status: 500 });
   }
 
-  const { error: petErr } = await db.from('pets').insert({
+  const { data: petRow, error: petErr } = await db.from('pets').insert({
     owner_id: userId,
     name: pet.nombre,
     type: PET_TYPE[pet.especie] ?? 'otro',
@@ -114,11 +174,32 @@ export async function POST(req: Request) {
     sex: PET_SEX[pet.sexo] ?? null,
     vet_name: pet.vet || null,
     photo_url: uploadedPhotoUrl ?? (pet.foto?.startsWith('/img/') ? pet.foto : null),
-  });
+  })
+    .select('id')
+    .single();
 
-  if (petErr) {
+  if (petErr || !petRow) {
     await db.auth.admin.deleteUser(userId);
     return NextResponse.json({ error: 'No se pudo crear la mascota.' }, { status: 500 });
+  }
+
+  // La declaración va después de la mascota porque la referencia. Si no se puede
+  // guardar, el alta se revierte entera: dejar un socio adentro del club sin su
+  // declaración jurada es justamente el agujero que esto viene a cerrar.
+  const { error: decErr } = await db.from('health_declarations').insert({
+    member_id: userId,
+    pet_id: petRow.id,
+    pet_name: pet.nombre,
+    version: firmada.version,
+    answers: firmada.answers,
+    sanitary: firmada.sanitary,
+    signature: firmada.signature,
+  });
+
+  if (decErr) {
+    console.error('[onboarding] health declaration failed', decErr);
+    await db.auth.admin.deleteUser(userId);
+    return NextResponse.json({ error: 'No se pudo guardar la declaración jurada. No se creó la cuenta.' }, { status: 500 });
   }
 
   // El alta ya está hecha; el mail es un extra. Si falla no se revierte nada ni

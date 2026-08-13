@@ -150,10 +150,18 @@ function Dashboard({ go, kpi, dist }: { go: (s: Screen) => void; kpi: KpiVM; dis
 
 /* ── Socios ────────────────────────────────────────────────────── */
 type FichaData = {
-  email: string; phone: string | null; address: string | null; dni: string | null; joinedOn: string | null;
+  email: string; phone: string | null; address: string | null; city: string | null; province: string | null;
+  dni: string | null; joinedOn: string | null;
   planName: string | null; planPrice: number | null;
+  // Lo que contrató en el alta: la cuota que aceptó puede no ser el precio de
+  // lista de hoy, y con la cobertura odontológica paga $12.000 más.
+  addonOdonto: boolean; monthlyFeeAgreed: number | null; payMethod: string | null;
+  // A dónde transferirle los reintegros, y con qué se le cobra la cuota.
+  bank: { holder: string | null; holderDni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
+  card: { brand: string | null; last4: string | null; exp: string | null; holder: string | null };
   pets: { id: string; name: string; type: string; breed: string | null; ageYears: number | null; microchip: string | null }[];
   reintegros: { id: string; providerName: string; concept: string; amount: number; refund: number; status: string }[];
+  declaraciones: { id: string; petName: string; signature: string; signedAt: string; answers: { pregunta: string; respuesta: string }[]; sanitary: { pregunta: string; respuesta: string }[] }[];
 };
 
 /** El detalle se pide al abrir la ficha, no con la tabla: son datos que solo se
@@ -165,18 +173,28 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const [perfil, mascotas, reint] = await Promise.all([
-        supabase.from('profiles').select('email, phone, address, dni, joined_on, plans(name, base_price)').eq('id', socio.id).single(),
+      const [perfil, mascotas, reint, declas] = await Promise.all([
+        supabase.from('profiles').select('email, phone, address, city, province, dni, joined_on, addon_odonto, monthly_fee_agreed, pay_method, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, card_exp, card_holder, plans(name, base_price)').eq('id', socio.id).single(),
         supabase.from('pets').select('id, name, type, breed, age_years, microchip').eq('owner_id', socio.id),
         supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status').eq('member_id', socio.id).order('requested_on', { ascending: false }),
+        supabase.from('health_declarations').select('id, pet_name, signature, signed_at, answers, sanitary').eq('member_id', socio.id).order('signed_at', { ascending: false }),
       ]);
       if (!vivo) return;
       if (perfil.error || !perfil.data) { setEstado('error'); return; }
       const p = perfil.data;
       const plan = Array.isArray(p.plans) ? p.plans[0] : p.plans;
       setData({
-        email: p.email, phone: p.phone, address: p.address, dni: p.dni, joinedOn: p.joined_on,
+        email: p.email, phone: p.phone, address: p.address, city: p.city, province: p.province,
+        dni: p.dni, joinedOn: p.joined_on,
         planName: plan?.name ?? null, planPrice: plan?.base_price ?? null,
+        addonOdonto: p.addon_odonto ?? false, monthlyFeeAgreed: p.monthly_fee_agreed, payMethod: p.pay_method,
+        bank: { holder: p.bank_holder, holderDni: p.bank_holder_dni, cuit: p.bank_cuit, name: p.bank_name, cbu: p.bank_cbu, alias: p.bank_alias },
+        card: { brand: p.card_brand, last4: p.card_last4, exp: p.card_exp, holder: p.card_holder },
+        declaraciones: (declas.data ?? []).map((d) => ({
+          id: d.id, petName: d.pet_name, signature: d.signature, signedAt: d.signed_at,
+          answers: (d.answers ?? []) as { pregunta: string; respuesta: string }[],
+          sanitary: (d.sanitary ?? []) as { pregunta: string; respuesta: string }[],
+        })),
         pets: (mascotas.data ?? []).map((m) => ({ id: m.id, name: m.name, type: m.type, breed: m.breed, ageYears: m.age_years, microchip: m.microchip })),
         reintegros: (reint.data ?? []).map((r) => ({ id: r.id, providerName: r.provider_name, concept: r.concept, amount: r.amount, refund: r.refund, status: r.status })),
       });
@@ -201,7 +219,8 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={estadoBadge(socio.estado)}>{socio.estado}</span>
-            {data.planName && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>Plan {data.planName}{data.planPrice ? ` · ${money(data.planPrice)}/mes` : ''}</span>}
+            {data.planName && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>Plan {data.planName}{data.monthlyFeeAgreed ? ` · ${money(data.monthlyFeeAgreed)}/mes` : data.planPrice ? ` · ${money(data.planPrice)}/mes` : ''}</span>}
+            {data.addonOdonto && <span style={badge('rgb(226,245,234)', 'rgb(47,143,91)')}>+ Odontológica</span>}
           </div>
           <div>
             <div style={fieldLabel}>DATOS PERSONALES</div>
@@ -209,6 +228,33 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
             {dato('Teléfono', data.phone || '—')}
             {dato('DNI', data.dni || '—')}
             {dato('Domicilio', data.address || '—')}
+            {dato('Localidad', data.city || '—')}
+            {dato('Provincia', data.province || '—')}
+          </div>
+          {/* A dónde transferirle. La transferencia la hace el club a mano desde
+              su home banking, así que esto es todo lo que necesita para pagarle
+              un reintegro. Antes había que abrir la solicitud para verlo, y solo
+              existía si ya había pedido uno. */}
+          <div>
+            <div style={fieldLabel}>DÓNDE COBRA SUS REINTEGROS</div>
+            {data.bank.cbu
+              ? (
+                <>
+                  {dato('CBU / CVU', data.bank.cbu)}
+                  {data.bank.alias && dato('Alias', data.bank.alias)}
+                  {dato('Titular', data.bank.holder || '—')}
+                  {dato('CUIT / CUIL', data.bank.cuit || '—')}
+                  {data.bank.name && dato('Banco', data.bank.name)}
+                </>
+              )
+              : <div style={{ fontSize: 13.5, color: '#8781a0' }}>Todavía no cargó una cuenta. Se le pide al aprobar el primer reintegro.</div>}
+          </div>
+          <div>
+            <div style={fieldLabel}>CÓMO PAGA LA CUOTA</div>
+            {dato('Medio', data.payMethod === 'cbu' ? 'Débito de CBU/CVU' : data.payMethod === 'tarjeta' ? 'Tarjeta' : '—')}
+            {data.card.last4 && dato('Tarjeta', `${data.card.brand ?? 'Tarjeta'} ···· ${data.card.last4}${data.card.exp ? ` · vence ${data.card.exp}` : ''}`)}
+            {data.card.holder && dato('Titular', data.card.holder)}
+            {data.monthlyFeeAgreed != null && dato('Cuota aceptada', `${money(data.monthlyFeeAgreed)}/mes`)}
           </div>
           <div>
             <div style={fieldLabel}>MASCOTAS ({data.pets.length})</div>
@@ -222,6 +268,34 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
                     </div>
                   </div>
                 ))}
+          </div>
+          {/* La declaración jurada del alta. Está acá porque es lo que hay que
+              mirar antes de resolver un reintegro por preexistencia: las
+              respuestas en "Sí" son las condiciones que el socio declaró. */}
+          <div>
+            <div style={fieldLabel}>DECLARACIÓN JURADA ({data.declaraciones.length})</div>
+            {data.declaraciones.length === 0
+              ? <div style={{ fontSize: 13.5, color: '#8781a0' }}>No hay ninguna firmada. Los socios dados de alta antes de que se empezara a guardar no tienen.</div>
+              : data.declaraciones.map((d) => {
+                  const declaradas = d.answers.filter((a) => a.respuesta === 'Sí');
+                  const alDia = d.sanitary.filter((s) => s.respuesta === 'Sí').length;
+                  return (
+                    <div key={d.id} style={{ padding: '12px 0', borderBottom: '1px solid #eeecf5' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14 }}>{d.petName}</span>
+                        <span style={{ fontSize: 12, color: '#8781a0' }}>firmó {new Date(d.signedAt).toLocaleDateString('es-AR')}</span>
+                      </div>
+                      {declaradas.length === 0
+                        ? <div style={{ fontSize: 12.5, color: 'rgb(47,143,91)', fontWeight: 600 }}>Sin condiciones declaradas</div>
+                        : declaradas.map((a) => (
+                            <div key={a.pregunta} style={{ fontSize: 12.5, color: 'rgb(176,72,63)', lineHeight: 1.5 }}>· {a.pregunta}</div>
+                          ))}
+                      <div style={{ fontSize: 12.5, color: '#8781a0', marginTop: 6 }}>
+                        Plan sanitario: {alDia} de {d.sanitary.length} al día · firma «{d.signature}»
+                      </div>
+                    </div>
+                  );
+                })}
           </div>
           <div>
             <div style={fieldLabel}>REINTEGROS ({data.reintegros.length})</div>

@@ -2,7 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
-import { data, urls, FOTO_TIPOS, FOTO_MAX } from '@kumo/shared';
+import { data, urls, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual, tarjetaMeta, cbuValido } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /*
@@ -17,21 +17,8 @@ const money = (n: number) => '$' + n.toLocaleString('es-AR');
 
 const PROVINCIAS = ['Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes', 'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucumán'];
 
-const HEALTH_Q = [
-  '¿Tu mascota tiene o tuvo diagnóstico de enfermedad oncológica?',
-  '¿Tiene enfermedades crónicas con medicación o control continuo?',
-  '¿Tiene enfermedades hereditarias o congénitas diagnosticadas?',
-  '¿Está actualmente en tratamiento veterinario?',
-  '¿Fue operada en los últimos 12 meses?',
-  '¿Tiene alguna condición ortopédica diagnosticada (displasia u otra)?',
-  '¿Está en gestación o lactancia?',
-];
-const SANITARIO_Q = [
-  'Vacuna antirrábica al día',
-  'Vacuna polivalente al día',
-  'Desparasitación interna en los últimos 6 meses',
-  'Desparasitación externa en los últimos 3 meses',
-];
+// HEALTH_Q y SANITARIO_Q salen de `@kumo/shared`: el servidor usa la misma lista
+// para armar el par pregunta/respuesta que se guarda firmado.
 
 const PLAN_META: Record<string, { desc: string; perks: string[] }> = {
   AMIGO: {
@@ -133,6 +120,14 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
   const [cardNum, setCardNum] = useState('');
   const [cardExp, setCardExp] = useState('');
   const [cardCvv, setCardCvv] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  /**
+   * A dónde el club le transfiere los reintegros. Se pide una vez acá y queda en
+   * el perfil: antes se pedía en cada solicitud de reintegro, así que el socio lo
+   * retipeaba siempre y el club no lo tenía hasta el primer pedido. A una tarjeta
+   * no se le puede transferir, así que esto no es opcional para poder pagarle.
+   */
+  const [banco, setBanco] = useState({ holder: '', holderDni: '', cuit: '', bank: '', cbu: '', alias: '' });
   const [acceptaCuota, setAcceptaCuota] = useState(false);
 
   if (!open) return null;
@@ -156,14 +151,33 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
   const back = () => { if (step > 1) setStep(step - 1); else onClose(); };
 
   const selectedPlan = plans.find((p) => p.name === plan);
-  const planPrice = (selectedPlan?.basePrice ?? 0) + (odonto ? 12000 : 0);
+  const planPrice = cuotaMensual(selectedPlan?.basePrice ?? 0, odonto);
 
   const confirmAlta = async () => {
     setSubmitting(true);
     setSubmitError('');
     try {
       const form = new FormData();
-      form.set('payload', JSON.stringify({ socio, pet, plan }));
+      // Van los 5 pasos, no tres. De la tarjeta viajan solo la marca, los
+      // últimos 4 y el vencimiento, calculados acá: si el número completo
+      // llegara al backend metería al servidor en el alcance de PCI DSS, aunque
+      // no se guardara. El CVV no sale de este formulario.
+      form.set(
+        'payload',
+        JSON.stringify({
+          socio,
+          pet,
+          plan,
+          odonto,
+          declaracion: { health, sanit, firma },
+          pago: {
+            metodo: payMethod,
+            aceptaCuota: acceptaCuota,
+            banco,
+            tarjeta: payMethod === 'tarjeta' ? tarjetaMeta({ numero: cardNum, exp: cardExp, holder: cardHolder }) : null,
+          },
+        })
+      );
       if (petPhotoFile) form.set('photo', petPhotoFile);
       const res = await fetch('/api/onboarding', { method: 'POST', body: form });
       const json = await res.json();
@@ -299,7 +313,7 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
                     </div>
                     <label onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#5b5670', cursor: 'pointer', background: '#f7f6fa', border: '1px solid #eeecf5', borderRadius: 11, padding: '10px 12px' }}>
                       <input type="checkbox" checked={odonto} onChange={(e) => setOdonto(e.target.checked)} style={{ width: 17, height: 17, accentColor: '#5D5491' }} />
-                      ¿Sumar cobertura odontológica? <strong>+$12.000/mes</strong>
+                      ¿Sumar cobertura odontológica? <strong>+{money(ODONTO_PRECIO)}/mes</strong>
                     </label>
                   </div>
                 );
@@ -365,11 +379,41 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
                 );
               })}
             </div>
-            {field('', <input value={cardNum} onChange={(e) => setCardNum(e.target.value)} placeholder="Número de tarjeta" style={input} />)}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('', <input value={cardExp} onChange={(e) => setCardExp(e.target.value)} placeholder="MM/AA" style={input} />)}</div>
-              <div style={{ flex: 1 }}>{field('', <input value={cardCvv} onChange={(e) => setCardCvv(e.target.value)} placeholder="CVV" style={input} />)}</div>
-            </div>
+            {/* Antes los campos de tarjeta se mostraban también eligiendo CBU, y
+                el CBU no se pedía en ningún momento del alta. */}
+            {payMethod === 'tarjeta' ? (
+              <>
+                {field('', <input value={cardNum} onChange={(e) => setCardNum(e.target.value)} placeholder="Número de tarjeta" inputMode="numeric" autoComplete="cc-number" style={input} />)}
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>{field('', <input value={cardExp} onChange={(e) => setCardExp(e.target.value)} placeholder="MM/AA" autoComplete="cc-exp" style={input} />)}</div>
+                  <div style={{ flex: 1 }}>{field('', <input value={cardCvv} onChange={(e) => setCardCvv(e.target.value)} placeholder="CVV" inputMode="numeric" autoComplete="cc-csc" style={input} />)}</div>
+                </div>
+                {field('', <input value={cardHolder} onChange={(e) => setCardHolder(e.target.value)} placeholder="Titular de la tarjeta" autoComplete="cc-name" style={input} />)}
+                <p style={{ fontSize: 12, color: '#8781a0', lineHeight: 1.5, margin: '0 0 12px' }}>
+                  De la tarjeta guardamos solo la marca, los últimos 4 dígitos y el vencimiento, para que puedas
+                  identificarla. El número completo y el código de seguridad no se almacenan.
+                </p>
+              </>
+            ) : (
+              <>
+                {field('', <input value={banco.cbu} onChange={(e) => setBanco((b) => ({ ...b, cbu: e.target.value }))} placeholder="CBU o CVU (22 dígitos)" inputMode="numeric" style={input} />)}
+                {field('', <input value={banco.alias} onChange={(e) => setBanco((b) => ({ ...b, alias: e.target.value }))} placeholder="Alias (opcional)" style={input} />)}
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1 }}>{field('', <input value={banco.bank} onChange={(e) => setBanco((b) => ({ ...b, bank: e.target.value }))} placeholder="Banco" style={input} />)}</div>
+                  <div style={{ flex: 1 }}>{field('', <input value={banco.cuit} onChange={(e) => setBanco((b) => ({ ...b, cuit: e.target.value }))} placeholder="CUIT / CUIL" inputMode="numeric" style={input} />)}</div>
+                </div>
+                {field('', <input value={banco.holder} onChange={(e) => setBanco((b) => ({ ...b, holder: e.target.value }))} placeholder="Titular de la cuenta" style={input} />)}
+                {banco.cbu.replace(/\D/g, '').length > 0 && !cbuValido(banco.cbu) && (
+                  <p style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, margin: '0 0 10px' }}>
+                    El CBU/CVU tiene 22 dígitos y pusiste {banco.cbu.replace(/\D/g, '').length}.
+                  </p>
+                )}
+                <p style={{ fontSize: 12, color: '#8781a0', lineHeight: 1.5, margin: '0 0 12px' }}>
+                  Es también la cuenta donde te vamos a transferir los reintegros, así no te la pedimos
+                  de nuevo en cada solicitud.
+                </p>
+              </>
+            )}
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 4, fontSize: 13, color: '#5b5670', cursor: 'pointer' }}>
               <input type="checkbox" checked={acceptaCuota} onChange={(e) => setAcceptaCuota(e.target.checked)} style={{ width: 17, height: 17, accentColor: '#5D5491', flex: '0 0 auto', marginTop: 2 }} />
               Acepto que la cuota se actualiza cada 3 meses según IPC y los plazos de carencia (60/90/180 días). Tengo 10 días de arrepentimiento.

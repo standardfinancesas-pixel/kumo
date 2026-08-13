@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, diasHasta, providerBadge, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { urls, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
 
@@ -171,7 +171,7 @@ export default async function Page() {
 
   const { data: profileRow } = await supabase
     .from('profiles')
-    .select('member_no, full_name, email, phone, address, dni, plans(name, base_price)')
+    .select('member_no, full_name, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
     .eq('id', auth.user.id)
     .single();
   if (!profileRow) redirect(LANDING);
@@ -183,11 +183,23 @@ export default async function Page() {
     fullName: profileRow.full_name,
     memberNo: profileRow.member_no,
     planName: plan?.name ?? '—',
-    planPrice: plan?.base_price ?? 0,
+    // La cuota que aceptó al firmar, no el precio de lista: con la cobertura
+    // odontológica paga $12.000 más y antes acá se mostraba de menos.
+    planPrice: profileRow.monthly_fee_agreed ?? plan?.base_price ?? 0,
+    addonOdonto: profileRow.addon_odonto ?? false,
     email: profileRow.email,
     phone: profileRow.phone,
     address: profileRow.address,
+    city: profileRow.city,
+    province: profileRow.province,
     dni: profileRow.dni,
+    banco: {
+      holder: profileRow.bank_holder,
+      cuit: profileRow.bank_cuit,
+      cbu: profileRow.bank_cbu,
+      alias: profileRow.bank_alias,
+    },
+    tarjeta: tarjetaLabel(profileRow.card_brand, profileRow.card_last4),
   };
 
   const { data: petsRows } = await supabase
