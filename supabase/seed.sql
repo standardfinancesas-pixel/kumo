@@ -43,7 +43,7 @@ insert into providers (name, category, zone, address, phone, instagram, website,
 ('Martín D.','Cuidador','Núñez','Av. Cabildo 3900, Núñez','+54 11 5544-3322','@martin.petsitter',null,'Cuido tu mascota en tu casa mientras viajás.',4.9,96,6000,'/día','verificado','prestador-caregiver.webp',-34.5460,-58.4560);
 
 -- Ajustes del club
-insert into club_settings (id, whatsapp, email) values (1, '+54 9 11 2516-8802', 'hola@kumoclub.com.ar')
+insert into club_settings (id, whatsapp, email) values (1, '+54 9 11 2516-8802', 'hola@kumo.pet')
 on conflict (id) do nothing;
 
 -- Notificaciones push de ejemplo

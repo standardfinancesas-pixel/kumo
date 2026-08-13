@@ -118,12 +118,18 @@ de cada pantalla.
       prototipo tiene además una fila de **Email**, y `providers` no tiene esa
       columna. Definir si va (y si es el mail de contacto público del negocio o el
       del dueño, que ya está en `profiles`).
-- [ ] **Unificar el mail de contacto del club.** `club_settings.email` dice
-      `hola@kumoclub.com.ar` y /legal lo tiene hardcodeado dos veces, justo en las
-      cláusulas de datos personales y de arrepentimiento (Ley 24.240). Con los
-      mails saliendo de `kumo.pet`, la página legal manda a los socios a otro
-      dominio. Va a `hola@kumo.pet` y /legal debería leerlo de `club_settings`
-      como hace la landing, no tenerlo escrito a mano.
+- [x] **Mail de contacto del club, unificado.** `club_settings.email` pasó a
+      `hola@kumo.pet` y /legal lo lee de ahí —igual que la landing— en vez de
+      tenerlo escrito a mano dos veces. Importaba porque son las cláusulas de datos
+      personales y de arrepentimiento (Ley 24.240): es la dirección donde el socio
+      ejerce sus derechos, y apuntaba a un dominio viejo. De paso el WhatsApp va
+      como link tocable y sale de la misma tabla.
+- [ ] **`hola@kumo.pet` todavía no recibe.** `kumo.pet` no tiene MX (el único MX
+      es el de `send.kumo.pet`, que es el feedback de Resend), así que hoy todo lo
+      que le escriban rebota. Resend sirve para MANDAR, no para recibir. Hace falta
+      una casilla o un reenvío: lo más rápido es el forwarding gratis de GoDaddy
+      hacia flor@cambalache.studio; lo prolijo, Google Workspace. Hasta que esté,
+      el canal que el club atiende de verdad es el WhatsApp.
 - [ ] **Cobro de la cuota mensual — no existe.** El paso 5 valida la tarjeta y la
       descarta (bien: el CVV no se puede almacenar y el número obliga a certificar
       PCI DSS), así que **el socio queda `activo` sin que se le cobre nada**. El

@@ -1,13 +1,33 @@
 import type { CSSProperties } from 'react';
+import { data, waLink } from '@kumo/shared';
+import { createClient } from '@/lib/supabase-public';
 /*
  * Página legal (contenido placeholder hasta tener los textos definitivos).
  * Destino de los links del footer: /legal#terminos, #privacidad, #arrepentimiento.
+ *
+ * El contacto sale de `club_settings`, como en la landing, y no escrito a mano:
+ * acá aparece en las cláusulas de datos personales y de arrepentimiento (Ley
+ * 24.240), o sea que es la dirección donde el socio ejerce sus derechos. Tenerlo
+ * hardcodeado ya había quedado desactualizado —seguía apuntando a un dominio
+ * viejo— y una vía de contacto que no existe es peor que no ofrecerla.
  */
 
 const h2: CSSProperties = { fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em', color: 'rgb(33,30,51)', margin: '0 0 12px', scrollMarginTop: 90 };
 const p: CSSProperties = { color: 'rgb(91,86,112)', fontSize: 15, lineHeight: 1.65, margin: '0 0 12px' };
+const link: CSSProperties = { color: 'rgb(93,84,145)', fontWeight: 600, textDecoration: 'none' };
 
-export default function Legal() {
+/** Igual que la landing: se revalida cada minuto, así el cambio del admin llega. */
+export const revalidate = 60;
+
+export default async function Legal() {
+  const { data: contacto } = await createClient()
+    .from('club_settings')
+    .select('whatsapp, email')
+    .eq('id', 1)
+    .single();
+  const email = contacto?.email ?? data.clubSettings.email;
+  const whatsapp = contacto?.whatsapp ?? data.clubSettings.whatsapp;
+
   return (
     <main style={{ minHeight: '100vh' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(245,244,248,0.85)', backdropFilter: 'blur(12px)', borderBottom: '1px solid rgb(230,227,240)' }}>
@@ -28,12 +48,15 @@ export default function Legal() {
         <section id="privacidad" style={{ marginBottom: 40 }}>
           <h2 style={h2}>Política de privacidad</h2>
           <p style={p}>Tus datos personales y los de tus mascotas se usan únicamente para operar el club: gestionar tu membresía, procesar reintegros y contactarte por novedades del servicio. No vendemos tus datos a terceros.</p>
-          <p style={p}>Podés pedir la actualización o eliminación de tus datos escribiendo a hola@kumoclub.com.ar.</p>
+          <p style={p}>Podés pedir la actualización o eliminación de tus datos escribiendo a <a href={`mailto:${email}`} style={link}>{email}</a>.</p>
         </section>
 
         <section id="arrepentimiento" style={{ marginBottom: 40 }}>
           <h2 style={h2}>Derecho de arrepentimiento</h2>
-          <p style={p}>De acuerdo con la Ley 24.240 de Defensa del Consumidor, contás con 10 días corridos desde la contratación para arrepentirte sin costo. Escribinos a hola@kumoclub.com.ar o por WhatsApp y gestionamos la baja y la devolución.</p>
+          {/* El número va como link y no como texto: es el canal que el club
+              atiende de verdad (ver `whatsappDelClub` en lib/mail.ts), así que
+              tiene que poder tocarse desde el celular. */}
+          <p style={p}>De acuerdo con la Ley 24.240 de Defensa del Consumidor, contás con 10 días corridos desde la contratación para arrepentirte sin costo. Escribinos a <a href={`mailto:${email}`} style={link}>{email}</a> o por WhatsApp al <a href={waLink(whatsapp)} target="_blank" rel="noopener noreferrer" style={link}>{whatsapp}</a> y gestionamos la baja y la devolución.</p>
         </section>
 
         <p style={{ fontSize: 12.5, color: 'rgb(162,157,186)' }}>© 2026 Kumo. Todos los derechos reservados. Tus derechos como consumidor están protegidos por la Ley 24.240.</p>
