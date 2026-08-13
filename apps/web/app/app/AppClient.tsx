@@ -8,7 +8,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -2100,7 +2100,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
         <button onClick={() => go('mismascotas')} style={{ background: 'none', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', padding: 0, fontFamily: '\"DM Sans\"' }}>Mis mascotas ›</button>
         <button onClick={() => setShowAddPet(true)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>+ Agregar</button>
       </div>
-      {showAddPet && <AgregarMascotaSheet onClose={() => setShowAddPet(false)} onListo={() => { setShowAddPet(false); router.refresh(); }} />}
+      {showAddPet && <AgregarMascotaSheet ownerId={profile.id} onClose={() => setShowAddPet(false)} onListo={() => { setShowAddPet(false); router.refresh(); }} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {pets.map((p) => (
           <button key={p.id} onClick={() => go('mismascotas')} className="wa-card" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '10px 14px', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
@@ -2253,7 +2253,7 @@ const PET_EVENT_TONE = {
   reintegro: { bg: 'rgb(226,245,234)', fg: 'rgb(47,143,91)' },
 } as const;
 
-function MisMascotas({ go, pets, reintegros, setPetIdx }: { go: (s: Screen) => void; pets: Pet[]; reintegros: Reint[]; setPetIdx: (i: number) => void }) {
+function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Screen) => void; ownerId: string; pets: Pet[]; reintegros: Reint[]; setPetIdx: (i: number) => void }) {
   const router = useRouter();
   const [selId, setSelId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
@@ -2318,7 +2318,7 @@ function MisMascotas({ go, pets, reintegros, setPetIdx }: { go: (s: Screen) => v
         <button onClick={() => setShowAdd(true)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>+ Agregar mascota</button>
       </div>
 
-      {showAdd && <AgregarMascotaSheet onClose={() => setShowAdd(false)} onListo={() => { setShowAdd(false); router.refresh(); }} />}
+      {showAdd && <AgregarMascotaSheet ownerId={ownerId} onClose={() => setShowAdd(false)} onListo={() => { setShowAdd(false); router.refresh(); }} />}
 
       {pets.length === 0 ? (
         <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 20, padding: 30, textAlign: 'center' }}>
@@ -2460,7 +2460,7 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
  * que crea las dos filas en la misma transacción; el socio ya no puede insertar
  * en `pets` directamente, así que la pantalla no es la única defensa.
  */
-function AgregarMascotaSheet({ onClose, onListo }: { onClose: () => void; onListo: () => void }) {
+function AgregarMascotaSheet({ ownerId, onClose, onListo }: { ownerId: string; onClose: () => void; onListo: () => void }) {
   const [name, setName] = useState('');
   const [tipo, setTipo] = useState('perro');
   const [breed, setBreed] = useState('');
@@ -2475,6 +2475,21 @@ function AgregarMascotaSheet({ onClose, onListo }: { onClose: () => void; onList
   const [firma, setFirma] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotoBusy, setFotoBusy] = useState(false);
+
+  /** Misma subida que el carnet, con las reglas y la ruta de `@kumo/shared`. */
+  const elegirFoto = async (f?: File) => {
+    if (!f) return;
+    const invalida = motivoFotoInvalida(f.type, f.size);
+    if (invalida) { setError(invalida); return; }
+    setFotoBusy(true); setError('');
+    const path = rutaFoto(ownerId, f.name.split('.').pop() ?? 'jpg', 'mascota-');
+    const { error: subida } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
+    if (subida) { setError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    setFotoUrl(supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl);
+    setFotoBusy(false);
+  };
 
   const declaracion = armarDeclaracion({ health, sanit, firma });
   const puedeGuardar = name.trim().length > 0 && declaracion !== null && !busy;
@@ -2489,7 +2504,7 @@ function AgregarMascotaSheet({ onClose, onListo }: { onClose: () => void; onList
     const { error: e } = await supabase.rpc('agregar_mascota', {
       p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
       p_age_years: num(edad), p_weight_kg: num(peso), p_microchip: chip, p_vet_name: vet,
-      p_photo_url: null,
+      p_photo_url: fotoUrl,
       p_version: declaracion.version, p_answers: declaracion.answers,
       p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
     });
@@ -2512,6 +2527,14 @@ function AgregarMascotaSheet({ onClose, onListo }: { onClose: () => void; onList
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Agregar una mascota</div>
       <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Como en el alta, necesitamos su declaración de salud: es por mascota, no por socio.</div>
 
+      <label style={sheetLabel}>Foto</label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <div style={{ width: 64, height: 64, borderRadius: 16, flex: 'none', background: fotoUrl ? `url(${fotoUrl}) center/cover` : 'rgb(240,237,249)' }} />
+        <label style={{ ...sheetBtn(false), cursor: fotoBusy ? 'default' : 'pointer', fontSize: 13.5, padding: '10px 14px' }}>
+          {fotoBusy ? 'Subiendo…' : fotoUrl ? 'Cambiar' : 'Elegir una foto'}
+          <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirFoto(e.target.files?.[0])} style={{ display: 'none' }} />
+        </label>
+      </div>
       <label style={sheetLabel} htmlFor="am-name">Nombre</label>
       <input id="am-name" value={name} onChange={(e) => { setName(e.target.value); setError(''); }} placeholder="Ej: Kira" style={{ ...sheetInput, marginBottom: 16 }} />
 
@@ -2764,7 +2787,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
-          {screen === 'mismascotas' && <MisMascotas go={go} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
+          {screen === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>

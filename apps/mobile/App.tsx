@@ -15,6 +15,7 @@ import {
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
+import { elegirYSubirFoto } from './lib/subirFoto';
 import { useKumoData, type Pet, type Vac, type Profile, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
@@ -1150,7 +1151,7 @@ const PET_EVENT_TONE: Record<PetEvento['kind'], { bg: string; fg: string }> = {
   reintegro: { bg: '#e2f5ea', fg: '#2f8f5b' },
 };
 
-function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[]; reintegros: ReintVM[]; reload: () => void; go: (t: Screen) => void; setPetIdx: (i: number) => void }) {
+function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets: Pet[]; reintegros: ReintVM[]; userId: string; reload: () => void; go: (t: Screen) => void; setPetIdx: (i: number) => void }) {
   const [selId, setSelId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -1164,6 +1165,8 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
   const [peso, setPeso] = useState('');
   const [chip, setChip] = useState('');
   const [vet, setVet] = useState('');
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotoBusy, setFotoBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   // Declaración jurada de la mascota nueva: las preguntas son por mascota.
   const [health, setHealth] = useState<Record<number, string>>({});
@@ -1182,11 +1185,28 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
       <ScrollView contentContainerStyle={styles.screen}>
         <BackLink label="Mis mascotas" onPress={() => setSelId(null)} />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-          <Image source={petImg(sel.photo)} style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: colors.violet[100] }} />
+          {/* Tocar la foto la cambia. Antes no había forma de cambiarla en mobile:
+              la que quedaba del alta era la única para siempre. */}
+          <TouchableOpacity
+            disabled={fotoBusy}
+            onPress={async () => {
+              setFotoBusy(true); setAddError('');
+              const r = await elegirYSubirFoto(userId, 'mascota-');
+              if ('url' in r) {
+                const { error } = await supabase.from('pets').update({ photo_url: r.url }).eq('id', sel.id);
+                if (error) setAddError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.');
+                else await reload();
+              } else if ('error' in r) setAddError(r.error);
+              setFotoBusy(false);
+            }}
+          >
+            <Image source={petImg(sel.photo)} style={{ width: 72, height: 72, borderRadius: 20, backgroundColor: colors.violet[100], opacity: fotoBusy ? 0.5 : 1 }} />
+          </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 21, color: INK }}>{sel.name}</Text>
             <Text style={{ fontSize: 13, color: '#8781a0' }}>{sel.breed}</Text>
             <Text style={{ fontSize: 12, color: '#a29dba', marginTop: 2 }}>Chip {sel.microchip} · Castrado: {sel.castrado}</Text>
+            <Text style={{ fontSize: 11.5, color: BRAND, fontWeight: '700', marginTop: 4 }}>{fotoBusy ? 'Subiendo la foto…' : 'Tocá la foto para cambiarla'}</Text>
           </View>
         </View>
 
@@ -1241,13 +1261,13 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
     setBusy(true); setAddError('');
     const { error } = await supabase.rpc('agregar_mascota', {
       p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
-      p_age_years: numero(edad), p_weight_kg: numero(peso), p_microchip: chip, p_vet_name: vet, p_photo_url: null,
+      p_age_years: numero(edad), p_weight_kg: numero(peso), p_microchip: chip, p_vet_name: vet, p_photo_url: fotoUrl,
       p_version: declaracion.version, p_answers: declaracion.answers,
       p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
     });
     if (error) { setAddError('No pudimos agregar la mascota. Probá de nuevo.'); setBusy(false); return; }
     setName(''); setBreed(''); setTipo('perro'); setSexo('macho'); setCastrado(false);
-    setEdad(''); setPeso(''); setChip(''); setVet('');
+    setEdad(''); setPeso(''); setChip(''); setVet(''); setFotoUrl(null);
     setHealth({}); setSanit({}); setFirma(''); setAdding(false);
     await reload();
     setBusy(false);
@@ -1263,6 +1283,29 @@ function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[];
       </View>
       {adding && (
         <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 18, padding: 16, marginBottom: 16, gap: 10 }}>
+          {/* La foto, que en mobile no se podía cargar de ninguna manera. */}
+          <TouchableOpacity
+            disabled={fotoBusy}
+            onPress={async () => {
+              setFotoBusy(true); setAddError('');
+              const r = await elegirYSubirFoto(userId, 'mascota-');
+              if ('url' in r) setFotoUrl(r.url);
+              else if ('error' in r) setAddError(r.error);
+              setFotoBusy(false);
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
+          >
+            {fotoUrl
+              ? <Image source={{ uri: fotoUrl }} style={{ width: 64, height: 64, borderRadius: 16 }} />
+              : (
+                <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                  <Ic d="paw" size={26} color={BRAND} fill />
+                </View>
+              )}
+            <Text style={{ fontSize: 13.5, fontWeight: '700', color: BRAND }}>
+              {fotoBusy ? 'Subiendo…' : fotoUrl ? 'Cambiar la foto' : 'Agregar una foto'}
+            </Text>
+          </TouchableOpacity>
           <TextInput value={name} onChangeText={setName} placeholder="Nombre" placeholderTextColor={colors.violet[400]}
             style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
           <TextInput value={breed} onChangeText={setBreed} placeholder="Raza (opcional)" placeholderTextColor={colors.violet[400]}
@@ -2391,7 +2434,7 @@ export default function App() {
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
-          {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} reload={reload} go={go} setPetIdx={setPetIdx} />}
+          {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
           {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} />}

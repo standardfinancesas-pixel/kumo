@@ -33,3 +33,28 @@ export const waLink = (numero: string) => `https://wa.me/${numero.replace(/\D/g,
  */
 export const FOTO_TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
 export const FOTO_MAX = 5 * 1024 * 1024;
+
+/**
+ * El motivo por el que una foto no se puede usar, o `null` si está bien.
+ *
+ * El mensaje sale de acá y no de cada pantalla porque el mismo control corre en
+ * el alta, en el carnet, al agregar una mascota y en mobile: estaba escrito dos
+ * veces y ya había empezado a divergir.
+ */
+export function motivoFotoInvalida(tipo: string, tamaño: number): string | null {
+  if (!FOTO_TIPOS.includes(tipo as (typeof FOTO_TIPOS)[number])) {
+    return `Ese formato no lo podemos usar (${tipo || 'desconocido'}). Probá con JPG, PNG o WEBP. Si es una foto de iPhone, mandala desde "Fotos" y se convierte sola.`;
+  }
+  if (tamaño > FOTO_MAX) {
+    return `La foto pesa ${(tamaño / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB. Probá con una más chica.`;
+  }
+  return null;
+}
+
+/**
+ * Ruta dentro del bucket. La primera carpeta TIENE que ser el id del socio: la
+ * RLS del bucket se apoya en esa convención para aislar a un socio de otro. Si
+ * cambia el formato, se rompe el aislamiento.
+ */
+export const rutaFoto = (ownerId: string, ext: string, prefijo = ''): string =>
+  `${ownerId}/${prefijo}${Date.now()}.${ext.replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg'}`;
