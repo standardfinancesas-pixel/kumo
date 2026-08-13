@@ -36,7 +36,12 @@ export default function Login() {
     <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, flexGrow: 1, justifyContent: 'center' }}>
       <View style={{ alignItems: 'center', marginBottom: 26 }}>
         <Image source={HERO} style={{ width: 92, height: 92, borderRadius: 26, marginBottom: 16 }} />
-        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 32, color: BRAND }}>Kumo</Text>
+        {/* Sin fontWeight: el peso ya está en el nombre de la familia
+            (Baloo2_800ExtraBold). Pedirle además un peso que no existe como
+            archivo hace que Android no encuentre la variante y caiga en la
+            tipografía del sistema — por eso este "Kumo" no se veía como el del
+            splash. */}
+        <Text style={{ fontFamily: FH, fontSize: 32, color: BRAND }}>Kumo</Text>
         <Text style={{ fontSize: 14, color: MUTED, marginTop: 2 }}>El club de tu mascota</Text>
       </View>
 
