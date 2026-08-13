@@ -146,6 +146,16 @@ create table if not exists health_declarations (
 
 create index if not exists health_declarations_member_idx on health_declarations(member_id);
 
+-- Cuántas preguntas tiene cada versión del cuestionario. Está en la base para que
+-- `agregar_mascota()` valide que la declaración esté completa sin tener el
+-- cuestionario escrito adentro: cuando cambie, se agrega una fila con la versión
+-- nueva y las declaraciones ya firmadas siguen siendo legibles.
+create table if not exists declaracion_versions (
+  version             integer primary key,
+  preguntas_salud     integer not null,
+  preguntas_sanitario integer not null
+);
+
 create table if not exists vaccinations (
   id          uuid primary key default uuid_generate_v4(),
   pet_id      uuid not null references pets(id) on delete cascade,
@@ -328,6 +338,79 @@ returns boolean language sql stable security definer set search_path = public as
 $$;
 
 -- ============================================================
+--  Alta de mascota + su declaración jurada, en una transacción
+-- ============================================================
+-- El socio no puede insertar en `pets` (ver sus políticas): esta es la única vía,
+-- y exige la declaración. Si falla cualquiera de los dos inserts no queda
+-- ninguno, así que no puede existir una mascota sin declarar.
+insert into declaracion_versions (version, preguntas_salud, preguntas_sanitario)
+  values (1, 7, 4)
+  on conflict (version) do update
+    set preguntas_salud = excluded.preguntas_salud,
+        preguntas_sanitario = excluded.preguntas_sanitario;
+
+create or replace function agregar_mascota(
+  p_name      text,
+  p_type      text,
+  p_breed     text,
+  p_sex       text,
+  p_neutered  boolean,
+  p_age_years numeric,
+  p_weight_kg numeric,
+  p_microchip text,
+  p_vet_name  text,
+  p_photo_url text,
+  p_version   integer,
+  p_answers   jsonb,
+  p_sanitary  jsonb,
+  p_signature text
+) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  quien     uuid := auth.uid();
+  nueva     uuid;
+  esperadas record;
+begin
+  if quien is null then
+    raise exception 'Hay que estar identificado para agregar una mascota.';
+  end if;
+  if p_name is null or length(trim(p_name)) = 0 then
+    raise exception 'La mascota necesita un nombre.';
+  end if;
+
+  select preguntas_salud, preguntas_sanitario into esperadas
+  from declaracion_versions where version = p_version;
+  if not found then
+    raise exception 'Version de declaracion desconocida: %', p_version;
+  end if;
+
+  if p_signature is null or length(trim(p_signature)) < 3 then
+    raise exception 'Falta firmar la declaracion jurada.';
+  end if;
+  if jsonb_array_length(coalesce(p_answers, '[]'::jsonb)) <> esperadas.preguntas_salud
+     or jsonb_array_length(coalesce(p_sanitary, '[]'::jsonb)) <> esperadas.preguntas_sanitario then
+    raise exception 'La declaracion jurada esta incompleta.';
+  end if;
+
+  insert into pets (owner_id, name, type, breed, sex, neutered, age_years, weight_kg, microchip, vet_name, photo_url)
+  values (
+    quien, trim(p_name), coalesce(nullif(p_type, ''), 'perro')::pet_type, nullif(trim(coalesce(p_breed, '')), ''),
+    nullif(trim(coalesce(p_sex, '')), ''), coalesce(p_neutered, false), p_age_years, p_weight_kg,
+    nullif(trim(coalesce(p_microchip, '')), ''), nullif(trim(coalesce(p_vet_name, '')), ''),
+    nullif(trim(coalesce(p_photo_url, '')), '')
+  )
+  returning id into nueva;
+
+  insert into health_declarations (member_id, pet_id, pet_name, version, answers, sanitary, signature)
+  values (quien, nueva, trim(p_name), p_version, p_answers, p_sanitary, trim(p_signature));
+
+  return nueva;
+end $$;
+
+revoke all on function agregar_mascota(text, text, text, text, boolean, numeric, numeric, text, text, text, integer, jsonb, jsonb, text) from public;
+grant execute on function agregar_mascota(text, text, text, text, boolean, numeric, numeric, text, text, text, integer, jsonb, jsonb, text) to authenticated;
+
+-- ============================================================
 --  ROW LEVEL SECURITY
 -- ============================================================
 alter table profiles           enable row level security;
@@ -348,6 +431,8 @@ alter table provider_reviews   enable row level security;
 alter table post_likes         enable row level security;
 alter table answer_likes       enable row level security;
 alter table health_declarations enable row level security;
+alter table declaracion_versions enable row level security;
+create policy "versiones visibles" on declaracion_versions for select using (true);
 
 -- Catálogo público (planes, beneficios, faqs, ajustes, prestadores verificados)
 create policy "planes visibles"    on plans      for select using (true);
@@ -363,10 +448,21 @@ create policy "perfil propio - select" on profiles for select using (id = auth.u
 create policy "perfil propio - update" on profiles for update using (id = auth.uid() or is_admin());
 create policy "perfil propio - insert" on profiles for insert with check (id = auth.uid());
 
--- Mascotas y vacunas: del dueño; admin ve todo
-create policy "mascotas del dueño" on pets for all
+-- Mascotas: del dueño, pero el INSERT va aparte. Las preguntas de salud son por
+-- mascota, así que dejar insertar directo permitía sumar una mascota después del
+-- alta sin declararla — el mismo agujero que cierra el alta, por otra puerta. El
+-- socio pasa por `agregar_mascota()`, que crea la mascota y su declaración en una
+-- transacción; el alta corre con la service-role key y no mira políticas.
+create policy "mascotas del dueño - select" on pets for select
+  using (owner_id = auth.uid() or is_admin());
+create policy "mascotas del dueño - update" on pets for update
   using (owner_id = auth.uid() or is_admin())
   with check (owner_id = auth.uid() or is_admin());
+create policy "mascotas del dueño - delete" on pets for delete
+  using (owner_id = auth.uid() or is_admin());
+create policy "mascotas - alta del admin" on pets for insert
+  with check (is_admin());
+
 create policy "vacunas del dueño" on vaccinations for all
   using (exists (select 1 from pets p where p.id = pet_id and (p.owner_id = auth.uid() or is_admin())))
   with check (exists (select 1 from pets p where p.id = pet_id and (p.owner_id = auth.uid() or is_admin())));

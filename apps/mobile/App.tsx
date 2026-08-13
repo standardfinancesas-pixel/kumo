@@ -11,6 +11,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -1143,13 +1144,18 @@ const PET_EVENT_TONE: Record<PetEvento['kind'], { bg: string; fg: string }> = {
   reintegro: { bg: '#e2f5ea', fg: '#2f8f5b' },
 };
 
-function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets: Pet[]; reintegros: ReintVM[]; userId: string; reload: () => void; go: (t: Screen) => void; setPetIdx: (i: number) => void }) {
+function MisMascotas({ pets, reintegros, reload, go, setPetIdx }: { pets: Pet[]; reintegros: ReintVM[]; reload: () => void; go: (t: Screen) => void; setPetIdx: (i: number) => void }) {
   const [selId, setSelId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [breed, setBreed] = useState('');
   const [tipo, setTipo] = useState<'perro' | 'gato'>('perro');
   const [busy, setBusy] = useState(false);
+  // Declaración jurada de la mascota nueva: las preguntas son por mascota.
+  const [health, setHealth] = useState<Record<number, string>>({});
+  const [sanit, setSanit] = useState<Record<number, string>>({});
+  const [firma, setFirma] = useState('');
+  const [addError, setAddError] = useState('');
 
   const sel = pets.find((p) => p.id === selId);
   if (sel) {
@@ -1208,11 +1214,25 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
     );
   }
 
+  /**
+   * Las preguntas de salud son POR MASCOTA, así que agregar una sin declararla
+   * dejaba sumar una mascota enferma después del alta. Va por la función
+   * `agregar_mascota`, que crea la mascota y su declaración en la misma
+   * transacción: el socio ya no puede insertar en `pets` directamente.
+   */
   const add = async () => {
-    if (!name.trim()) return;
-    setBusy(true);
-    await supabase.from('pets').insert({ owner_id: userId, name: name.trim(), type: tipo, breed: breed.trim() || null });
-    setName(''); setBreed(''); setTipo('perro'); setAdding(false);
+    if (!name.trim()) { setAddError('Ponele un nombre a la mascota.'); return; }
+    const declaracion = armarDeclaracion({ health, sanit, firma });
+    if (!declaracion) { setAddError('Completá y firmá la declaración jurada de salud.'); return; }
+    setBusy(true); setAddError('');
+    const { error } = await supabase.rpc('agregar_mascota', {
+      p_name: name, p_type: tipo, p_breed: breed, p_sex: null, p_neutered: false,
+      p_age_years: null, p_weight_kg: null, p_microchip: null, p_vet_name: null, p_photo_url: null,
+      p_version: declaracion.version, p_answers: declaracion.answers,
+      p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
+    });
+    if (error) { setAddError('No pudimos agregar la mascota. Probá de nuevo.'); setBusy(false); return; }
+    setName(''); setBreed(''); setTipo('perro'); setHealth({}); setSanit({}); setFirma(''); setAdding(false);
     await reload();
     setBusy(false);
   };
@@ -1238,8 +1258,48 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
               </TouchableOpacity>
             ))}
           </View>
+          <Text style={{ fontWeight: '700', fontSize: 14.5, color: INK, marginTop: 6 }}>Declaración jurada de salud</Text>
+          <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+            Contestá las {HEALTH_Q.length} preguntas. Declarar una condición no te deja afuera del club: define qué cubre el plan.
+          </Text>
+          {HEALTH_Q.map((q, i) => (
+            <View key={q} style={{ borderBottomWidth: 1, borderBottomColor: colors.violet[200], paddingBottom: 9 }}>
+              <Text style={{ fontSize: 12.5, color: INK, lineHeight: 18, marginBottom: 7 }}>{q}</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['Sí', 'No'] as const).map((r) => (
+                  <TouchableOpacity key={r} onPress={() => { setHealth({ ...health, [i]: r }); setAddError(''); }}
+                    style={{ flex: 1, backgroundColor: health[i] === r ? BRAND : '#fff', borderWidth: 1.5, borderColor: health[i] === r ? BRAND : colors.violet[200], borderRadius: 10, paddingVertical: 8, alignItems: 'center' }}>
+                    <Text style={{ fontWeight: '700', fontSize: 12.5, color: health[i] === r ? '#fff' : MUTED }}>{r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          <Text style={{ fontWeight: '700', fontSize: 14.5, color: INK, marginTop: 6 }}>Plan sanitario</Text>
+          {SANITARIO_Q.map((q, i) => (
+            <View key={q} style={{ borderBottomWidth: 1, borderBottomColor: colors.violet[200], paddingBottom: 9 }}>
+              <Text style={{ fontSize: 12.5, color: INK, lineHeight: 18, marginBottom: 7 }}>{q}</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {(['Sí', 'No'] as const).map((r) => (
+                  <TouchableOpacity key={r} onPress={() => { setSanit({ ...sanit, [i]: r }); setAddError(''); }}
+                    style={{ flex: 1, backgroundColor: sanit[i] === r ? BRAND : '#fff', borderWidth: 1.5, borderColor: sanit[i] === r ? BRAND : colors.violet[200], borderRadius: 10, paddingVertical: 8, alignItems: 'center' }}>
+                    <Text style={{ fontWeight: '700', fontSize: 12.5, color: sanit[i] === r ? '#fff' : MUTED }}>{r}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          ))}
+
+          <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17, marginTop: 6 }}>
+            Escribí tu nombre completo tal cual figura en tu DNI. Equivale a tu firma según la Ley 25.506.
+          </Text>
+          <TextInput value={firma} onChangeText={(t) => { setFirma(t); setAddError(''); }} placeholder="Tu nombre y apellido" placeholderTextColor={colors.violet[400]}
+            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, fontFamily: FH, fontWeight: '700', textAlign: 'center', color: INK, backgroundColor: '#fff' }} />
+
+          {addError ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700' }}>{addError}</Text> : null}
           <TouchableOpacity disabled={busy} onPress={add} style={{ backgroundColor: LIME, borderRadius: 12, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-            <Text style={{ color: INK, fontWeight: '700', fontSize: 14.5 }}>Guardar mascota</Text>
+            <Text style={{ color: INK, fontWeight: '700', fontSize: 14.5 }}>{busy ? 'Agregando…' : 'Firmar y agregar'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -2272,7 +2332,7 @@ export default function App() {
           {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {screen === 'perfil' && <Perfil profile={data.profile} go={go} />}
-          {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
+          {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
           {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} />}

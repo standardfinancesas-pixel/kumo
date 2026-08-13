@@ -8,6 +8,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -2012,8 +2013,6 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
 function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
-  const [pn, setPn] = useState('');
-  const [pr, setPr] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(false);
@@ -2022,16 +2021,6 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
   const [planSel, setPlanSel] = useState(profile.planName);
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaHecha, setBajaHecha] = useState(false);
-
-  const addPet = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!pn.trim()) return;
-    setBusy(true);
-    await supabase.from('pets').insert({ owner_id: profile.id, name: pn.trim(), breed: pr.trim() || null });
-    setPn(''); setPr(''); setShowAddPet(false);
-    router.refresh();
-    setBusy(false);
-  };
 
   /** Ahora sí guarda. El nombre también: antes no se podía editar desde ningún lado. */
   const guardarDatos = async () => {
@@ -2109,15 +2098,9 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
       {/* Mis mascotas */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <button onClick={() => go('mismascotas')} style={{ background: 'none', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', padding: 0, fontFamily: '\"DM Sans\"' }}>Mis mascotas ›</button>
-        <button onClick={() => setShowAddPet((s) => !s)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>{showAddPet ? 'Cancelar' : '+ Agregar'}</button>
+        <button onClick={() => setShowAddPet(true)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>+ Agregar</button>
       </div>
-      {showAddPet && (
-        <form onSubmit={addPet} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: 14, marginBottom: 12, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input value={pn} onChange={(e) => setPn(e.target.value)} placeholder="Nombre" style={{ ...sheetInput, flex: '2 1 140px', width: 'auto' }} />
-          <input value={pr} onChange={(e) => setPr(e.target.value)} placeholder="Raza (opcional)" style={{ ...sheetInput, flex: '1 1 130px', width: 'auto' }} />
-          <button type="submit" disabled={busy} style={{ ...sheetBtn(true), flex: '0 0 auto', fontSize: 13.5, padding: '11px 18px', opacity: busy ? 0.6 : 1 }}>Agregar</button>
-        </form>
-      )}
+      {showAddPet && <AgregarMascotaSheet onClose={() => setShowAddPet(false)} onListo={() => { setShowAddPet(false); router.refresh(); }} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {pets.map((p) => (
           <button key={p.id} onClick={() => go('mismascotas')} className="wa-card" style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '10px 14px', cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
@@ -2270,23 +2253,10 @@ const PET_EVENT_TONE = {
   reintegro: { bg: 'rgb(226,245,234)', fg: 'rgb(47,143,91)' },
 } as const;
 
-function MisMascotas({ go, profile, pets, reintegros, setPetIdx }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegros: Reint[]; setPetIdx: (i: number) => void }) {
+function MisMascotas({ go, pets, reintegros, setPetIdx }: { go: (s: Screen) => void; pets: Pet[]; reintegros: Reint[]; setPetIdx: (i: number) => void }) {
   const router = useRouter();
   const [selId, setSelId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [pn, setPn] = useState('');
-  const [pr, setPr] = useState('');
-  const [busy, setBusy] = useState(false);
-
-  const agregar = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!pn.trim()) return;
-    setBusy(true);
-    await supabase.from('pets').insert({ owner_id: profile.id, name: pn.trim(), breed: pr.trim() || null });
-    setPn(''); setPr(''); setShowAdd(false);
-    router.refresh();
-    setBusy(false);
-  };
 
   const sel = pets.find((p) => p.id === selId);
   const idx = pets.findIndex((p) => p.id === selId);
@@ -2345,16 +2315,10 @@ function MisMascotas({ go, profile, pets, reintegros, setPetIdx }: { go: (s: Scr
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22 }}>Mis mascotas</div>
-        <button onClick={() => setShowAdd((s) => !s)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>{showAdd ? 'Cancelar' : '+ Agregar mascota'}</button>
+        <button onClick={() => setShowAdd(true)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>+ Agregar mascota</button>
       </div>
 
-      {showAdd && (
-        <form onSubmit={agregar} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 14, marginBottom: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input value={pn} onChange={(e) => setPn(e.target.value)} placeholder="Nombre" style={{ ...sheetInput, flex: '2 1 140px', width: 'auto' }} />
-          <input value={pr} onChange={(e) => setPr(e.target.value)} placeholder="Raza (opcional)" style={{ ...sheetInput, flex: '1 1 130px', width: 'auto' }} />
-          <button type="submit" disabled={busy} style={{ ...sheetBtn(true), flex: '0 0 auto', fontSize: 13.5, padding: '11px 18px', opacity: busy ? 0.6 : 1 }}>Agregar</button>
-        </form>
-      )}
+      {showAdd && <AgregarMascotaSheet onClose={() => setShowAdd(false)} onListo={() => { setShowAdd(false); router.refresh(); }} />}
 
       {pets.length === 0 ? (
         <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 20, padding: 30, textAlign: 'center' }}>
@@ -2486,6 +2450,129 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
 }
 
 /* ── Hoja: Agregar al carnet ───────────────────────────────────── */
+/**
+ * Alta de una mascota, con su declaración jurada.
+ *
+ * Antes eran dos formularios sueltos —uno en Mi perfil y otro en Mis mascotas—
+ * que insertaban en `pets` con nombre y raza. Las preguntas de salud son POR
+ * MASCOTA, así que ese camino dejaba sumar una mascota enferma después del alta
+ * sin declarar nada. Ahora hay uno solo y va por la función `agregar_mascota`,
+ * que crea las dos filas en la misma transacción; el socio ya no puede insertar
+ * en `pets` directamente, así que la pantalla no es la única defensa.
+ */
+function AgregarMascotaSheet({ onClose, onListo }: { onClose: () => void; onListo: () => void }) {
+  const [name, setName] = useState('');
+  const [tipo, setTipo] = useState('perro');
+  const [breed, setBreed] = useState('');
+  const [sexo, setSexo] = useState('macho');
+  const [castrado, setCastrado] = useState(false);
+  const [edad, setEdad] = useState('');
+  const [peso, setPeso] = useState('');
+  const [chip, setChip] = useState('');
+  const [vet, setVet] = useState('');
+  const [health, setHealth] = useState<Record<number, string>>({});
+  const [sanit, setSanit] = useState<Record<number, string>>({});
+  const [firma, setFirma] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const declaracion = armarDeclaracion({ health, sanit, firma });
+  const puedeGuardar = name.trim().length > 0 && declaracion !== null && !busy;
+
+  const guardar = async () => {
+    if (!declaracion) { setError('Completá y firmá la declaración jurada de la mascota.'); return; }
+    setBusy(true); setError('');
+    const num = (s: string) => {
+      const m = /(\d+([.,]\d+)?)/.exec(s);
+      return m?.[1] ? Number(m[1].replace(',', '.')) : null;
+    };
+    const { error: e } = await supabase.rpc('agregar_mascota', {
+      p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
+      p_age_years: num(edad), p_weight_kg: num(peso), p_microchip: chip, p_vet_name: vet,
+      p_photo_url: null,
+      p_version: declaracion.version, p_answers: declaracion.answers,
+      p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
+    });
+    if (e) { setError('No pudimos agregar la mascota. Probá de nuevo.'); setBusy(false); return; }
+    onListo();
+  };
+
+  const pregunta = (texto: string, valor: string | undefined, set: (v: string) => void) => (
+    <div key={texto} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '9px 0', borderBottom: '1px solid rgb(238,236,245)' }}>
+      <span style={{ fontSize: 13, lineHeight: 1.45, flex: 1 }}>{texto}</span>
+      <div style={{ display: 'flex', gap: 6, flex: '0 0 auto' }}>
+        <button onClick={() => set('Sí')} style={{ ...segBtn(valor === 'Sí'), padding: '7px 13px', fontSize: 12.5 }}>Sí</button>
+        <button onClick={() => set('No')} style={{ ...segBtn(valor === 'No'), padding: '7px 13px', fontSize: 12.5 }}>No</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Agregar una mascota</div>
+      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Como en el alta, necesitamos su declaración de salud: es por mascota, no por socio.</div>
+
+      <label style={sheetLabel} htmlFor="am-name">Nombre</label>
+      <input id="am-name" value={name} onChange={(e) => { setName(e.target.value); setError(''); }} placeholder="Ej: Kira" style={{ ...sheetInput, marginBottom: 16 }} />
+
+      <label style={sheetLabel}>Especie</label>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {[['perro', 'Perro'], ['gato', 'Gato'], ['otro', 'Otro']].map(([v, l]) => (
+          <button key={v} onClick={() => setTipo(v!)} style={segBtn(tipo === v)}>{l}</button>
+        ))}
+      </div>
+
+      <label style={sheetLabel} htmlFor="am-breed">Raza</label>
+      <input id="am-breed" value={breed} onChange={(e) => setBreed(e.target.value)} placeholder="Opcional" style={{ ...sheetInput, marginBottom: 16 }} />
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
+        <div style={{ flex: 1 }}>
+          <label style={sheetLabel} htmlFor="am-edad">Edad</label>
+          <input id="am-edad" value={edad} onChange={(e) => setEdad(e.target.value)} placeholder="años" style={sheetInput} />
+        </div>
+        <div style={{ flex: 1 }}>
+          <label style={sheetLabel} htmlFor="am-peso">Peso</label>
+          <input id="am-peso" value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="kg" style={sheetInput} />
+        </div>
+      </div>
+
+      <label style={sheetLabel}>Sexo</label>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {[['macho', 'Macho'], ['hembra', 'Hembra']].map(([v, l]) => (
+          <button key={v} onClick={() => setSexo(v!)} style={segBtn(sexo === v)}>{l}</button>
+        ))}
+      </div>
+
+      <label style={sheetLabel}>¿Está castrada?</label>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        <button onClick={() => setCastrado(true)} style={segBtn(castrado)}>Sí</button>
+        <button onClick={() => setCastrado(false)} style={segBtn(!castrado)}>No</button>
+      </div>
+
+      <label style={sheetLabel} htmlFor="am-chip">Microchip</label>
+      <input id="am-chip" value={chip} onChange={(e) => setChip(e.target.value)} placeholder="Opcional" style={{ ...sheetInput, marginBottom: 16 }} />
+
+      <label style={sheetLabel} htmlFor="am-vet">Veterinaria de cabecera</label>
+      <input id="am-vet" value={vet} onChange={(e) => setVet(e.target.value)} placeholder="Opcional" style={{ ...sheetInput, marginBottom: 20 }} />
+
+      <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>Declaración jurada de salud</div>
+      <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginBottom: 8 }}>Contestá las {HEALTH_Q.length} preguntas. Declarar una condición no te deja afuera del club: define qué cubre el plan.</div>
+      {HEALTH_Q.map((q, i) => pregunta(q, health[i], (v) => { setHealth({ ...health, [i]: v }); setError(''); }))}
+
+      <div style={{ fontWeight: 700, fontSize: 15, margin: '18px 0 8px' }}>Plan sanitario</div>
+      {SANITARIO_Q.map((q, i) => pregunta(q, sanit[i], (v) => { setSanit({ ...sanit, [i]: v }); setError(''); }))}
+
+      <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '18px 0 8px' }}>Escribí tu nombre completo tal cual figura en tu DNI. Equivale a tu firma según la Ley 25.506.</div>
+      <input id="am-firma" value={firma} onChange={(e) => { setFirma(e.target.value); setError(''); }} placeholder="Tu nombre y apellido" style={{ ...sheetInput, textAlign: 'center', fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 17, marginBottom: 16 }} />
+
+      {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 10 }}>{error}</div>}
+      <button onClick={guardar} disabled={!puedeGuardar} style={{ ...sheetBtn(true), width: '100%', opacity: puedeGuardar ? 1 : 0.5, cursor: puedeGuardar ? 'pointer' : 'default' }}>
+        {busy ? 'Agregando…' : 'Firmar y agregar'}
+      </button>
+    </Sheet>
+  );
+}
+
 function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: () => void; onSave: (v: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => Promise<void> }) {
   const hoy = new Date();
   const [kind, setKind] = useState<VaccineKind>('Vacuna');
@@ -2677,7 +2764,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
-          {screen === 'mismascotas' && <MisMascotas go={go} profile={profile} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
+          {screen === 'mismascotas' && <MisMascotas go={go} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
           {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
