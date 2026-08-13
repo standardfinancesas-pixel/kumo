@@ -5,7 +5,6 @@
   },
   "build": {
     "apk": {
-      "//": "APK instalable a mano, para probar en un celular sin pasar por la Play Store. La Play Store NO acepta APK: para publicar se usa el perfil production, que genera un app-bundle.",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -14,7 +13,6 @@
       "environment": "preview"
     },
     "production": {
-      "//": "Para publicar: app-bundle (.aab), que es lo que exige Google Play.",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
