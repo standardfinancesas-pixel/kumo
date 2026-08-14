@@ -18,8 +18,13 @@ export const KIND_ICON: Record<VaccineKind, 'shield' | 'pill' | 'plus'> = {
   Estudio: 'plus',
 };
 
-/** Vacuna tal como la necesita el calendario: fechas crudas, sin formatear. */
-export type CalVac = { id: string; name: string; status: string; appliedOn: string | null; dueOn: string | null };
+/**
+ * Vacuna tal como la necesita el calendario: fechas crudas, sin formatear.
+ *
+ * `kind` viaja para que el calendario diga qué es cada cosa: el carnet mezcla
+ * vacunas, estudios y antiparasitarios, y llamarlos todos "vacuna" era mentira.
+ */
+export type CalVac = { id: string; name: string; kind?: string; status: string; appliedOn: string | null; dueOn: string | null };
 
 /** Qué marca un día: ya aplicada, próxima dentro de 3 días, o próxima más lejana. */
 export type CalMark = 'aplicada' | 'pronto' | 'pendiente';
@@ -30,7 +35,7 @@ export type CalCell = {
   iso: string | null;
   mark: CalMark | null;
   /** Lo que pasó (o pasa) ese día. Vacío si no hay nada. */
-  vaxes: { name: string; estado: string }[];
+  vaxes: { name: string; estado: string; kind: string }[];
 };
 
 /** Colores del prototipo: fondo, borde y punto de cada marca. */
@@ -68,18 +73,19 @@ const iso = (y: number, m: number, d: number) => `${y}-${String(m + 1).padStart(
  * (aplicada sobre pronto sobre pendiente), como en el prototipo.
  */
 export function buildCalMes(vacs: CalVac[], year: number, month: number): CalCell[] {
-  const porDia = new Map<string, { name: string; estado: string; mark: CalMark }[]>();
-  const push = (fecha: string, item: { name: string; estado: string; mark: CalMark }) => {
+  const porDia = new Map<string, { name: string; estado: string; kind: string; mark: CalMark }[]>();
+  const push = (fecha: string, item: { name: string; estado: string; kind: string; mark: CalMark }) => {
     const lista = porDia.get(fecha) ?? [];
     lista.push(item);
     porDia.set(fecha, lista);
   };
 
   for (const v of vacs) {
-    if (v.appliedOn) push(v.appliedOn, { name: v.name, estado: 'Aplicada', mark: 'aplicada' });
+    const kind = v.kind ?? 'Vacuna';
+    if (v.appliedOn) push(v.appliedOn, { name: v.name, kind, estado: 'Aplicada', mark: 'aplicada' });
     if (v.dueOn && v.status !== 'aplicada') {
       const pronto = diasHasta(v.dueOn) <= 3;
-      push(v.dueOn, { name: v.name, estado: pronto ? 'Próxima en 3 días' : 'Próxima pendiente', mark: pronto ? 'pronto' : 'pendiente' });
+      push(v.dueOn, { name: v.name, kind, estado: pronto ? 'Próxima' : 'Próxima pendiente', mark: pronto ? 'pronto' : 'pendiente' });
     }
   }
 
@@ -94,7 +100,7 @@ export function buildCalMes(vacs: CalVac[], year: number, month: number): CalCel
       : lista.some((x) => x.mark === 'pronto') ? 'pronto'
       : lista.some((x) => x.mark === 'pendiente') ? 'pendiente'
       : null;
-    cells.push({ num: d, iso: key, mark, vaxes: lista.map(({ name, estado }) => ({ name, estado })) });
+    cells.push({ num: d, iso: key, mark, vaxes: lista.map(({ name, estado, kind }) => ({ name, estado, kind })) });
   }
   return cells;
 }

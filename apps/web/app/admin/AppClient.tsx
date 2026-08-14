@@ -18,13 +18,33 @@ export type AdminProfile = { id: string; fullName: string };
 export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number };
 export type DistRow = { plan: string; socios: number; pct: number };
 export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string };
-export type ColaRow = { id: string; socio: string; prestador: string; concepto: string; fecha: string; gastado: number; reintegro: number; flag?: string; receiptPath: string | null };
+/**
+ * Una solicitud en la cola. Trae todo lo que el club necesita para resolverla sin
+ * salir de la pantalla: antes había que ir a Socios, buscar a la persona y abrir
+ * su ficha para saber a qué CBU transferirle.
+ */
+export type ColaRow = {
+  id: string; socio: string; prestador: string; concepto: string; fecha: string;
+  gastado: number; reintegro: number; pct: number; plan: string;
+  flag?: string; receiptPath: string | null; receiptNo: string | null;
+  /** DNI del socio, para contrastarlo con el del titular de la cuenta. */
+  socioDni: string | null;
+  banco: { titular: string | null; titularDni: string | null; cuit: string | null; nombre: string | null; cbu: string | null; alias: string | null };
+  mascota: { nombre: string; info: string; vacunas: { nombre: string; estado: string; cuando: string }[] } | null;
+};
 export type HistRow = { socio: string; prestador: string; concepto: string; gastado: number; reintegro: number; estado: string };
-export type BenefitAdminVM = { id: string; name: string; category: string; discount: string; planRequirement: string; status: string };
+export type BenefitAdminVM = { id: string; name: string; category: string; discount: string; planRequirement: string; status: string; description: string; zone: string; hours: string; validUntil: string | null; days: string[] };
 export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perks: string[]; featured: boolean };
 export type FaqVM = { id: string; question: string; answer: string };
 export type SettingsVM = { whatsapp: string; email: string };
-export type ProviderAdminRow = { id: string; nombre: string; rubro: string; zona: string; rating: string; estado: string; solicitado: string };
+/** Un prestador con lo que hace falta para validarlo sin salir de la pantalla. */
+export type ProviderAdminRow = {
+  id: string; nombre: string; rubro: string; zona: string; rating: string; estado: string; solicitado: string;
+  about: string; direccion: string | null; telefono: string | null; instagram: string | null; web: string | null;
+  reseñas: number; precio: string | null;
+  /** Quién está detrás. Null si el club lo cargó a mano y no tiene cuenta. */
+  dueño: { nombre: string; email: string } | null;
+};
 export type ReportRow = { id: string; cat: string; autor: string; titulo: string; motivo: string };
 export type AudienceVM = { label: string; n: number };
 export type SentPushVM = { title: string; audience: string; when: string };
@@ -41,7 +61,10 @@ const icons = {
   planes: I(<><rect x="3" y="4" width="18" height="14" rx="2" /><path d="M3 10h18" /></>),
   faq: I(<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />),
   push: I(<><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>),
-  ajustes: I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7" /></>),
+  // La tuerca completa. La anterior era este mismo path CORTADO: terminaba en
+  // "2.6 7" y nunca cerraba la vuelta de arriba, así que la corona quedaba abierta
+  // de un lado y se veía deforme.
+  ajustes: I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></>),
   prestadores: I(<><circle cx="5.5" cy="10" r="1.7" /><circle cx="9.7" cy="6.4" r="1.8" /><circle cx="14.3" cy="6.4" r="1.8" /><circle cx="18.5" cy="10" r="1.7" /><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" /></>),
   negocios: I(<><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>),
   moderacion: I(<><path d="M12 3l8 4v5c0 4.4-3.4 7.5-8 9-4.6-1.5-8-4.6-8-9V7z" /><path d="M9.5 12l1.8 1.8L15 10" /></>),
@@ -160,9 +183,20 @@ type FichaData = {
   bank: { holder: string | null; holderDni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
   card: { brand: string | null; last4: string | null; exp: string | null; holder: string | null };
   pets: { id: string; name: string; type: string; breed: string | null; ageYears: number | null; microchip: string | null }[];
+  /** Si además ofrece servicios en el club: en Kumo un prestador es un socio con
+   *  un negocio, así que la ficha tiene que decirlo (lo pide el prototipo). */
+  negocios: { id: string; name: string; category: string; zone: string; status: string }[];
   reintegros: { id: string; providerName: string; concept: string; amount: number; refund: number; status: string }[];
   declaraciones: { id: string; petName: string; signature: string; signedAt: string; answers: { pregunta: string; respuesta: string }[]; sanitary: { pregunta: string; respuesta: string }[] }[];
 };
+
+/** Una fila "etiqueta · valor", que es como se leen todas las fichas del panel. */
+const dato = (k: string, v: string) => (
+  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #eeecf5', gap: 12 }}>
+    <span style={{ fontSize: 13, color: '#8781a0' }}>{k}</span>
+    <span style={{ fontSize: 13.5, fontWeight: 600, textAlign: 'right' }}>{v}</span>
+  </div>
+);
 
 /** El detalle se pide al abrir la ficha, no con la tabla: son datos que solo se
  *  miran de a un socio y así la lista carga liviana. */
@@ -173,11 +207,12 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const [perfil, mascotas, reint, declas] = await Promise.all([
+      const [perfil, mascotas, reint, declas, negocios] = await Promise.all([
         supabase.from('profiles').select('email, phone, address, city, province, dni, joined_on, addon_odonto, monthly_fee_agreed, pay_method, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, card_exp, card_holder, plans(name, base_price)').eq('id', socio.id).single(),
         supabase.from('pets').select('id, name, type, breed, age_years, microchip').eq('owner_id', socio.id),
         supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status').eq('member_id', socio.id).order('requested_on', { ascending: false }),
         supabase.from('health_declarations').select('id, pet_name, signature, signed_at, answers, sanitary').eq('member_id', socio.id).order('signed_at', { ascending: false }),
+        supabase.from('providers').select('id, name, category, zone, status').eq('owner_id', socio.id),
       ]);
       if (!vivo) return;
       if (perfil.error || !perfil.data) { setEstado('error'); return; }
@@ -196,6 +231,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
           sanitary: (d.sanitary ?? []) as { pregunta: string; respuesta: string }[],
         })),
         pets: (mascotas.data ?? []).map((m) => ({ id: m.id, name: m.name, type: m.type, breed: m.breed, ageYears: m.age_years, microchip: m.microchip })),
+        negocios: negocios.data ?? [],
         reintegros: (reint.data ?? []).map((r) => ({ id: r.id, providerName: r.provider_name, concept: r.concept, amount: r.amount, refund: r.refund, status: r.status })),
       });
       setEstado('listo');
@@ -203,12 +239,6 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
     return () => { vivo = false; };
   }, [socio.id]);
 
-  const dato = (k: string, v: string) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid #eeecf5', gap: 12 }}>
-      <span style={{ fontSize: 13, color: '#8781a0' }}>{k}</span>
-      <span style={{ fontSize: 13.5, fontWeight: 600, textAlign: 'right' }}>{v}</span>
-    </div>
-  );
   const acreditado = (data?.reintegros ?? []).filter((r) => r.status === 'acreditado').reduce((a, r) => a + r.refund, 0);
 
   return (
@@ -266,6 +296,25 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
                     <div style={{ fontSize: 12.5, color: '#8781a0' }}>
                       {[m.breed, m.ageYears != null ? `${m.ageYears} años` : null, m.microchip ? `chip ${m.microchip}` : null].filter(Boolean).join(' · ') || 'sin datos'}
                     </div>
+                  </div>
+                ))}
+          </div>
+          {/* Si además presta servicios. En Kumo un prestador es un socio con un
+              negocio, así que es la misma persona y la ficha lo tiene que decir:
+              cambia cómo se lo trata (y si el negocio está pendiente, acá se ve). */}
+          <div>
+            <div style={fieldLabel}>¿PRESTA SERVICIOS?</div>
+            {data.negocios.length === 0
+              ? <div style={{ fontSize: 13.5, color: '#8781a0' }}>No ofrece servicios en el club.</div>
+              : data.negocios.map((n) => (
+                  <div key={n.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #eeecf5' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 14 }}>{n.name}</div>
+                      <div style={{ fontSize: 12.5, color: '#8781a0' }}>{n.category} · {n.zone}</div>
+                    </div>
+                    <span style={estadoBadge(n.status === 'verificado' ? 'Verificado' : n.status === 'rechazado' ? 'Rechazado' : 'Pendiente')}>
+                      {n.status === 'verificado' ? 'Verificado' : n.status === 'rechazado' ? 'Rechazado' : 'Pendiente'}
+                    </span>
                   </div>
                 ))}
           </div>
@@ -372,9 +421,37 @@ function Socios({ socios }: { socios: SocioRow[] }) {
 }
 
 /* ── Reintegros ────────────────────────────────────────────────── */
-/** Visor del comprobante. El bucket es privado, así que pedimos una URL
- *  firmada al abrir y la descartamos al cerrar. */
-function ComprobanteModal({ row, onClose }: { row: ColaRow; onClose: () => void }) {
+
+/**
+ * ¿El titular de la cuenta es el socio?
+ *
+ * Es el control que evita pagarle un reintegro a un tercero: los DNI se comparan
+ * por dígitos, porque uno se carga "38.412.905" y el otro "38412905" y son el
+ * mismo. Si falta alguno de los dos no se afirma nada — decir "no coincide"
+ * cuando en realidad no hay dato sería peor que no decir nada.
+ */
+function dniCoincide(socioDni: string | null, titularDni: string | null): { ok: boolean | null; texto: string } {
+  const soloDigitos = (s: string | null) => (s ?? '').replace(/\D/g, '');
+  const a = soloDigitos(socioDni);
+  const b = soloDigitos(titularDni);
+  if (!a || !b) return { ok: null, texto: 'No podemos verificar el titular: falta el DNI del socio o el de la cuenta.' };
+  if (a === b) return { ok: true, texto: 'El titular de la cuenta es el socio.' };
+  return { ok: false, texto: 'El DNI del titular NO coincide con el del socio. Revisá antes de transferir.' };
+}
+
+/**
+ * Detalle de una solicitud: a dónde va la plata, a quién, y por qué mascota.
+ *
+ * Antes esto era solo el visor del comprobante y el club tenía que ir a Socios a
+ * buscar el CBU. Ahora está todo lo necesario para resolver acá, incluido el
+ * chequeo de titularidad, que no existía en ninguna pantalla.
+ */
+function DetalleReintegroModal({ row, onClose, onResolver, busy }: {
+  row: ColaRow;
+  onClose: () => void;
+  onResolver: (status: 'acreditado' | 'rechazado') => void;
+  busy: boolean;
+}) {
   const [url, setUrl] = useState<string | null>(null);
   const [estado, setEstado] = useState<'cargando' | 'listo' | 'error'>('cargando');
 
@@ -392,6 +469,14 @@ function ComprobanteModal({ row, onClose }: { row: ColaRow; onClose: () => void 
   }, [row.receiptPath]);
 
   const esPdf = !!row.receiptPath?.toLowerCase().endsWith('.pdf');
+  const titular = dniCoincide(row.socioDni, row.banco.titularDni);
+  const tonoTitular = titular.ok === true
+    ? { bg: 'rgb(226,245,234)', fg: 'rgb(47,143,91)', icono: '✓' }
+    : titular.ok === false
+      ? { bg: 'rgb(251,232,239)', fg: 'rgb(176,72,63)', icono: '✕' }
+      : { bg: 'rgb(251,243,226)', fg: 'rgb(146,105,10)', icono: '?' };
+  const sinCuenta = !row.banco.cbu && !row.banco.alias;
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(33,30,51,0.6)', zIndex: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 18, padding: 20, maxWidth: 620, width: '100%', maxHeight: '90vh', overflowY: 'auto' }}>
@@ -402,11 +487,59 @@ function ComprobanteModal({ row, onClose }: { row: ColaRow; onClose: () => void 
           </div>
           <button onClick={onClose} aria-label="Cerrar" style={{ background: '#f4f2f9', border: 'none', borderRadius: 9, width: 30, height: 30, cursor: 'pointer', color: '#5b5670', fontSize: 16, flex: '0 0 auto' }}>×</button>
         </div>
-        <div style={{ display: 'flex', gap: 24, marginBottom: 16 }}>
-          <div><div style={{ fontSize: 11, color: '#a29dba' }}>Gastado</div><div style={{ fontWeight: 700, fontSize: 16 }}>{money(row.gastado)}</div></div>
-          <div><div style={{ fontSize: 11, color: '#a29dba' }}>Reintegro</div><div style={{ fontWeight: 700, fontSize: 16, color: 'rgb(93,84,145)' }}>{money(row.reintegro)}</div></div>
+
+        <div style={{ background: 'rgb(240,237,249)', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+          <div style={{ fontSize: 12, color: '#5b5670' }}>Reintegro a acreditar</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 30, color: 'rgb(93,84,145)' }}>{money(row.reintegro)}</div>
+          <div style={{ fontSize: 12.5, color: '#5b5670' }}>{row.pct}% de {money(row.gastado)} · plan {row.plan}</div>
         </div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>COMPROBANTE</div>
+
+        {/* Titularidad primero: es lo que decide si se transfiere o no. */}
+        <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start', background: tonoTitular.bg, borderRadius: 12, padding: '11px 13px', marginBottom: 16 }}>
+          <span style={{ fontWeight: 800, color: tonoTitular.fg, flex: '0 0 auto' }}>{tonoTitular.icono}</span>
+          <span style={{ fontSize: 13, fontWeight: 600, color: tonoTitular.fg, lineHeight: 1.45 }}>{titular.texto}</span>
+        </div>
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 4 }}>DATOS DE LA TRANSFERENCIA</div>
+        {sinCuenta
+          ? <div style={{ fontSize: 13.5, color: 'rgb(176,72,63)', fontWeight: 600, padding: '10px 0' }}>La solicitud vino sin CBU ni alias. Pedíselos antes de aprobar.</div>
+          : (
+            <div style={{ marginBottom: 16 }}>
+              {dato('Titular', row.banco.titular || '—')}
+              {dato('DNI del titular', row.banco.titularDni || '—')}
+              {dato('DNI del socio', row.socioDni || '—')}
+              {dato('CUIT / CUIL', row.banco.cuit || '—')}
+              {dato('Banco', row.banco.nombre || '—')}
+              {dato('CBU / CVU', row.banco.cbu || '—')}
+              {dato('Alias', row.banco.alias || '—')}
+            </div>
+          )}
+
+        {row.mascota && (
+          <>
+            <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 4 }}>MASCOTA</div>
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontWeight: 700, fontSize: 14.5 }}>{row.mascota.nombre}</div>
+              <div style={{ fontSize: 12.5, color: '#8781a0' }}>{row.mascota.info || 'sin datos'}</div>
+            </div>
+            {/* El carnet, para poder mirar preexistencias y plan sanitario sin
+                cambiar de pantalla: es lo que discute un reintegro. */}
+            {row.mascota.vacunas.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                {row.mascota.vacunas.map((v, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid #eeecf5', fontSize: 13 }}>
+                    <span>{v.nombre}</span>
+                    <span style={{ color: v.estado === 'Aplicada' ? 'rgb(47,143,91)' : 'rgb(184,134,11)', fontWeight: 600 }}>{v.estado} · {v.cuando}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>
+          COMPROBANTE{row.receiptNo ? ` · ${row.receiptNo}` : ''}
+        </div>
         {estado === 'cargando' && <div style={{ padding: 40, textAlign: 'center', color: '#8781a0', fontSize: 14 }}>Cargando…</div>}
         {estado === 'error' && (
           <div style={{ padding: 30, textAlign: 'center', color: '#8781a0', fontSize: 14, background: '#faf9fd', borderRadius: 12 }}>
@@ -417,6 +550,16 @@ function ComprobanteModal({ row, onClose }: { row: ColaRow; onClose: () => void 
           ? <iframe src={url} title="Comprobante" style={{ width: '100%', height: 460, border: '1px solid #e6e3f0', borderRadius: 12 }} />
           : <img src={url} alt="Comprobante" style={{ width: '100%', borderRadius: 12, border: '1px solid #e6e3f0', display: 'block' }} />
         )}
+
+        {/* Resolver desde acá: el club acaba de mirar todo lo que necesitaba. */}
+        <div style={{ display: 'flex', gap: 10, marginTop: 18, flexWrap: 'wrap' }}>
+          <button disabled={busy} onClick={() => onResolver('acreditado')} style={{ flex: '1 1 260px', background: 'rgb(93,84,145)', border: 'none', color: '#fff', fontWeight: 700, fontSize: 14.5, padding: '13px 16px', borderRadius: 12, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, fontFamily: '"DM Sans"' }}>
+            {busy ? 'Resolviendo…' : `Aprobar y transferir ${money(row.reintegro)}`}
+          </button>
+          <button disabled={busy} onClick={() => onResolver('rechazado')} style={{ flex: '0 0 auto', background: 'rgb(251,232,239)', border: 'none', color: 'rgb(193,77,122)', fontWeight: 700, fontSize: 14.5, padding: '13px 18px', borderRadius: 12, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, fontFamily: '"DM Sans"' }}>
+            Rechazar solicitud
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -483,7 +626,14 @@ function Reintegros({ cola, hist }: { cola: ColaRow[]; hist: HistRow[] }) {
 
   return (
     <div>
-      {detalle && <ComprobanteModal row={detalle} onClose={() => setDetalle(null)} />}
+      {detalle && (
+        <DetalleReintegroModal
+          row={detalle}
+          busy={busyId === detalle.id}
+          onClose={() => setDetalle(null)}
+          onResolver={async (status) => { await act(detalle.id, status); setDetalle(null); }}
+        />
+      )}
       <h1 className="adm-h1" style={h1}>Cola de reintegros</h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
         <p style={{ ...sub, margin: 0 }}>Revisá y acreditá las solicitudes de los socios</p>
@@ -555,31 +705,57 @@ function Reintegros({ cola, hist }: { cola: ColaRow[]; hist: HistRow[] }) {
 const BENEFIT_CATEGORIAS = ['Consultas y estudios', 'Cirugías y guardias', 'Alimentos y accesorios', 'Alimentos premium', 'Baño y estética'];
 const BENEFIT_PLANES = ['Todos los planes', 'Amigo, Familia, VIP', 'Familia, VIP', 'VIP'];
 
-function NuevoBeneficioModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState('');
-  const [category, setCategory] = useState(BENEFIT_CATEGORIAS[0]!);
-  const [discount, setDiscount] = useState('');
-  const [planRequirement, setPlanRequirement] = useState(BENEFIT_PLANES[0]!);
-  const [description, setDescription] = useState('');
-  const [zone, setZone] = useState('');
+const BENEFIT_DIAS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+
+/**
+ * Alta y edición de un beneficio, en el mismo formulario.
+ *
+ * Antes solo se podía crear y pausar: un descuento mal cargado se pausaba y se
+ * volvía a crear. Y el alta no pedía días, horario ni vigencia, que la tabla ya
+ * guardaba y la ficha del socio muestra: un beneficio creado desde el panel salía
+ * a la app con esos tres renglones vacíos.
+ */
+function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM | null; onClose: () => void; onSaved: () => void }) {
+  const editando = !!benefit;
+  const [name, setName] = useState(benefit?.name ?? '');
+  const [category, setCategory] = useState(benefit?.category ?? BENEFIT_CATEGORIAS[0]!);
+  const [discount, setDiscount] = useState(benefit?.discount ?? '');
+  const [planRequirement, setPlanRequirement] = useState(benefit?.planRequirement ?? BENEFIT_PLANES[0]!);
+  const [description, setDescription] = useState(benefit?.description ?? '');
+  const [zone, setZone] = useState(benefit?.zone ?? '');
+  const [hours, setHours] = useState(benefit?.hours ?? '');
+  const [validUntil, setValidUntil] = useState(benefit?.validUntil ?? '');
+  const [days, setDays] = useState<string[]>(benefit?.days ?? []);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  const toggleDia = (d: string) => setDays((s) => (s.includes(d) ? s.filter((x) => x !== d) : [...s, d]));
 
   const guardar = async () => {
     if (!name.trim()) { setError('Poné el nombre del comercio.'); return; }
     if (!discount.trim()) { setError('Poné el descuento (ej: -20%).'); return; }
     setBusy(true); setError('');
-    const { error: e } = await supabase.from('benefits').insert({
+    const fila = {
       name: name.trim(), category, discount: discount.trim(), plan_requirement: planRequirement,
-      description: description.trim(), zone: zone.trim(), status: 'activo',
-    });
+      description: description.trim(), zone: zone.trim(), hours: hours.trim(),
+      // Los días se guardan en el orden de la semana y no en el que se tocaron.
+      days: BENEFIT_DIAS.filter((d) => days.includes(d)),
+      valid_until: validUntil || null,
+    };
+    const { error: e } = editando
+      ? await supabase.from('benefits').update(fila).eq('id', benefit!.id)
+      : await supabase.from('benefits').insert({ ...fila, status: 'activo' });
     if (e) { setError('No pudimos guardarlo. Probá de nuevo.'); setBusy(false); return; }
     onSaved();
     onClose();
   };
 
   return (
-    <Modal title="Nuevo beneficio" sub="Se publica activo y ya se ve en la app de los socios." onClose={onClose}>
+    <Modal
+      title={editando ? `Editar ${benefit!.name}` : 'Nuevo beneficio'}
+      sub={editando ? 'Los cambios se ven en la app enseguida.' : 'Se publica activo y ya se ve en la app de los socios.'}
+      onClose={onClose}
+    >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div>
           <label style={fieldLabel}>COMERCIO</label>
@@ -607,6 +783,27 @@ function NuevoBeneficioModal({ onClose, onSaved }: { onClose: () => void; onSave
           <label style={fieldLabel}>ZONA</label>
           <input value={zone} onChange={(e) => setZone(e.target.value)} style={inp} placeholder="Palermo" />
         </div>
+        {/* Los tres que faltaban. La ficha del socio los muestra, así que sin
+            esto el beneficio salía a la app incompleto. */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={fieldLabel}>HORARIO</label>
+            <input value={hours} onChange={(e) => setHours(e.target.value)} style={inp} placeholder="9 a 18 h" />
+          </div>
+          <div>
+            <label style={fieldLabel}>VIGENTE HASTA</label>
+            <input type="date" value={validUntil} onChange={(e) => setValidUntil(e.target.value)} style={inp} />
+          </div>
+        </div>
+        <div>
+          <label style={fieldLabel}>DÍAS CON DESCUENTO</label>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {BENEFIT_DIAS.map((d) => (
+              <button key={d} onClick={() => toggleDia(d)} style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 100, background: days.includes(d) ? 'rgb(93,84,145)' : 'rgb(240,237,249)', color: days.includes(d) ? '#fff' : 'rgb(93,84,145)' }}>{d}</button>
+            ))}
+          </div>
+          <p style={{ fontSize: 12, color: '#a29dba', margin: '6px 0 0' }}>{days.length === 0 ? 'Sin días marcados, el socio lo ve como "todos los días".' : `${days.length} de 7`}</p>
+        </div>
         <div>
           <label style={fieldLabel}>DETALLE</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2} style={{ ...inp, resize: 'vertical' }} placeholder="Qué incluye el beneficio." />
@@ -614,7 +811,7 @@ function NuevoBeneficioModal({ onClose, onSaved }: { onClose: () => void; onSave
         {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>
           <button onClick={onClose} style={btnGhost}>Cancelar</button>
-          <button disabled={busy} onClick={guardar} style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Crear beneficio'}</button>
+          <button disabled={busy} onClick={guardar} style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : editando ? 'Guardar cambios' : 'Crear beneficio'}</button>
         </div>
       </div>
     </Modal>
@@ -624,7 +821,8 @@ function NuevoBeneficioModal({ onClose, onSaved }: { onClose: () => void; onSave
 function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [nuevoOpen, setNuevoOpen] = useState(false);
+  /** null = cerrado; 'nuevo' = alta; un beneficio = edición. */
+  const [modal, setModal] = useState<'nuevo' | BenefitAdminVM | null>(null);
   const toggle = async (id: string, status: string) => {
     setBusyId(id);
     await supabase.from('benefits').update({ status: status === 'activo' ? 'pausado' : 'activo' }).eq('id', id);
@@ -633,10 +831,10 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
   };
   return (
     <div>
-      {nuevoOpen && <NuevoBeneficioModal onClose={() => setNuevoOpen(false)} onSaved={() => router.refresh()} />}
+      {modal && <BeneficioModal benefit={modal === 'nuevo' ? null : modal} onClose={() => setModal(null)} onSaved={() => router.refresh()} />}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div><h1 className="adm-h1" style={{ ...h1, margin: 0 }}>Beneficios</h1><p style={{ ...sub, margin: '4px 0 0' }}>Comercios y descuentos de la red.</p></div>
-        <button onClick={() => setNuevoOpen(true)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '11px 18px', borderRadius: 12, cursor: 'pointer' }}>+ Nuevo beneficio</button>
+        <button onClick={() => setModal('nuevo')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '11px 18px', borderRadius: 12, cursor: 'pointer' }}>+ Nuevo beneficio</button>
       </div>
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -649,7 +847,12 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
                 <td style={td}><span style={badge('rgb(225,251,98)', 'rgb(33,30,51)')}>{b.discount}</span></td>
                 <td style={{ ...td, color: '#8781a0', fontSize: 12.5 }}>{b.planRequirement}</td>
                 <td style={td}><span style={estadoBadge(b.status === 'activo' ? 'Activo' : 'Pausado')}>{b.status === 'activo' ? 'Activo' : 'Pausado'}</span></td>
-                <td style={td}><button disabled={busyId === b.id} onClick={() => toggle(b.id, b.status)} style={{ background: '#fff', border: '1px solid #e6e3f0', color: '#5b5670', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', opacity: busyId === b.id ? 0.6 : 1 }}>{b.status === 'activo' ? 'Pausar' : 'Activar'}</button></td>
+                <td style={td}>
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button onClick={() => setModal(b)} style={{ background: 'rgb(240,237,249)', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 9, cursor: 'pointer' }}>Editar</button>
+                    <button disabled={busyId === b.id} onClick={() => toggle(b.id, b.status)} style={{ background: '#fff', border: '1px solid #e6e3f0', color: '#5b5670', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', opacity: busyId === b.id ? 0.6 : 1 }}>{b.status === 'activo' ? 'Pausar' : 'Activar'}</button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -792,11 +995,32 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
   const [titulo, setTitulo] = useState('');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const [aviso, setAviso] = useState('');
+  /*
+   * Envía de verdad: la ruta resuelve los tokens de la audiencia y le pega a la
+   * Expo Push API. Antes esto insertaba una fila y decía "Enviadas" sin que nada
+   * saliera a ningún teléfono.
+   *
+   * El resultado se muestra tal cual —a cuántos llegó y a cuántos no— porque un
+   * "listo" sobre cero dispositivos es la misma mentira de antes con otra cara.
+   */
   const send = async () => {
     if (!titulo.trim() || busy) return;
-    setBusy(true);
-    await supabase.from('push_notifications').insert({ title: titulo, body: msg, audience: audiences[aud]?.label ?? 'Todos los socios', sent_at: new Date().toISOString() });
-    setTitulo(''); setMsg('');
+    setBusy(true); setAviso('');
+    try {
+      const res = await fetch('/api/push/enviar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titulo, cuerpo: msg, audiencia: audiences[aud]?.label ?? 'Todos los socios' }),
+      });
+      const data = await res.json();
+      if (!res.ok) setAviso(data.error ?? 'No pudimos enviar el aviso.');
+      else if (data.entregados === 0) setAviso(`Quedó guardado, pero no llegó a ningún teléfono${data.dispositivos === 0 ? ': todavía nadie tiene la app con notificaciones activadas.' : `. ${data.detalle?.[0] ?? ''}`}`);
+      else setAviso(`Llegó a ${data.entregados} dispositivo${data.entregados === 1 ? '' : 's'}${data.fallados ? ` · ${data.fallados} sin entregar` : ''}.`);
+      if (res.ok) { setTitulo(''); setMsg(''); }
+    } catch {
+      setAviso('No pudimos enviar el aviso. Revisá la conexión.');
+    }
     router.refresh();
     setBusy(false);
   };
@@ -804,6 +1028,7 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
     <div>
       <h1 className="adm-h1" style={h1}>Notificaciones push</h1>
       <p style={sub}>Enviá avisos a los socios directo a su celular.</p>
+      <Aviso texto={aviso} />
       <div className="adm-push" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 20 }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 10 }}>AUDIENCIA</div>
@@ -868,7 +1093,7 @@ function Ajustes({ settings }: { settings: SettingsVM }) {
       <div style={{ ...card, maxWidth: 520 }}>
         {gLabel('MAIL DE CONTACTO', savedMail)}
         <input value={mail} onChange={(e) => { setMail(e.target.value); setSavedMail(false); }} onBlur={saveMail} style={inpWide} />
-        <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Se muestra en el footer de la landing.</p>
+        <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Se muestra en el footer de la landing y en la página legal, y es el remitente de los mails a los socios.</p>
       </div>
     </div>
   );
@@ -903,6 +1128,92 @@ async function resolverNegocio(id: string, status: 'verificado' | 'rechazado'): 
   }
 }
 
+/**
+ * La ficha de un prestador, que es la misma para Prestadores y para Negocios: es
+ * la misma tabla mirada con dos criterios distintos.
+ *
+ * Existe porque las dos pantallas pedían verificar a ciegas: la tabla mostraba
+ * nombre, rubro y zona, y el botón "Verificar" estaba al lado sin nada para
+ * mirar. Acá está lo que el club tiene para decidir — quién está detrás, cómo se
+ * lo contacta y qué dice de sí mismo — y desde acá se resuelve.
+ *
+ * Lo que sigue faltando es la documentación (matrícula, habilitación): no hay
+ * dónde guardarla todavía, y el aviso lo dice en vez de fingir que se validó.
+ */
+function FichaPrestadorModal({ p, onClose, onResolver, busy }: {
+  p: ProviderAdminRow;
+  onClose: () => void;
+  onResolver: (status: 'verificado' | 'rechazado') => void;
+  busy: boolean;
+}) {
+  const contacto: [string, string | null][] = [
+    ['Teléfono', p.telefono],
+    ['Instagram', p.instagram],
+    ['Web', p.web],
+    ['Dirección', p.direccion],
+  ];
+  return (
+    <Modal title={p.nombre} sub={`${p.rubro} · ${p.zona}`} onClose={onClose} width={560}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={estadoBadge(p.estado)}>{p.estado}</span>
+          <span style={{ fontSize: 13, color: '#8781a0' }}>
+            {p.reseñas > 0 ? `★ ${p.rating} · ${p.reseñas} reseña${p.reseñas === 1 ? '' : 's'}` : 'Sin reseñas todavía'}
+          </span>
+          {p.precio && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>{p.precio}</span>}
+        </div>
+
+        <div>
+          <div style={fieldLabel}>QUIÉN ESTÁ DETRÁS</div>
+          {p.dueño
+            ? (<>{dato('Titular de la cuenta', p.dueño.nombre)}{dato('Mail', p.dueño.email)}</>)
+            : (
+              <div style={{ fontSize: 13.5, color: 'rgb(146,105,10)', fontWeight: 600, lineHeight: 1.5 }}>
+                Sin cuenta asociada: lo cargó el club a mano. Nadie puede editar esta ficha
+                salvo ustedes, y no hay a quién avisarle por mail cuando se resuelva.
+              </div>
+            )}
+        </div>
+
+        <div>
+          <div style={fieldLabel}>CONTACTO</div>
+          {contacto.some(([, v]) => v)
+            ? contacto.filter(([, v]) => v).map(([k, v]) => dato(k, v!))
+            : <div style={{ fontSize: 13.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>No dejó ningún dato de contacto. Difícil de validar así.</div>}
+        </div>
+
+        <div>
+          <div style={fieldLabel}>QUÉ OFRECE</div>
+          <p style={{ fontSize: 13.5, color: '#5b5670', lineHeight: 1.6, margin: 0 }}>
+            {p.about?.trim() || 'No escribió una descripción.'}
+          </p>
+        </div>
+
+        <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', border: '1px solid rgb(240,226,190)', borderRadius: 12, padding: '11px 13px', fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
+          La documentación (matrícula, habilitación, seguro) todavía no se puede adjuntar:
+          no hay dónde guardarla. Por ahora se valida con estos datos y lo que sepan por fuera.
+        </div>
+
+        {p.estado === 'Pendiente' && (
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button disabled={busy} onClick={() => onResolver('verificado')} style={{ ...btnPrimary, flex: '1 1 200px', opacity: busy ? 0.6 : 1 }}>
+              {busy ? 'Guardando…' : 'Verificar y publicar'}
+            </button>
+            <button disabled={busy} onClick={() => onResolver('rechazado')} style={{ background: 'rgb(251,232,239)', border: 'none', color: 'rgb(193,77,122)', fontWeight: 700, fontSize: 14, padding: '12px 18px', borderRadius: 11, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, fontFamily: '"DM Sans"' }}>
+              Rechazar
+            </button>
+          </div>
+        )}
+        {p.estado === 'Rechazado' && (
+          <button disabled={busy} onClick={() => onResolver('verificado')} style={{ ...btnPrimary, opacity: busy ? 0.6 : 1 }}>
+            {busy ? 'Guardando…' : 'Reconsiderar y publicar'}
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 /** Cartel de aviso del panel (mismo estilo que el de la cola de reintegros). */
 function Aviso({ texto }: { texto: string }) {
   if (!texto) return null;
@@ -917,6 +1228,7 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [aviso, setAviso] = useState('');
+  const [ficha, setFicha] = useState<ProviderAdminRow | null>(null);
   /** Sin rechazo, una solicitud que no pasa la validación quedaba pendiente para
    *  siempre: el socio nunca se enteraba y al club le quedaba en la cola. */
   const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
@@ -927,24 +1239,34 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
   };
   return (
     <div>
+      {ficha && (
+        <FichaPrestadorModal
+          p={ficha}
+          busy={busyId === ficha.id}
+          onClose={() => setFicha(null)}
+          onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
+        />
+      )}
       <h1 className="adm-h1" style={h1}>Prestadores</h1>
-      <p style={sub}>Validá la identidad y documentación de quienes ofrecen servicios</p>
+      <p style={sub}>Validá la identidad y documentación de quienes ofrecen servicios · tocá una fila para ver la ficha</p>
       <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>{['NOMBRE', 'RUBRO', 'ZONA', 'RATING', 'ESTADO', ''].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>
           <tbody>
             {providers.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className="adm-row" onClick={() => setFicha(r)} style={{ cursor: 'pointer' }}>
                 <td style={{ ...td, fontWeight: 600 }}>{r.nombre}</td>
                 <td style={{ ...td, color: '#8781a0' }}>{r.rubro}</td>
                 <td style={td}>{r.zona}</td>
                 <td style={td}>{r.rating !== '—' ? `★ ${r.rating}` : '—'}</td>
                 <td style={td}><span style={estadoBadge(r.estado)}>{r.estado}</span></td>
+                {/* Los botones paran el clic: si burbujeara, resolver también
+                    abriría la ficha de la fila. */}
                 <td style={td}>{r.estado === 'Pendiente' && (
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'verificado')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Verificar</button>
-                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'rechazado')} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
+                    <button disabled={busyId === r.id} onClick={(e) => { e.stopPropagation(); resolver(r.id, 'verificado'); }} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Verificar</button>
+                    <button disabled={busyId === r.id} onClick={(e) => { e.stopPropagation(); resolver(r.id, 'rechazado'); }} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
                   </div>
                 )}</td>
               </tr>
@@ -961,6 +1283,7 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
   const [aviso, setAviso] = useState('');
+  const [ficha, setFicha] = useState<ProviderAdminRow | null>(null);
   const pendientes = providers.filter((r) => r.estado === 'Pendiente');
   const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
     setBusyId(id);
@@ -970,15 +1293,23 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
   };
   return (
     <div>
+      {ficha && (
+        <FichaPrestadorModal
+          p={ficha}
+          busy={busyId === ficha.id}
+          onClose={() => setFicha(null)}
+          onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
+        />
+      )}
       <h1 className="adm-h1" style={h1}>Negocios</h1>
-      <p style={sub}>{pendientes.length} solicitudes de alta pendientes de validación</p>
+      <p style={sub}>{pendientes.length} solicitudes de alta pendientes de validación · tocá una fila para ver la ficha</p>
       <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr>{['NOMBRE', 'RUBRO', 'ZONA', 'SOLICITADO', 'ESTADO', ''].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>
           <tbody>
             {providers.map((r) => (
-              <tr key={r.id}>
+              <tr key={r.id} className="adm-row" onClick={() => setFicha(r)} style={{ cursor: 'pointer' }}>
                 <td style={{ ...td, fontWeight: 600 }}>{r.nombre}</td>
                 <td style={{ ...td, color: '#8781a0' }}>{r.rubro}</td>
                 <td style={td}>{r.zona}</td>
@@ -986,8 +1317,8 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
                 <td style={td}><span style={estadoBadge(r.estado)}>{r.estado}</span></td>
                 <td style={td}>{r.estado === 'Pendiente' && (
                   <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'verificado')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Validar</button>
-                    <button disabled={busyId === r.id} onClick={() => resolver(r.id, 'rechazado')} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
+                    <button disabled={busyId === r.id} onClick={(e) => { e.stopPropagation(); resolver(r.id, 'verificado'); }} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Validar</button>
+                    <button disabled={busyId === r.id} onClick={(e) => { e.stopPropagation(); resolver(r.id, 'rechazado'); }} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
                   </div>
                 )}</td>
               </tr>
@@ -1006,7 +1337,9 @@ function Moderacion({ reports }: { reports: ReportRow[] }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const keep = async (id: string) => {
     setBusyId(id);
-    await supabase.from('community_posts').update({ reported: false }).eq('id', id);
+    // Se limpia el motivo: si mañana lo reportan de nuevo, el club tiene que
+    // leer el motivo nuevo y no el de la vez pasada.
+    await supabase.from('community_posts').update({ reported: false, report_reason: null }).eq('id', id);
     router.refresh();
     setBusyId(null);
   };

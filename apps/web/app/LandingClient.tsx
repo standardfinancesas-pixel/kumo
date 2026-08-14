@@ -171,7 +171,7 @@ const plusCircle = (
   </>
 );
 const heartPath = (
-  <path d="M12 20s-7-4.3-9.2-8.6C1.3 8.3 2.6 5 6 5c2 0 3.3 1.2 4 2.3C10.7 6.2 12 5 14 5c3.4 0 4.7 3.3 3.2 6.4C19 15.7 12 20 12 20z" />
+  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
 );
 
 /* ── Nav ───────────────────────────────────────────────────────── */
@@ -231,7 +231,13 @@ function Hero() {
                 <button onClick={() => setPet('gato')} style={{ flex: '1 1 0%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '11px 16px', borderRadius: 100, transition: '0.15s', ...selStyle(pet === 'gato') }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={pet === 'gato' ? '#5D5491' : '#a8a0b5'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
                     <path d="M4 4l3 4M20 4l-3 4" />
-                    <path d="M5 10a7 5 0 0 1 14 0v4a6 6 0 0 1-12 0z" />
+                    {/* La cabeza, simétrica. El path del prototipo era
+                        `M5 10a7 5 0 0 1 14 0v4a6 6 0 0 1-12 0z`: bajaba recto 4px
+                        por la derecha (`v4`) y cerraba la izquierda con la
+                        diagonal de la `z`, así que el gato quedaba hundido de un
+                        costado. Ahora los dos lados bajan igual y el mentón es una
+                        semielipse completa de 19 a 5. */}
+                    <path d="M5 10a7 5 0 0 1 14 0v4a7 6 0 0 1-14 0z" />
                     <line x1="9.5" y1="12" x2="9.5" y2="12.2" />
                     <line x1="14.5" y1="12" x2="14.5" y2="12.2" />
                     <path d="M10.5 15c.5.6 2.5.6 3 0" />
@@ -258,6 +264,11 @@ function Hero() {
 }
 
 /* ── Planes ────────────────────────────────────────────────────── */
+/*
+ * La mascota que se asoma arriba de cada tarjeta. Los números son los del
+ * prototipo tal cual: `peekMB` depende de cuánto transparente tenga cada foto
+ * abajo (peek-dog1 tiene 95px de 262, y por eso -46px la apoya en el borde).
+ */
 const planMeta: Record<string, { peek: string; peekH: number; peekMB: number; btnBg: string; btnColor: string }> = {
   AMIGO: { peek: 'plan-amigo-cat.webp', peekH: 96, peekMB: -2, btnBg: 'rgb(240,237,249)', btnColor: 'rgb(93,84,145)' },
   FAMILIA: { peek: 'peek-dog1.webp', peekH: 128, peekMB: -46, btnBg: 'rgb(225,251,98)', btnColor: 'rgb(33,30,51)' },

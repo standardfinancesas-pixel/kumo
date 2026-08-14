@@ -290,7 +290,7 @@ export function useKumoData(userId: string | null) {
     const notifInput: NotifInput = {
       pets: (petsRes.data ?? []).map((row) => ({
         name: row.name,
-        vaccines: ((row.vaccinations ?? []) as VacRow[]).map((v) => ({ id: v.id, name: v.name, status: v.status, dueOn: v.due_on })),
+        vaccines: ((row.vaccinations ?? []) as VacRow[]).map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, dueOn: v.due_on })),
       })),
       reintegros: (reintRes.data ?? []).map((r) => ({
         id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,

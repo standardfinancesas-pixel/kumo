@@ -4,6 +4,7 @@ export * from './types';
 export * from './supabase';
 export * from './urls';
 export * from './fechas';
+export * from './moderacion';
 export * from './notifs';
 export * from './carnet';
 export * from './prestadores';

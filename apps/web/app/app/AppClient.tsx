@@ -8,7 +8,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -151,7 +151,11 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Sc
         </div>
         <button onClick={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, background: 'rgb(240,237,249)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative' }} aria-label={noLeidas > 0 ? `Notificaciones (${noLeidas} sin leer)` : 'Notificaciones'}>
           <span style={{ color: '#5D5491' }}>{ic(bellPath, false, 21)}</span>
-          {noLeidas > 0 && <span style={{ position: 'absolute', top: 9, right: 10, width: 8, height: 8, borderRadius: '50%', background: 'rgb(225,251,98)', border: '2px solid rgb(240,237,249)' }} />}
+          {noLeidas > 0 && (
+            <span style={{ position: 'absolute', top: 4, right: 4, minWidth: 18, height: 18, padding: '0 4px', borderRadius: 100, background: 'rgb(225,251,98)', border: '2px solid rgb(240,237,249)', color: 'rgb(33,30,51)', fontSize: 10.5, fontWeight: 800, lineHeight: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'content-box' }}>
+              {noLeidas > 9 ? '9+' : noLeidas}
+            </span>
+          )}
         </button>
       </div>
 
@@ -746,7 +750,7 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
         <span style={{ fontSize: 13, fontWeight: 800, color: 'rgb(93,84,145)' }}>{radio} km</span>
       </div>
       <div style={{ padding: '4px 2px 6px', marginBottom: 14 }}>
-        <input type="range" min={1} max={25} step={1} value={radio} onChange={(e) => setRadio(Number(e.target.value))} style={{ width: '100%', display: 'block', appearance: 'none', height: 6, borderRadius: 100, outline: 'none', cursor: 'pointer', background: `linear-gradient(to right, rgb(93,84,145) 0%, rgb(93,84,145) ${pct}%, rgb(238,236,245) ${pct}%, rgb(238,236,245) 100%)` } as CSSProperties} />
+        <input type="range" min={1} max={25} step={1} value={radio} onChange={(e) => setRadio(Number(e.target.value))} style={{ width: '100%', display: 'block', appearance: 'none', height: 6, borderRadius: 100, outline: 'none', cursor: 'pointer', touchAction: 'none', background: `linear-gradient(to right, rgb(93,84,145) 0%, rgb(93,84,145) ${pct}%, rgb(238,236,245) ${pct}%, rgb(238,236,245) 100%)` } as CSSProperties} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 7 }}>
           <span style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>1 km</span>
           <span style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>25 km</span>
@@ -1477,7 +1481,7 @@ function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (s: Screen) =
 }
 
 /* ── Pantalla: Foros / Comunidad ───────────────────────────────── */
-const heartFill = <path d="M12 20s-7-4.3-9.2-8.6C1.3 8.3 2.6 5 6 5c2 0 3.3 1.2 4 2.3C10.7 6.2 12 5 14 5c3.4 0 4.7 3.3 3.2 6.4C19 15.7 12 20 12 20z" />;
+const heartFill = <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />;
 const capPath = <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></>;
 const catCfg: Record<string, { iconBg: string; icon: ReactNode; tagBg: string; tagFg: string }> = {
   Paseadores: { iconBg: 'rgb(34,160,107)', icon: paw, tagBg: 'rgb(226,245,234)', tagFg: 'rgb(31,125,80)' },
@@ -1493,7 +1497,6 @@ const catCfg: Record<string, { iconBg: string; icon: ReactNode; tagBg: string; t
 const foroChips = ['Todos', 'Paseadores', 'Salud', 'Guarderías', 'Adiestramiento', 'Alimentación', 'Cruzas', 'Razas'];
 
 const sendIcon = <><line x1="12" y1="19" x2="12" y2="5" /><path d="M5 12l7-7 7 7" /></>;
-const fotoIcon = <><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="M21 15l-5-5L5 21" /></>;
 
 /* ── Hilo del foro ─────────────────────────────────────────────── */
 /** El hilo del prototipo: post original, me gusta, respuestas y la caja para
@@ -1505,6 +1508,8 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
   const [texto, setTexto] = useState('');
   const [busy, setBusy] = useState(false);
   const [likes, setLikes] = useState({ post: misLikes.posts.includes(p.id), answers: new Set(misLikes.answers) });
+  const [reportando, setReportando] = useState(false);
+  const [reportado, setReportado] = useState(false);
 
   /** Optimista: el corazón responde al toque y la base va atrás. */
   const togglePostLike = async () => {
@@ -1518,11 +1523,11 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
   };
   const toggleAnswerLike = async (id: string) => {
     const estaba = likes.answers.has(id);
-    setLikes((s) => { const n = new Set(s.answers); estaba ? n.delete(id) : n.add(id); return { ...s, answers: n }; });
+    setLikes((s) => { const n = new Set(s.answers); if (estaba) n.delete(id); else n.add(id); return { ...s, answers: n }; });
     const { error } = estaba
       ? await supabase.from('answer_likes').delete().eq('member_id', profile.id).eq('answer_id', id)
       : await supabase.from('answer_likes').insert({ member_id: profile.id, answer_id: id });
-    if (error) setLikes((s) => { const n = new Set(s.answers); estaba ? n.add(id) : n.delete(id); return { ...s, answers: n }; });
+    if (error) setLikes((s) => { const n = new Set(s.answers); if (estaba) n.add(id); else n.delete(id); return { ...s, answers: n }; });
     else router.refresh();
   };
 
@@ -1587,18 +1592,58 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
     router.refresh();
   };
 
+  /**
+   * Reportar pasa por la función `reportar_post` de la base y no por un update:
+   * un socio no puede tocar la publicación de otro (la RLS es por fila, así que
+   * habilitarlo sería habilitarle también reescribir el texto ajeno).
+   */
+  const reportar = async (motivo: string) => {
+    setBusy(true);
+    const { error } = await supabase.rpc('reportar_post', { p_post_id: p.id, p_motivo: motivo });
+    setBusy(false);
+    if (error) { alert('No pudimos reportarla. Probá de nuevo.'); return; }
+    setReportando(false);
+    setReportado(true);
+  };
+
   const likesPost = p.likes + (likes.post && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likes.post && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0' }}>← Comunidad</button>
-        {p.propia && (
-          <button onClick={borrarPost} disabled={busy} style={{ background: 'none', border: 'none', color: 'rgb(176,72,63)', fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', padding: '6px 0' }}>
-            Borrar publicación
-          </button>
-        )}
+        {p.propia
+          ? (
+            <button onClick={borrarPost} disabled={busy} style={{ background: 'none', border: 'none', color: 'rgb(176,72,63)', fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', padding: '6px 0' }}>
+              Borrar publicación
+            </button>
+          )
+          : (
+            /* Reportar. La pantalla de Moderación del panel existía desde el
+               arranque y nunca podía recibir nada, porque no había de dónde: esto
+               es lo que la llena. Pide el motivo, que es lo que necesita quien
+               modera para decidir. */
+            <button onClick={() => setReportando((s) => !s)} disabled={reportado} style={{ background: 'none', border: 'none', color: reportado ? 'rgb(47,143,91)' : 'rgb(135,129,160)', fontWeight: 600, fontSize: 13, cursor: reportado ? 'default' : 'pointer', padding: '6px 0', fontFamily: '"DM Sans"' }}>
+              {reportado ? '✓ Reportado' : '⚑ Reportar'}
+            </button>
+          )}
       </div>
+
+      {reportando && !reportado && (
+        <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: 14, marginBottom: 14 }}>
+          <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4 }}>¿Qué pasa con esta publicación?</div>
+          <p style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '0 0 10px', lineHeight: 1.5 }}>
+            La revisa una persona del club. No se avisa a quien la escribió.
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {MOTIVOS_REPORTE.map((m) => (
+              <button key={m} onClick={() => reportar(m)} disabled={busy} style={{ background: '#fff', border: '1px solid rgb(230,227,240)', color: 'rgb(74,69,96)', fontWeight: 600, fontSize: 12.5, padding: '8px 12px', borderRadius: 100, cursor: busy ? 'default' : 'pointer', fontFamily: '"DM Sans"' }}>
+                {m}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
         <div style={{ width: 38, height: 38, borderRadius: 11, background: cfg.tagBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: cfg.tagFg }}>{ic(person, false, 19)}</div>
@@ -2248,7 +2293,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
 
       {/* Mis mascotas */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <button onClick={() => go('mismascotas')} style={{ background: 'none', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', padding: 0, fontFamily: '\"DM Sans\"' }}>Mis mascotas ›</button>
+        <button onClick={() => go('mismascotas')} style={{ background: 'none', border: 'none', fontWeight: 700, fontSize: 15, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>Mis mascotas ›</button>
         <button onClick={() => setShowAddPet(true)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>+ Agregar</button>
       </div>
       {showAddPet && <AgregarMascotaSheet ownerId={profile.id} onClose={() => setShowAddPet(false)} onListo={() => { setShowAddPet(false); router.refresh(); }} />}
@@ -2538,7 +2583,10 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
 function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(33,30,51,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'kfade 0.2s ease' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', background: '#fff', borderRadius: '24px 24px 0 0', padding: '16px 20px 26px', animation: 'kslideup 0.28s cubic-bezier(.2,.8,.2,1)' }}>
+      {/* `overscrollBehavior: contain` y `touchAction: pan-y`: sin eso, al llegar
+          al final del contenido el gesto pasaba a la página de atrás y la hoja
+          parecía trabarse. */}
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', background: '#fff', borderRadius: '24px 24px 0 0', padding: '16px 20px 26px', animation: 'kslideup 0.28s cubic-bezier(.2,.8,.2,1)' }}>
         <div style={{ width: 40, height: 4, borderRadius: 100, background: 'rgb(224,220,236)', margin: '0 auto 16px' }} />
         {children}
       </div>
@@ -2571,7 +2619,7 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
   return (
     <Sheet onClose={onClose}>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 2 }}>Calendario de salud</div>
-      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Cuándo aplicaste cada vacuna y cuándo toca la próxima.</div>
+      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Vacunas, estudios y antiparasitarios: cuándo se aplicaron y cuándo toca el próximo.</div>
 
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
@@ -2960,15 +3008,6 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
           <span style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff' }} />
         </div>
       </div>
-    </div>
-  );
-}
-
-function EnConstruccion({ titulo }: { titulo: string }) {
-  return (
-    <div style={{ padding: '8px 20px 24px' }}>
-      <h1 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26, margin: '0 0 8px' }}>{titulo}</h1>
-      <p style={{ color: 'rgb(135,129,160)', fontSize: 15 }}>Pantalla en construcción — la estoy portando del prototipo.</p>
     </div>
   );
 }

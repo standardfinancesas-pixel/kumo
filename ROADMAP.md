@@ -215,14 +215,27 @@ de cada pantalla.
 ## Fase 4 — Mapas, push y comunidad
 - [ ] Google Maps real en webapp y mobile (hoy los mapas son SVG decorativos con
       pins posicionados a mano; la distancia en km sí es real, por Haversine).
-- [ ] Push notifications reales con Expo (el admin ya las guarda en
-      `push_notifications`, pero nadie las envía). Falta: `expo-notifications` en
-      la app pidiendo permiso, una tabla de tokens de dispositivo por socio, el
-      envío a la Expo Push API y un cron que revise vacunas por vencer — hoy las
-      notificaciones se calculan recién cuando el socio abre la app
-      (`packages/shared/src/notifs.ts`). El switch "Push y recordatorios" de la
-      pantalla de notificaciones es decorativo hasta entonces, igual que en el
-      prototipo. En la webapp sería Web Push, otro mecanismo.
+- [x] **Push notifications, hechas.** Tabla `push_tokens` (el token de Expo es la
+      dirección del aparato Y la credencial), la app registrándose al entrar y
+      olvidándose al salir, `/api/push/enviar` que resuelve la audiencia y le pega
+      a la Expo Push API, y el panel mostrando a cuántos llegó de verdad en vez de
+      decir "Enviadas" sobre cero. Los tokens muertos (`DeviceNotRegistered`) se
+      borran en el mismo envío: si no, el número de entregados deja de significar
+      nada. Y un cron diario (`/api/cron/vacunas`, 09:00 de Buenos Aires) avisa las
+      vacunas que vencen dentro de 3 días, por push Y por mail — antes el aviso
+      existía solo DENTRO de la app y se calculaba cuando el socio la abría, así que
+      a quien no entraba no le llegaba nada, que es justo el caso que un
+      recordatorio tiene que cubrir. La marca de "ya avisado" es por vacuna, y un
+      trigger la borra si la vacuna se aplica o se reprograma.
+      **Falta config, sin código de por medio:**
+      1. `CRON_SECRET` en Vercel. El cron se niega a correr en producción sin ella:
+         mejor que no funcione y avise, que quedar abierto a cualquiera que sepa la
+         URL y pueda disparar avisos a todos los socios.
+      2. **Credenciales de FCM** subidas a EAS, o Android no entrega en el APK
+         instalado (Expo usa FCM por debajo). Es un proyecto de Firebase gratis más
+         `eas credentials`. iOS además necesita cuenta de Apple Developer.
+      3. Un **build nuevo**: `expo-notifications` es módulo nativo y no sale por OTA.
+
 - [x] **Reseñas de prestadores reales** (`provider_reviews`): el socio califica y
       comenta, una reseña por prestador y editable. El promedio y el conteo los
       recalcula el trigger `provider_reviews_sync`, así que la estrella de la

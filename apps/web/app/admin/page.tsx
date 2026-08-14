@@ -39,11 +39,69 @@ export default async function Page() {
   if (!myProfile || myProfile.role !== 'admin') redirect(WEBAPP);
   const profile: AdminProfile = { id: auth.user.id, fullName: myProfile.full_name };
 
-  // ── Socios (para KPIs, distribución y la tabla) ──
-  const { data: profileRows } = await supabase
-    .from('profiles')
-    .select('id, member_no, full_name, status, joined_on, plans(name, base_price), pets(name)')
-    .eq('role', 'socio');
+  /*
+   * Todo junto, no una atrás de la otra: ninguna consulta depende del resultado
+   * de otra. Antes eran nueve viajes de ida y vuelta EN FILA a Supabase, y el
+   * panel los pagaba de nuevo en cada `router.refresh()` —o sea, cada vez que el
+   * club aprueba, pausa o edita algo—. Eso es lo que se sentía lento.
+   */
+  const [
+    { data: profileRows },
+    { data: reintPend },
+    { data: colaRows },
+    { data: histRows },
+    { data: benefitRows },
+    { data: planRows },
+    { data: faqRows },
+    { data: settingsRow },
+    { data: providerRows },
+    { data: reportRows },
+    { data: pendVaxPets },
+    { data: sentRows },
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, member_no, full_name, status, joined_on, monthly_fee_agreed, plans(name, base_price), pets(name)')
+      .eq('role', 'socio'),
+    supabase.from('reimbursements').select('refund').eq('status', 'en_revision'),
+    // Se piden también los datos de la transferencia, el DNI del socio y la
+    // mascota con su carnet: es lo que hay que mirar para resolver, y estaba a dos
+    // pantallas de distancia.
+    supabase
+      .from('reimbursements')
+      .select(`
+        id, provider_name, concept, amount, refund, refund_pct, plan_name, requested_on, flag, receipt_path, receipt_no,
+        bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias,
+        profiles(member_no, full_name, dni),
+        pets(name, type, breed, age_years, weight_kg, vaccinations(name, status, applied_on, due_on))
+      `)
+      .eq('status', 'en_revision')
+      .order('requested_on', { ascending: true }),
+    supabase
+      .from('reimbursements')
+      .select('provider_name, concept, amount, refund, status, profiles(member_no, full_name)')
+      .in('status', ['acreditado', 'rechazado'])
+      .order('requested_on', { ascending: false })
+      .limit(20),
+    supabase.from('benefits').select('id, name, category, discount, plan_requirement, status, description, zone, hours, valid_until, days'),
+    // Por precio: da AMIGO → FAMILIA → VIP. Sin orden explícito, editar un plan lo
+    // manda al final de la lista (Postgres reubica la fila al hacer update).
+    supabase.from('plans').select('id, name, tagline, base_price, perks, featured').order('base_price'),
+    supabase.from('faqs').select('id, question, answer').order('order', { ascending: true }),
+    supabase.from('club_settings').select('whatsapp, email').eq('id', 1).single(),
+    // Con la ficha: el subtítulo de la pantalla dice "validá la identidad y la
+    // documentación", y con solo el nombre y el rubro no había nada que validar.
+    // El join va con el nombre de la clave: `providers` se relaciona con
+    // `profiles` por dos caminos (el dueño y la tabla de favoritos), y sin
+    // desambiguar PostgREST responde 300 y la lista queda vacía.
+    supabase
+      .from('providers')
+      .select('id, name, category, zone, address, phone, instagram, website, about, price, price_unit, rating, reviews, status, created_at, owner_id, profiles!providers_owner_id_fkey(full_name, email)'),
+    // El autor sale de la fila, igual que en la webapp del socio.
+    supabase.from('community_posts').select('id, category, title, author_name, report_reason').eq('reported', true),
+    supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente'),
+    supabase.from('push_notifications').select('title, audience, sent_at').order('sent_at', { ascending: false }).limit(10),
+  ]);
   const socioList = profileRows ?? [];
   const planOf = (p: (typeof socioList)[number]) => (Array.isArray(p.plans) ? p.plans[0] : p.plans);
 
@@ -54,10 +112,14 @@ export default async function Page() {
   // de las 21:00 de Buenos Aires el servidor todavía cree que es el mes anterior.
   const inicioDeMes = mesActualISO();
   const nuevosEsteMes = socioList.filter((s) => s.joined_on && s.joined_on >= inicioDeMes).length;
-  const mrr = socioList.filter((s) => s.status === 'activo').reduce((acc, s) => acc + (planOf(s)?.base_price ?? 0), 0);
+  // La cuota que cada socio ACEPTÓ, no el precio de lista del plan: con la
+  // cobertura odontológica paga $12.000 más, y sumando `base_price` el panel
+  // mostraba menos ingresos de los que el club factura.
+  const mrr = socioList
+    .filter((s) => s.status === 'activo')
+    .reduce((acc, s) => acc + (s.monthly_fee_agreed ?? planOf(s)?.base_price ?? 0), 0);
   const churnPct = totalSocios > 0 ? Math.round((bajas / totalSocios) * 1000) / 10 : 0;
 
-  const { data: reintPend } = await supabase.from('reimbursements').select('refund').eq('status', 'en_revision');
   const reintPendCount = reintPend?.length ?? 0;
   const reintPendSum = (reintPend ?? []).reduce((a, r) => a + r.refund, 0);
 
@@ -75,70 +137,80 @@ export default async function Page() {
     plan: planOf(s)?.name ?? '—', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
   }));
 
-  // ── Reintegros: cola + historial ──
-  const { data: colaRows } = await supabase
-    .from('reimbursements')
-    .select('id, provider_name, concept, amount, refund, requested_on, flag, receipt_path, profiles(member_no, full_name)')
-    .eq('status', 'en_revision')
-    .order('requested_on', { ascending: true });
   const cola: ColaRow[] = (colaRows ?? []).map((r) => {
     const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-    return { id: r.id, socio: `#${p?.member_no} · ${p?.full_name?.split(' ')[0]}`, prestador: r.provider_name, concepto: r.concept, fecha: fmtDay(r.requested_on), gastado: r.amount, reintegro: r.refund, flag: r.flag ?? undefined, receiptPath: r.receipt_path ?? null };
+    const m = Array.isArray(r.pets) ? r.pets[0] : r.pets;
+    type VacRow = { name: string; status: string; applied_on: string | null; due_on: string | null };
+    return {
+      id: r.id,
+      socio: `#${p?.member_no} · ${p?.full_name?.split(' ')[0]}`,
+      prestador: r.provider_name, concepto: r.concept, fecha: fmtDay(r.requested_on),
+      gastado: r.amount, reintegro: r.refund, pct: r.refund_pct, plan: r.plan_name,
+      flag: r.flag ?? undefined, receiptPath: r.receipt_path ?? null, receiptNo: r.receipt_no ?? null,
+      socioDni: p?.dni ?? null,
+      banco: {
+        titular: r.bank_holder, titularDni: r.bank_holder_dni, cuit: r.bank_cuit,
+        nombre: r.bank_name, cbu: r.bank_cbu, alias: r.bank_alias,
+      },
+      mascota: m
+        ? {
+            nombre: m.name,
+            info: [m.type, m.breed, m.age_years != null ? `${m.age_years} años` : null, m.weight_kg != null ? `${m.weight_kg} kg` : null].filter(Boolean).join(' · '),
+            vacunas: ((m.vaccinations ?? []) as VacRow[])
+              .slice()
+              .sort((a, b) => (b.applied_on ?? b.due_on ?? '').localeCompare(a.applied_on ?? a.due_on ?? ''))
+              .map((v) => ({
+                nombre: v.name,
+                estado: v.status === 'aplicada' ? 'Aplicada' : 'Pendiente',
+                cuando: v.status === 'aplicada' ? (v.applied_on ? fmtDay(v.applied_on) : '—') : v.due_on ? `vence ${fmtDay(v.due_on)}` : '—',
+              })),
+          }
+        : null,
+    };
   });
 
-  const { data: histRows } = await supabase
-    .from('reimbursements')
-    .select('provider_name, concept, amount, refund, status, profiles(member_no, full_name)')
-    .in('status', ['acreditado', 'rechazado'])
-    .order('requested_on', { ascending: false })
-    .limit(20);
   const hist: HistRow[] = (histRows ?? []).map((r) => {
     const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
     return { socio: `#${p?.member_no} · ${p?.full_name?.split(' ')[0]}`, prestador: r.provider_name, concepto: r.concept, gastado: r.amount, reintegro: r.refund, estado: r.status === 'acreditado' ? 'Acreditado' : 'Rechazado' };
   });
 
-  // ── Beneficios ──
-  const { data: benefitRows } = await supabase.from('benefits').select('id, name, category, discount, plan_requirement, status');
-  const benefits: BenefitAdminVM[] = (benefitRows ?? []).map((b) => ({ id: b.id, name: b.name, category: b.category, discount: b.discount, planRequirement: b.plan_requirement, status: b.status }));
-
-  // ── Planes ──
-  // Por precio: da AMIGO → FAMILIA → VIP. Sin orden explícito, editar un plan
-  // lo manda al final de la lista (Postgres reubica la fila al hacer update).
-  const { data: planRows } = await supabase.from('plans').select('id, name, tagline, base_price, perks, featured').order('base_price');
-  const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perks: p.perks ?? [], featured: p.featured }));
-
-  // ── FAQ ──
-  const { data: faqRows } = await supabase.from('faqs').select('id, question, answer').order('order', { ascending: true });
-  const faqs: FaqVM[] = faqRows ?? [];
-
-  // ── Ajustes ──
-  const { data: settingsRow } = await supabase.from('club_settings').select('whatsapp, email').eq('id', 1).single();
-  const settings: SettingsVM = { whatsapp: settingsRow?.whatsapp ?? '', email: settingsRow?.email ?? '' };
-
-  // ── Prestadores / Negocios (misma tabla, distinto recorte) ──
-  const { data: providerRows } = await supabase.from('providers').select('id, name, category, zone, rating, reviews, status, created_at');
-  const providers: ProviderAdminRow[] = (providerRows ?? []).map((p) => ({
-    id: p.id, nombre: p.name, rubro: p.category, zona: p.zone, rating: p.reviews > 0 ? p.rating.toFixed(1) : '—',
-    estado: p.status === 'verificado' ? 'Verificado' : p.status === 'rechazado' ? 'Rechazado' : 'Pendiente', solicitado: relTime(p.created_at),
+  const benefits: BenefitAdminVM[] = (benefitRows ?? []).map((b) => ({
+    id: b.id, name: b.name, category: b.category, discount: b.discount, planRequirement: b.plan_requirement, status: b.status,
+    description: b.description ?? '', zone: b.zone ?? '', hours: b.hours ?? '', validUntil: b.valid_until, days: b.days ?? [],
   }));
 
-  // ── Moderación ──
-  // El autor sale de la fila, igual que en la webapp del socio.
-  const { data: reportRows } = await supabase.from('community_posts').select('id, category, title, author_name').eq('reported', true);
+  const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perks: p.perks ?? [], featured: p.featured }));
+
+  const faqs: FaqVM[] = faqRows ?? [];
+
+  const settings: SettingsVM = { whatsapp: settingsRow?.whatsapp ?? '', email: settingsRow?.email ?? '' };
+
+  const providers: ProviderAdminRow[] = (providerRows ?? []).map((p) => {
+    const dueño = Array.isArray(p.profiles) ? p.profiles[0] : p.profiles;
+    return {
+      id: p.id, nombre: p.name, rubro: p.category, zona: p.zone, rating: p.reviews > 0 ? p.rating.toFixed(1) : '—',
+      estado: p.status === 'verificado' ? 'Verificado' : p.status === 'rechazado' ? 'Rechazado' : 'Pendiente',
+      solicitado: relTime(p.created_at),
+      about: p.about ?? '', direccion: p.address, telefono: p.phone, instagram: p.instagram, web: p.website,
+      reseñas: p.reviews,
+      precio: p.price != null ? `${money(p.price)}${p.price_unit ? ` ${p.price_unit}` : ''}` : null,
+      dueño: p.owner_id && dueño ? { nombre: dueño.full_name, email: dueño.email } : null,
+    };
+  });
+
   const reports: ReportRow[] = (reportRows ?? []).map((r) => ({
     id: r.id, cat: r.category,
     autor: r.author_name?.trim() ? `por ${r.author_name.trim().split(' ')[0]}` : 'por socio',
-    titulo: r.title, motivo: 'Reportado por la comunidad',
+    titulo: r.title,
+    // El motivo que eligió quien reportó. Los reportes viejos no tienen.
+    motivo: r.report_reason?.trim() || 'Reportado por la comunidad',
   }));
 
-  // ── Push: audiencias reales + historial de envíos ──
-  const { data: pendVaxPets } = await supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente');
   const audiences: AudienceVM[] = [
     { label: 'Todos los socios', n: totalSocios },
     ...dist.map((d) => ({ label: `Plan ${d.plan}`, n: d.socios })),
     { label: 'Vacunas pendientes', n: new Set((pendVaxPets ?? []).map((v) => v.pet_id)).size },
   ];
-  const { data: sentRows } = await supabase.from('push_notifications').select('title, audience, sent_at').order('sent_at', { ascending: false }).limit(10);
   const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—' }));
 
   return (

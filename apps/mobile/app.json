@@ -35,7 +35,14 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#5D5491"
+        }
+      ]
     ],
     "runtimeVersion": {
       "policy": "appVersion"

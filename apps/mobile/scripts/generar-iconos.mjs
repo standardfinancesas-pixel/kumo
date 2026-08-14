@@ -52,29 +52,12 @@ function buscarFuente() {
 const VIOLETA = '#5D5491';
 const LIMA = '#E1FB62';
 
-/** La gota, en un viewBox de 100×100, con el color y la escala que se le pidan. */
-const gota = (color) => `
-  <path d="M50 26 A24 24 0 0 1 74 50 A24 24 0 0 1 50 74 L31 74 A5 5 0 0 1 26 69 L26 50 A24 24 0 0 1 50 26 Z"
-        fill="${color}" transform="rotate(45 50 50)"/>`;
+/* La gota vivía acá, y con ella se generaban el ícono y el splash. Se fue cuando
+   la marca pasó a la "K": el path sigue en el sistema de diseño, pero este script
+   ya no lo usa y dejarlo era código muerto que había que leer cada vez. */
 
-const svgGota = (lado, color) =>
-  Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="${lado}" height="${lado}" viewBox="0 0 100 100">${gota(color)}</svg>`);
-
-/**
- * La gota recortada a su caja real y escalada al lado pedido.
- *
- * El `rotate(45)` del path deja la forma descentrada dentro del viewBox de
- * 100×100 —la esquina en punta rompe la simetría—, así que compuesta tal cual
- * salía corrida y chica. Se rasteriza grande, se recorta lo transparente y se
- * escala: así el centro óptico coincide con el del ícono.
- */
-const gotaCentrada = async (lado, color) => {
-  const tight = await sharp(svgGota(1024, color)).png().trim().toBuffer();
-  return sharp(tight)
-    .resize({ width: lado, height: lado, fit: 'contain', background: '#00000000' })
-    .png()
-    .toBuffer();
-};
+/* La gota tenía su propio centrado acá. Se fue con ella: el ícono terminó siendo
+   la "K" (cuatro letras a 48dp son un manchón), y el helper quedó sin uso. */
 
 /**
  * La "K" del avatar, recortada a su caja real y escalada al lado pedido.

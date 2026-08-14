@@ -252,6 +252,8 @@ create table if not exists community_posts (
   replies     integer not null default 0,
   likes       integer not null default 0,
   reported    boolean not null default false,
+  -- Por qué lo reportaron. La escribe reportar_post() (más abajo).
+  report_reason text,
   -- Foto de la publicacion, en el bucket pet-photos. El prototipo la ofrece y la
   -- tabla no tenia donde guardarla, asi que el boton no se podia construir.
   photo_url   text,
@@ -364,6 +366,66 @@ create trigger profiles_numero_de_socio before insert or update on profiles
   for each row execute function profiles_numero_de_socio();
 
 -- ============================================================
+--  PUSH: a dónde mandar y qué ya se mandó
+-- ============================================================
+-- El token de Expo es la dirección del aparato Y la credencial: quien lo tiene
+-- puede notificar a ese teléfono. Un socio puede tener varios (celular, tablet).
+create table if not exists push_tokens (
+  token       text primary key,
+  member_id   uuid not null references profiles(id) on delete cascade,
+  platform    text not null check (platform in ('android', 'ios', 'web')),
+  last_seen   timestamptz not null default now(),
+  created_at  timestamptz not null default now()
+);
+create index if not exists push_tokens_member_idx on push_tokens(member_id);
+
+-- El cron de vacunas corre todos los días y una vacuna vence una sola vez: sin
+-- esta marca, el socio recibiría el mismo aviso cada mañana durante un mes.
+create table if not exists vaccine_reminders (
+  vaccination_id uuid primary key references vaccinations(id) on delete cascade,
+  due_on         date not null,
+  sent_at        timestamptz not null default now()
+);
+
+-- Si la vacuna se aplica o se reprograma, el recordatorio viejo ya no aplica.
+create or replace function vaccine_reminder_reset()
+returns trigger language plpgsql security definer set search_path = public as $
+begin
+  if new.due_on is distinct from old.due_on or new.status is distinct from old.status then
+    delete from vaccine_reminders where vaccination_id = new.id;
+  end if;
+  return new;
+end $;
+
+drop trigger if exists vaccine_reminder_reset on vaccinations;
+create trigger vaccine_reminder_reset after update on vaccinations
+  for each row execute function vaccine_reminder_reset();
+
+-- ============================================================
+--  Reportar una publicación del foro
+-- ============================================================
+-- Va por función y no por política: la RLS es por fila, así que dejar que
+-- cualquiera marque `reported` también lo habilitaría a reescribir el título y el
+-- cuerpo de un post ajeno. Sin esto, Moderación no podía recibir nada.
+create or replace function reportar_post(p_post_id uuid, p_motivo text)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'Hay que tener sesión para reportar.';
+  end if;
+  -- El primer motivo es el que queda, y nadie se reporta a sí mismo.
+  update community_posts
+     set reported      = true,
+         report_reason = coalesce(nullif(btrim(p_motivo), ''), 'Sin motivo')
+   where id = p_post_id
+     and not reported
+     and author_id is distinct from auth.uid();
+end $$;
+
+revoke all on function reportar_post(uuid, text) from public;
+grant execute on function reportar_post(uuid, text) to authenticated;
+
+-- ============================================================
 --  Helper: ¿el usuario actual es admin?
 -- ============================================================
 create or replace function is_admin()
@@ -466,6 +528,8 @@ alter table post_likes         enable row level security;
 alter table answer_likes       enable row level security;
 alter table health_declarations enable row level security;
 alter table declaracion_versions enable row level security;
+alter table push_tokens        enable row level security;
+alter table vaccine_reminders  enable row level security;
 create policy "versiones visibles" on declaracion_versions for select using (true);
 
 -- Catálogo público (planes, beneficios, faqs, ajustes, prestadores verificados)
@@ -481,6 +545,14 @@ create policy "perfil propio - select" on profiles for select using (id = auth.u
 -- (ver migraciones) es lo que impide que un socio se cambie el rol o el estado.
 create policy "perfil propio - update" on profiles for update using (id = auth.uid() or is_admin());
 create policy "perfil propio - insert" on profiles for insert with check (id = auth.uid());
+
+-- Los tokens de push: cada quien registra y borra los suyos; el club los lee para
+-- poder enviar. `vaccine_reminders` no lleva políticas a propósito: solo la
+-- service-role key la toca, desde el cron.
+create policy "tokens propios - select" on push_tokens for select using (member_id = auth.uid() or is_admin());
+create policy "tokens propios - insert" on push_tokens for insert with check (member_id = auth.uid());
+create policy "tokens propios - update" on push_tokens for update using (member_id = auth.uid()) with check (member_id = auth.uid());
+create policy "tokens propios - delete" on push_tokens for delete using (member_id = auth.uid() or is_admin());
 
 -- Mascotas: del dueño, pero el INSERT va aparte. Las preguntas de salud son por
 -- mascota, así que dejar insertar directo permitía sumar una mascota después del

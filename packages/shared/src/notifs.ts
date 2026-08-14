@@ -9,6 +9,11 @@
 
 import { diasHasta } from './fechas';
 
+/** Cuántos días antes se avisa un vencimiento del carnet. Dos: alcanza para
+ *  conseguir turno y no tan temprano como para olvidarse. Lo usa también el cron
+ *  de mails y push, así que el aviso de la app y el del teléfono coinciden. */
+export const DIAS_AVISO_CARNET = 2;
+
 export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision';
 
 export type Notif = {
@@ -54,7 +59,7 @@ export function notifTiempo(iso: string): string {
 }
 
 export type NotifInput = {
-  pets: { name: string; vaccines: { id: string; name: string; status: string; dueOn: string | null }[] }[];
+  pets: { name: string; vaccines: { id: string; name: string; kind?: string; status: string; dueOn: string | null }[] }[];
   reintegros: { id: string; providerName: string; refund: number; status: string; createdAt: string; resolvedAt: string | null }[];
   negocio: { name: string; status: string; createdAt: string } | null;
 };
@@ -72,21 +77,33 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
   const items: Notif[] = [];
   const hoyIso = new Date().toISOString();
 
-  // Vacunas por vencer en los próximos 30 días. Es un recordatorio vigente (no
-  // un hecho pasado), así que va arriba —fechado hoy— y en el pie muestra el
-  // vencimiento en lugar de un "hace tanto" que no significaría nada.
+  /*
+   * Lo del carnet que vence pronto.
+   *
+   * Dos cosas que estaban mal y se ven en cuanto un socio tiene el carnet cargado:
+   * la ventana era de 30 días —o sea que la campanita mostraba avisos de cosas de
+   * un mes después, y no se distinguía lo urgente— y TODO se anunciaba como
+   * "Recordatorio de vacuna", aunque fuera un estudio o un antiparasitario.
+   *
+   * Es un recordatorio vigente (no un hecho pasado), así que va arriba —fechado
+   * hoy— y en el pie muestra el vencimiento en lugar de un "hace tanto" que no
+   * significaría nada.
+   */
   for (const pet of input.pets) {
     for (const v of pet.vaccines) {
       if (v.status === 'aplicada' || !v.dueOn) continue;
       const dias = diasHasta(v.dueOn);
-      if (dias < 0 || dias > 30) continue;
+      if (dias < 0 || dias > DIAS_AVISO_CARNET) continue;
+      const tipo = (v.kind ?? 'Vacuna').toLowerCase();
+      // "la antirrábica" pero "el estudio": el artículo depende del tipo.
+      const el = tipo === 'vacuna' ? 'La' : 'El';
       items.push({
         id: `vac-${v.id}`,
         kind: 'vacuna',
-        title: 'Recordatorio de vacuna',
+        title: `Recordatorio de ${tipo}`,
         body: dias === 0
-          ? `La ${v.name.toLowerCase()} de ${pet.name} vence hoy. Reservá turno en tu veterinaria.`
-          : `La ${v.name.toLowerCase()} de ${pet.name} vence ${dias === 1 ? 'mañana' : `en ${dias} días`} (${fmtDia(v.dueOn)}). Reservá turno en tu veterinaria.`,
+          ? `${el} ${v.name.toLowerCase()} de ${pet.name} vence hoy. Reservá turno en tu veterinaria.`
+          : `${el} ${v.name.toLowerCase()} de ${pet.name} vence ${dias === 1 ? 'mañana' : `en ${dias} días`} (${fmtDia(v.dueOn)}). Reservá turno en tu veterinaria.`,
         date: hoyIso,
         timeLabel: dias === 0 ? 'Vence hoy' : `Vence el ${fmtDia(v.dueOn)}`,
         to: 'carnet',

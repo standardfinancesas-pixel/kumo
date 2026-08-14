@@ -174,11 +174,77 @@ export default async function Page() {
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) redirect(LANDING);
 
-  const { data: profileRow } = await supabase
-    .from('profiles')
-    .select('member_no, full_name, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
-    .eq('id', auth.user.id)
-    .single();
+  /*
+   * Todo junto, no una atrás de la otra.
+   *
+   * Ninguna de estas consultas depende del RESULTADO de otra —solo los mapeos de
+   * más abajo—, y hasta acá se hacían en fila: once viajes de ida y vuelta a
+   * Supabase, que además está en otra región. Cada `router.refresh()` (o sea, cada
+   * vez que el socio toca un botón que escribe algo) pagaba los once de nuevo, y
+   * eso es lo que se sentía como "tarda un montón". En paralelo, la pantalla tarda
+   * lo que la consulta más lenta.
+   */
+  const [
+    { data: profileRow },
+    { data: petsRows },
+    { data: reintRows },
+    { data: contactRows },
+    { data: providerRows },
+    { data: reviewRows },
+    { data: negocioRow },
+    { data: benefitRows },
+    { data: postRows },
+    { data: postLikeRows },
+    { data: ansLikeRows },
+    { data: favRows },
+    { data: planRows },
+  ] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('member_no, full_name, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
+      .eq('id', auth.user.id)
+      .single(),
+    supabase
+      .from('pets')
+      .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)')
+      .eq('owner_id', auth.user.id),
+    supabase
+      .from('reimbursements')
+      .select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)')
+      .eq('member_id', auth.user.id)
+      .order('requested_on', { ascending: false }),
+    supabase
+      .from('emergency_contacts')
+      .select('id, name, phone, type, address, hours')
+      .eq('owner_id', auth.user.id),
+    supabase
+      .from('providers')
+      .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, lat, lng, status')
+      .eq('status', 'verificado'),
+    // Reseñas de los prestadores publicados, más nuevas primero.
+    supabase
+      .from('provider_reviews')
+      .select('id, provider_id, member_id, rating, text, author_name, created_at')
+      .order('created_at', { ascending: false }),
+    // El negocio propio del socio, si dio de alta uno. Va aparte de `providers`
+    // porque ese listado solo trae los verificados y acá interesa verlo aunque
+    // esté pendiente o lo hayan rechazado.
+    supabase
+      .from('providers')
+      .select('id, name, category, zone, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
+      .eq('owner_id', auth.user.id)
+      .maybeSingle(),
+    supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
+    supabase
+      .from('community_posts')
+      .select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
+      .order('created_at', { ascending: false }),
+    // Qué likeó el socio, para pintar el corazón lleno y no dejarlo likear dos veces.
+    supabase.from('post_likes').select('post_id').eq('member_id', auth.user.id),
+    supabase.from('answer_likes').select('answer_id').eq('member_id', auth.user.id),
+    supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id),
+    supabase.from('plans').select('id, name, base_price, tagline').order('base_price'),
+  ]);
   if (!profileRow) redirect(LANDING);
 
   const plan = Array.isArray(profileRow.plans) ? profileRow.plans[0] : profileRow.plans;
@@ -207,36 +273,11 @@ export default async function Page() {
     tarjeta: tarjetaLabel(profileRow.card_brand, profileRow.card_last4),
   };
 
-  const { data: petsRows } = await supabase
-    .from('pets')
-    .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)')
-    .eq('owner_id', auth.user.id);
   const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(r as PetRow, profile.memberNo ? `#${profile.memberNo}` : '—', profile.planName));
-
-  const { data: reintRows } = await supabase
-    .from('reimbursements')
-    .select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)')
-    .eq('member_id', auth.user.id)
-    .order('requested_on', { ascending: false });
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
-
-  const { data: contactRows } = await supabase
-    .from('emergency_contacts')
-    .select('id, name, phone, type, address, hours')
-    .eq('owner_id', auth.user.id);
   const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));
-
-  const { data: providerRows } = await supabase
-    .from('providers')
-    .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, lat, lng, status')
-    .eq('status', 'verificado');
   const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow));
 
-  // Reseñas de los prestadores publicados, más nuevas primero.
-  const { data: reviewRows } = await supabase
-    .from('provider_reviews')
-    .select('id, provider_id, member_id, rating, text, author_name, created_at')
-    .order('created_at', { ascending: false });
   const reviews: Record<string, Review[]> = {};
   for (const r of reviewRows ?? []) {
     (reviews[r.provider_id] ??= []).push({
@@ -245,14 +286,6 @@ export default async function Page() {
     });
   }
 
-  // El negocio propio del socio, si dio de alta uno. Va aparte de `providers`
-  // porque ese listado solo trae los verificados y acá interesa verlo aunque
-  // esté pendiente o lo hayan rechazado.
-  const { data: negocioRow } = await supabase
-    .from('providers')
-    .select('id, name, category, zone, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
-    .eq('owner_id', auth.user.id)
-    .maybeSingle();
   const negocio: MiNegocio | null = negocioRow
     ? {
         id: negocioRow.id, name: negocioRow.name, category: negocioRow.category, zone: negocioRow.zone,
@@ -262,20 +295,8 @@ export default async function Page() {
       }
     : null;
 
-  const { data: benefitRows } = await supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo');
   const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow));
-
-  const { data: postRows } = await supabase
-    .from('community_posts')
-    .select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
-    .order('created_at', { ascending: false });
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
-
-  // Qué likeó el socio, para pintar el corazón lleno y no dejarlo likear dos veces.
-  const [{ data: postLikeRows }, { data: ansLikeRows }] = await Promise.all([
-    supabase.from('post_likes').select('post_id').eq('member_id', auth.user.id),
-    supabase.from('answer_likes').select('answer_id').eq('member_id', auth.user.id),
-  ]);
   const misLikes = {
     posts: (postLikeRows ?? []).map((l) => l.post_id),
     answers: (ansLikeRows ?? []).map((l) => l.answer_id),
@@ -287,7 +308,7 @@ export default async function Page() {
   const notifInput: NotifInput = {
     pets: (petsRows ?? []).map((p) => ({
       name: p.name,
-      vaccines: ((p.vaccinations ?? []) as VaccinationRow[]).map((v) => ({ id: v.id, name: v.name, status: v.status, dueOn: v.due_on })),
+      vaccines: ((p.vaccinations ?? []) as VaccinationRow[]).map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, dueOn: v.due_on })),
     })),
     reintegros: ((reintRows ?? []) as ReintRow[]).map((r) => ({
       id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
@@ -295,10 +316,7 @@ export default async function Page() {
     negocio: negocioRow ? { name: negocioRow.name, status: negocioRow.status, createdAt: negocioRow.created_at } : null,
   };
 
-  const { data: favRows } = await supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id);
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
-
-  const { data: planRows } = await supabase.from('plans').select('id, name, base_price, tagline').order('base_price');
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
   return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} />;

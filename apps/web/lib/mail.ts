@@ -25,7 +25,6 @@ const SITE =
 
 const BRAND = '#5d5491';
 const INK = '#211e33';
-const LIME = '#e1fb62';
 const MUTED = '#8781a0';
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');

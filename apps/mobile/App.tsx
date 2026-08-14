@@ -1,6 +1,6 @@
-import { useState, useEffect, createElement, type ReactNode } from 'react';
+import { useState, useEffect, useRef, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { Alert, PanResponder, SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
@@ -11,12 +11,14 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
+import * as Notifications from 'expo-notifications';
+import { registrarDispositivo, olvidarDispositivo } from './lib/push';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
@@ -101,7 +103,7 @@ function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?:
       {d === 'calendar' && <><Rect x="3" y="4" width="18" height="18" rx="2" {...common} /><Line x1="16" y1="2" x2="16" y2="6" {...common} /><Line x1="8" y1="2" x2="8" y2="6" {...common} /><Line x1="3" y1="10" x2="21" y2="10" {...common} /></>}
       {d === 'store' && <><Path d="M3 9l1-5h16l1 5" {...common} /><Path d="M4 9v11h16V9" {...common} /><Path d="M9 20v-6h6v6" {...common} /></>}
       {d === 'person' && <><Circle cx="12" cy="8" r="3.4" {...common} /><Path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6" {...common} /></>}
-      {d === 'heart' && <Path d="M12 20s-7-4.3-9.2-8.6C1.3 8.3 2.6 5 6 5c2 0 3.3 1.2 4 2.3C10.7 6.2 12 5 14 5c3.4 0 4.7 3.3 3.2 6.4C19 15.7 12 20 12 20z" fill={fill ? color : 'none'} stroke={fill ? 'none' : color} strokeWidth={1.9} strokeLinejoin="round" />}
+      {d === 'heart' && <Path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" fill={fill ? color : 'none'} stroke={fill ? 'none' : color} strokeWidth={1.9} strokeLinejoin="round" />}
       {d === 'hospital' && <><Rect x="4" y="4" width="16" height="16" rx="3" {...common} /><Line x1="12" y1="8" x2="12" y2="16" {...common} /><Line x1="8" y1="12" x2="16" y2="12" {...common} /></>}
       {d === 'pill' && <><Rect x="3" y="8" width="18" height="8" rx="4" {...common} /><Line x1="12" y1="8" x2="12" y2="16" {...common} /></>}
       {d === 'image' && <><Rect x="3" y="3" width="18" height="18" rx="2" {...common} /><Circle cx="8.5" cy="8.5" r="1.5" {...common} /><Path d="M21 15l-5-5L5 21" {...common} /></>}
@@ -190,7 +192,7 @@ const BackLink = ({ label, onPress }: { label: string; onPress: () => void }) =>
 );
 
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
-function Inicio({ profile, pets, petIdx, setPetIdx, go }: { profile: Profile | null; pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void }) {
+function Inicio({ pets, petIdx, setPetIdx, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void }) {
   const pet = pets[petIdx];
   const [promoIdx, setPromoIdx] = useState(0);
   useEffect(() => {
@@ -259,16 +261,81 @@ function Inicio({ profile, pets, petIdx, setPetIdx, go }: { profile: Profile | n
 /* ── Hoja inferior (los sheets del prototipo) ──────────────────── */
 function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   return (
-    <Pressable onPress={onClose} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60, backgroundColor: 'rgba(33,30,51,0.45)', justifyContent: 'flex-end' }}>
-      <Pressable onPress={() => {}} style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' }}>
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 26 }}>
+    /* OJO con la estructura: el fondo que cierra al tocarlo es un HERMANO de la
+       hoja, no su padre. Antes el ScrollView estaba adentro de un Pressable y ese
+       Pressable se quedaba con el gesto: el contenido se trababa a mitad de
+       arrastre (se veía en el calendario, que es la hoja más alta). */
+    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 60, justifyContent: 'flex-end' }}>
+      <Pressable onPress={onClose} style={{ flex: 1, backgroundColor: 'rgba(33,30,51,0.45)' }} />
+      <View style={{ backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 16, paddingBottom: 26 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={{ width: 40, height: 4, borderRadius: 100, backgroundColor: '#e0dcec', alignSelf: 'center', marginBottom: 16 }} />
           {children}
         </ScrollView>
-      </Pressable>
-    </Pressable>
+      </View>
+    </View>
   );
 }
+/**
+ * Un slider que se arrastra de verdad.
+ *
+ * El radio de búsqueda no se podía mover: eran seis zonas invisibles que se
+ * tocaban (1, 5, 10, 15, 20, 25 km), así que arrastrar no hacía nada y los valores
+ * del medio no existían. Va con `PanResponder` y no con
+ * `@react-native-community/slider` a propósito: ese es un módulo nativo y nos
+ * obligaría a un build nuevo, mientras esto sale por OTA.
+ *
+ * Dos detalles que lo hacen funcionar adentro de un ScrollView:
+ *   · `onMoveShouldSetPanResponderCapture` agarra el gesto ANTES que el scroll
+ *     vertical, que si no se lo lleva al primer píxel de movimiento.
+ *   · `onPanResponderTerminationRequest: () => false` evita que el scroll se lo
+ *     robe a mitad de arrastre.
+ *
+ * El ancho se mide con `onLayout` porque hay que traducir píxeles a valores, y en
+ * React Native no hay forma de saberlo antes de que se dibuje.
+ */
+function Slider({ valor, min, max, onCambio }: { valor: number; min: number; max: number; onCambio: (v: number) => void }) {
+  const [ancho, setAncho] = useState(0);
+  const anchoRef = useRef(0);
+  const ALTO_TOQUE = 34;
+
+  const valorDesdeX = (x: number) => {
+    const w = anchoRef.current;
+    if (w <= 0) return valor;
+    const t = Math.max(0, Math.min(1, x / w));
+    return Math.round(min + t * (max - min));
+  };
+
+  const pan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (e) => onCambio(valorDesdeX(e.nativeEvent.locationX)),
+      onPanResponderMove: (e) => onCambio(valorDesdeX(e.nativeEvent.locationX)),
+    }),
+  ).current;
+
+  const pct = ((valor - min) / (max - min)) * 100;
+  return (
+    <View
+      {...pan.panHandlers}
+      onLayout={(e) => { const w = e.nativeEvent.layout.width; anchoRef.current = w; setAncho(w); }}
+      // La zona de toque es más alta que la barra: 6px de alto no se pueden agarrar
+      // con un dedo.
+      style={{ height: ALTO_TOQUE, justifyContent: 'center', marginBottom: 6 }}
+    >
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.violet[100] }}>
+        <View style={{ position: 'absolute', left: 0, height: 6, borderRadius: 3, backgroundColor: BRAND, width: `${pct}%` }} />
+        {ancho > 0 && (
+          <View style={{ position: 'absolute', left: (pct / 100) * ancho - 11, top: -8, width: 22, height: 22, borderRadius: 11, backgroundColor: BRAND, borderWidth: 3, borderColor: '#fff' }} />
+        )}
+      </View>
+    </View>
+  );
+}
+
 /** Botón de un grupo de opciones tipo pastilla (Tipo, Estado). */
 function SegBtn({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   return (
@@ -295,7 +362,7 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
   return (
     <Sheet onClose={onClose}>
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK, marginBottom: 2 }}>Calendario de salud</Text>
-      <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>Cuándo aplicaste cada vacuna y cuándo toca la próxima.</Text>
+      <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>Vacunas, estudios y antiparasitarios: cuándo se aplicaron y cuándo toca el próximo.</Text>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <TouchableOpacity onPress={() => mover(-1)} style={{ paddingHorizontal: 8, paddingVertical: 4 }}><Text style={{ color: BRAND, fontSize: 20 }}>‹</Text></TouchableOpacity>
@@ -899,18 +966,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         <Text style={{ fontSize: 13, color: MUTED, fontWeight: '600' }}>Radio de búsqueda</Text>
         <Text style={{ fontSize: 13, fontWeight: '800', color: BRAND }}>{radius} km</Text>
       </View>
-      <View style={{ marginBottom: 6 }}>
-        <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.violet[100], justifyContent: 'center' }}>
-          <View style={{ position: 'absolute', left: 0, height: 6, borderRadius: 3, backgroundColor: BRAND, width: `${((radius - 1) / 24) * 100}%` }} />
-          <View style={{ position: 'absolute', left: `${((radius - 1) / 24) * 100}%`, width: 18, height: 18, borderRadius: 9, backgroundColor: BRAND, marginLeft: -9, borderWidth: 3, borderColor: '#fff' }} />
-        </View>
-        {/* pasos táctiles simples */}
-        <View style={{ flexDirection: 'row', position: 'absolute', width: '100%', height: 20 }}>
-          {[1, 5, 10, 15, 20, 25].map((r) => (
-            <TouchableOpacity key={r} onPress={() => setRadius(r)} style={{ flex: 1, height: 20 }} />
-          ))}
-        </View>
-      </View>
+      <Slider valor={radius} min={1} max={25} onCambio={setRadius} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
         <Text style={{ fontSize: 11, color: '#a29dba' }}>1 km</Text><Text style={{ fontSize: 11, color: '#a29dba' }}>25 km</Text>
       </View>
@@ -1275,6 +1331,7 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
           // El mail va ANTES de cerrar la sesión: el aviso viaja con el token, y
           // después del signOut ya no hay con qué autenticarlo.
           await avisar('baja');
+          await olvidarDispositivo();
           await supabase.auth.signOut();
         },
       },
@@ -2499,6 +2556,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
   const [busy, setBusy] = useState(false);
   const [likePost, setLikePost] = useState(misLikes.posts.includes(p.id));
   const [likeAns, setLikeAns] = useState<string[]>(misLikes.answers);
+  const [reportado, setReportado] = useState(false);
 
   /** Optimista: el corazón responde al toque y la base va atrás. */
   const togglePost = async () => {
@@ -2591,6 +2649,36 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
     );
   };
 
+  /**
+   * Reportar una publicación ajena.
+   *
+   * Pasa por la función `reportar_post` de la base: un socio no puede editar el
+   * post de otro, y la RLS es por fila, así que habilitarlo para marcar
+   * `reported` lo habilitaría también a reescribir el texto ajeno.
+   *
+   * Los motivos van en un Alert y no en chips como en la web porque en el
+   * celular un menú nativo es más rápido que cuatro botones apretados.
+   */
+  const reportar = () => {
+    Alert.alert(
+      '¿Qué pasa con esta publicación?',
+      'La revisa una persona del club. No se avisa a quien la escribió.',
+      [
+        ...MOTIVOS_REPORTE.map((motivo) => ({
+          text: motivo,
+          onPress: async () => {
+            setBusy(true);
+            const { error } = await supabase.rpc('reportar_post', { p_post_id: p.id, p_motivo: motivo });
+            setBusy(false);
+            if (error) { Alert.alert('No pudimos reportarla', 'Probá de nuevo.'); return; }
+            setReportado(true);
+          },
+        })),
+        { text: 'Cancelar', style: 'cancel' as const },
+      ]
+    );
+  };
+
   const nPost = p.likes + (likePost && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likePost && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
@@ -2601,7 +2689,13 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
           <TouchableOpacity onPress={borrarPost} disabled={busy} style={{ marginBottom: 6 }}>
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#b0483f' }}>Borrar publicación</Text>
           </TouchableOpacity>
-        ) : null}
+        ) : (
+          <TouchableOpacity onPress={reportar} disabled={busy || reportado} style={{ marginBottom: 6 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '700', color: reportado ? '#2f8f5b' : MUTED }}>
+              {reportado ? '✓ Reportado' : '⚑ Reportar'}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -2898,6 +2992,34 @@ export default function App() {
 
   useEffect(() => { AsyncStorage.getItem(VISTO_KEY).then(setVisto); }, []);
 
+  /*
+   * Registro para push, cada vez que hay un socio adentro.
+   *
+   * Va acá y no en el login porque también corre cuando la app arranca con la
+   * sesión ya guardada, que es el caso normal: el token de Expo puede cambiar
+   * (reinstalación, restore del sistema) y hay que reponerlo sin pedirle nada al
+   * socio. Si el aparato no puede recibir push —emulador, permiso denegado, falta
+   * FCM— se sale en silencio: la app funciona igual y no hay nada que el socio
+   * pueda hacer con ese error.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    let vivo = true;
+    registrarDispositivo(userId).then((r) => {
+      if (vivo && !r.ok) console.warn('[push] sin registrar:', r.motivo);
+    });
+    return () => { vivo = false; };
+  }, [userId]);
+
+  /** Tocar la notificación abre la pantalla que corresponde, no el inicio. */
+  useEffect(() => {
+    const sub = Notifications.addNotificationResponseReceivedListener((ev) => {
+      const pantalla = ev.notification.request.content.data?.pantalla;
+      if (typeof pantalla === 'string') setScreen(pantalla as Screen);
+    });
+    return () => sub.remove();
+  }, []);
+
   if (!fontsLoaded || !authReady) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
 
   const go = (t: Screen) => { setMasOpen(false); setScreen(t); };
@@ -2972,7 +3094,11 @@ export default function App() {
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TouchableOpacity onPress={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: screen === 'notif' ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="bell" size={21} color={screen === 'notif' ? '#fff' : BRAND} />
-              {noLeidas > 0 && screen !== 'notif' && <View style={{ position: 'absolute', top: 9, right: 10, width: 8, height: 8, borderRadius: 4, backgroundColor: LIME, borderWidth: 2, borderColor: colors.violet[100] }} />}
+              {noLeidas > 0 && screen !== 'notif' && (
+                <View style={{ position: 'absolute', top: 3, right: 3, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: LIME, borderWidth: 2, borderColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 10.5, fontWeight: '800', color: INK }}>{noLeidas > 9 ? '9+' : noLeidas}</Text>
+                </View>
+              )}
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setMasOpen(true)} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: masOpen ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="menu" size={22} color={masOpen ? '#fff' : BRAND} />
@@ -2980,7 +3106,7 @@ export default function App() {
           </View>
         </View>
         <View style={{ flex: 1 }}>
-          {screen === 'inicio' && <Inicio profile={data.profile} pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
+          {screen === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
           {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
           {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
