@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "//": "gru1 = San Pablo, la región de nuestro Supabase (sa-east-1). La función corría en iad1 (Virginia), así que CADA consulta cruzaba el continente ida y vuelta: con doce consultas por pantalla, eso solo era casi un segundo de espera.",
   "regions": ["gru1"],
   "crons": [
     {

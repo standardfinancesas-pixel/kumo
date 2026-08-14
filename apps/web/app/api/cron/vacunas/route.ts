@@ -5,7 +5,11 @@ import { mandarPush } from '@/lib/push';
 import { sendVacunaProxima } from '@/lib/mail';
 
 /**
- * Recordatorio de vacunas por vencer. Lo llama el cron de Vercel una vez por día.
+ * Recordatorio de vacunas por vencer. Lo llama el cron de Vercel una vez por día,
+ * a las 12:00 UTC — o sea 09:00 de Buenos Aires, a una hora en la que se puede
+ * llamar a la veterinaria. La agenda vive en `apps/web/vercel.json`, junto con
+ * `regions: ["gru1"]`: la función corría en Virginia con Supabase en San Pablo, y
+ * cada consulta cruzaba el continente.
  *
  * Hasta acá el aviso de vacuna existía solo DENTRO de la app y se calculaba cuando
  * el socio la abría: a quien no entraba no le llegaba nada, que es justo el caso
