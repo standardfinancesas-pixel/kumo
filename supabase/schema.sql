@@ -27,7 +27,9 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create type member_status as enum ('activo', 'moroso', 'baja');
+  -- 'suspendido' es el club cortándole el acceso; 'baja' es el socio que se fue
+  -- (y es la única que cuenta para el churn). No son lo mismo.
+  create type member_status as enum ('activo', 'moroso', 'suspendido', 'baja');
 exception when duplicate_object then null; end $$;
 
 do $$ begin

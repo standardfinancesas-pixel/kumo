@@ -28,7 +28,9 @@ function relTime(iso: string): string {
   const days = Math.round(hs / 24);
   return days === 1 ? 'ayer' : `hace ${days} días`;
 }
-const ESTADO_SOCIO: Record<string, string> = { activo: 'Al día', moroso: 'En mora', baja: 'Suspendido' };
+/** Cómo se lee cada estado en el panel. 'suspendido' (lo corta el club) y 'baja'
+ *  (se fue el socio) son distintos a propósito: solo la baja cuenta para el churn. */
+const ESTADO_SOCIO: Record<string, string> = { activo: 'Al día', moroso: 'En mora', suspendido: 'Suspendido', baja: 'De baja' };
 
 export default async function Page() {
   const supabase = await createClient();
@@ -135,6 +137,8 @@ export default async function Page() {
   const socios: SocioRow[] = socioList.map((s) => ({
     id: s.id, n: `#${s.member_no}`, nombre: s.full_name, mascota: (s.pets ?? []).map((p: { name: string }) => p.name).join(' + ') || '—',
     plan: planOf(s)?.name ?? '—', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
+    // El estado crudo, para que la acción sepa si toca suspender o reactivar.
+    estadoRaw: s.status,
   }));
 
   const cola: ColaRow[] = (colaRows ?? []).map((r) => {

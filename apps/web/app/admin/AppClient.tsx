@@ -17,7 +17,7 @@ const money = (n: number) => '$' + n.toLocaleString('es-AR');
 export type AdminProfile = { id: string; fullName: string };
 export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number };
 export type DistRow = { plan: string; socios: number; pct: number };
-export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string };
+export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string };
 /**
  * Una solicitud en la cola. Trae todo lo que el club necesita para resolverla sin
  * salir de la pantalla: antes había que ir a Socios, buscar a la persona y abrir
@@ -99,6 +99,70 @@ const estadoBadge = (e: string) => e === 'Al día' || e === 'Verificado' || e ==
   : e === 'En mora' || e === 'Pendiente' || e === 'En revisión' || e === 'Pausado'
   ? badge('rgb(251,243,226)', 'rgb(184,134,11)')
   : badge('rgb(251,232,239)', 'rgb(193,77,122)');
+
+/* ── Menú de acciones ──────────────────────────────────────────── */
+/**
+ * El "⋯" de una fila, con sus acciones adentro.
+ *
+ * Va en menú y no como botones sueltos porque las filas ya tienen cinco o seis
+ * columnas: cuatro botones al final las volvían ilegibles y encima empujaban la
+ * tabla a scrollear en pantallas chicas. Y porque hay acciones que no conviene
+ * tener a un clic de distancia, como eliminar.
+ *
+ * Cada acción declara si es destructiva (se pinta en rojo) y si pide confirmación.
+ * El menú se cierra al elegir, al tocar afuera o con Escape.
+ */
+type Accion = { label: string; onClick: () => void; destructiva?: boolean; confirmar?: string };
+
+function MenuAcciones({ acciones, disabled }: { acciones: Accion[]; disabled?: boolean }) {
+  const [abierto, setAbierto] = useState(false);
+
+  useEffect(() => {
+    if (!abierto) return;
+    const cerrar = () => setAbierto(false);
+    const conEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(false); };
+    // `click` en captura: si esperara al bubbling, el click que abre el menú lo
+    // cerraría en el mismo gesto.
+    window.addEventListener('click', cerrar);
+    window.addEventListener('keydown', conEsc);
+    return () => { window.removeEventListener('click', cerrar); window.removeEventListener('keydown', conEsc); };
+  }, [abierto]);
+
+  return (
+    <div style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end' }}>
+      <button
+        aria-label="Acciones"
+        disabled={disabled}
+        onClick={(e) => { e.stopPropagation(); setAbierto((s) => !s); }}
+        style={{ background: abierto ? 'rgb(240,237,249)' : '#fff', border: '1px solid #e6e3f0', color: '#5b5670', fontWeight: 700, fontSize: 15, lineHeight: 1, padding: '6px 10px', borderRadius: 9, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1 }}
+      >
+        ⋯
+      </button>
+      {abierto && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, zIndex: 30, background: '#fff', border: '1px solid #e6e3f0', borderRadius: 12, boxShadow: '0 12px 28px rgba(33,30,51,0.14)', padding: 6, minWidth: 180 }}
+        >
+          {acciones.map((a) => (
+            <button
+              key={a.label}
+              onClick={() => {
+                setAbierto(false);
+                if (a.confirmar && !confirm(a.confirmar)) return;
+                a.onClick();
+              }}
+              style={{ display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', color: a.destructiva ? 'rgb(193,77,122)' : '#3f3a55', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13.5, padding: '9px 10px', borderRadius: 8, cursor: 'pointer' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = a.destructiva ? 'rgb(251,232,239)' : 'rgb(247,246,250)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = 'none'; }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* ── Modal ─────────────────────────────────────────────────────── */
 const fieldLabel: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 6, display: 'block' };
@@ -378,9 +442,33 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
 }
 
 function Socios({ socios }: { socios: SocioRow[] }) {
+  const router = useRouter();
   const [plan, setPlan] = useState('Todos');
   const [estado, setEstado] = useState('Todos');
   const [ficha, setFicha] = useState<SocioRow | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [aviso, setAviso] = useState('');
+
+  /*
+   * Suspender o reactivar a un socio.
+   *
+   * 'suspendido' es distinto de 'baja' a propósito: la baja la pide el socio y
+   * cuenta para el churn del dashboard; la suspensión la decide el club y es
+   * reversible. Con un solo estado para las dos cosas, el churn mentiría.
+   *
+   * Y tiene efecto real, no cosmético: un socio que no está activo no puede
+   * entrar a la app (lo corta `/app` y también mobile al abrir).
+   */
+  const cambiarEstado = async (s: SocioRow, nuevo: 'activo' | 'suspendido') => {
+    setBusyId(s.id); setAviso('');
+    const { error } = await supabase.from('profiles').update({ status: nuevo }).eq('id', s.id);
+    if (error) setAviso('No pudimos cambiar el estado. Probá de nuevo.');
+    else setAviso(nuevo === 'suspendido'
+      ? `${s.nombre} quedó suspendido: no va a poder entrar a la app hasta que lo reactives.`
+      : `${s.nombre} está activo otra vez y ya puede entrar.`);
+    router.refresh();
+    setBusyId(null);
+  };
   const list = socios.filter((s) => (plan === 'Todos' || s.plan === plan) && (estado === 'Todos' || s.estado === estado));
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
@@ -395,12 +483,13 @@ function Socios({ socios }: { socios: SocioRow[] }) {
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>ESTADO</div>
-          <div style={{ display: 'flex', gap: 8 }}>{['Todos', 'Al día', 'En mora', 'Suspendido'].map((e) => <button key={e} onClick={() => setEstado(e)} style={chip(estado === e)}>{e}</button>)}</div>
+          <div style={{ display: 'flex', gap: 8 }}>{['Todos', 'Al día', 'En mora', 'Suspendido', 'De baja'].map((e) => <button key={e} onClick={() => setEstado(e)} style={chip(estado === e)}>{e}</button>)}</div>
         </div>
       </div>
+      <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'ESTADO'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
+          <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'ESTADO', 'ACCIÓN'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
           <tbody>
             {list.map((s) => (
               <tr key={s.n} className="adm-row" onClick={() => setFicha(s)} style={{ cursor: 'pointer' }}>
@@ -410,6 +499,22 @@ function Socios({ socios }: { socios: SocioRow[] }) {
                 <td style={td}>{s.plan}</td>
                 <td style={{ ...td, color: '#8781a0' }}>{s.desde}</td>
                 <td style={td}><span style={estadoBadge(s.estado)}>{s.estado}</span></td>
+                <td style={td}>
+                  <MenuAcciones
+                    disabled={busyId === s.id}
+                    acciones={[
+                      { label: 'Ver ficha', onClick: () => setFicha(s) },
+                      s.estadoRaw === 'activo' || s.estadoRaw === 'moroso'
+                        ? {
+                            label: 'Suspender el acceso',
+                            destructiva: true,
+                            confirmar: `¿Suspender a ${s.nombre}? No va a poder entrar a la app hasta que lo reactives.`,
+                            onClick: () => cambiarEstado(s, 'suspendido'),
+                          }
+                        : { label: 'Reactivar', onClick: () => cambiarEstado(s, 'activo') },
+                    ]}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -823,9 +928,23 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   /** null = cerrado; 'nuevo' = alta; un beneficio = edición. */
   const [modal, setModal] = useState<'nuevo' | BenefitAdminVM | null>(null);
+  const [aviso, setAviso] = useState('');
   const toggle = async (id: string, status: string) => {
     setBusyId(id);
     await supabase.from('benefits').update({ status: status === 'activo' ? 'pausado' : 'activo' }).eq('id', id);
+    router.refresh();
+    setBusyId(null);
+  };
+  /*
+   * Eliminar es distinto de pausar y conviene que se note: pausado deja de verse
+   * en la app y se puede volver a activar; eliminado no vuelve. Por eso está
+   * abajo del menú, en rojo, y pide confirmación con el nombre adentro.
+   */
+  const eliminar = async (b: BenefitAdminVM) => {
+    setBusyId(b.id); setAviso('');
+    const { error } = await supabase.from('benefits').delete().eq('id', b.id);
+    if (error) setAviso('No pudimos eliminarlo. Probá de nuevo.');
+    else setAviso(`"${b.name}" se eliminó.`);
     router.refresh();
     setBusyId(null);
   };
@@ -836,9 +955,10 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
         <div><h1 className="adm-h1" style={{ ...h1, margin: 0 }}>Beneficios</h1><p style={{ ...sub, margin: '4px 0 0' }}>Comercios y descuentos de la red.</p></div>
         <button onClick={() => setModal('nuevo')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '11px 18px', borderRadius: 12, cursor: 'pointer' }}>+ Nuevo beneficio</button>
       </div>
+      <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['COMERCIO', 'CATEGORÍA', 'DESCUENTO', 'PLANES', 'ESTADO', ''].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>
+          <thead><tr>{['COMERCIO', 'CATEGORÍA', 'DESCUENTO', 'PLANES', 'ESTADO', 'ACCIÓN'].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>
           <tbody>
             {benefits.map((b) => (
               <tr key={b.id}>
@@ -848,10 +968,21 @@ function Beneficios({ benefits }: { benefits: BenefitAdminVM[] }) {
                 <td style={{ ...td, color: '#8781a0', fontSize: 12.5 }}>{b.planRequirement}</td>
                 <td style={td}><span style={estadoBadge(b.status === 'activo' ? 'Activo' : 'Pausado')}>{b.status === 'activo' ? 'Activo' : 'Pausado'}</span></td>
                 <td style={td}>
-                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                    <button onClick={() => setModal(b)} style={{ background: 'rgb(240,237,249)', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 9, cursor: 'pointer' }}>Editar</button>
-                    <button disabled={busyId === b.id} onClick={() => toggle(b.id, b.status)} style={{ background: '#fff', border: '1px solid #e6e3f0', color: '#5b5670', fontWeight: 600, fontSize: 12.5, padding: '7px 12px', borderRadius: 9, cursor: 'pointer', opacity: busyId === b.id ? 0.6 : 1 }}>{b.status === 'activo' ? 'Pausar' : 'Activar'}</button>
-                  </div>
+                  <MenuAcciones
+                    disabled={busyId === b.id}
+                    acciones={[
+                      { label: 'Editar', onClick: () => setModal(b) },
+                      b.status === 'activo'
+                        ? { label: 'Pausar', onClick: () => toggle(b.id, b.status) }
+                        : { label: 'Activar', onClick: () => toggle(b.id, b.status) },
+                      {
+                        label: 'Eliminar',
+                        destructiva: true,
+                        confirmar: `¿Eliminar "${b.name}"? No se puede deshacer. Si solo querés que deje de verse en la app, usá Pausar.`,
+                        onClick: () => eliminar(b),
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

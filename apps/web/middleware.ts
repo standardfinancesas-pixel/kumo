@@ -31,12 +31,25 @@ export async function middleware(request: NextRequest) {
   // siendo estática y cacheada para las visitas anónimas, que son la mayoría.
   // Mismo criterio de rol que el callback del login.
   if (auth.user && request.nextUrl.pathname === '/') {
-    const { data: perfil } = await supabase.from('profiles').select('role').eq('id', auth.user.id).single();
+    const { data: perfil } = await supabase.from('profiles').select('role, status').eq('id', auth.user.id).single();
     // Sin perfil no es socio (p. ej. entró con Google sin estar dado de alta):
     // se lo deja en la landing, que es donde el aviso tiene sentido.
     if (perfil) {
-      const destino = perfil.role === 'admin' ? urls.admin : urls.webapp;
-      return NextResponse.redirect(new URL(destino, request.url));
+      /*
+       * OJO: al socio sin acceso NO se lo manda a `/app`.
+       *
+       * `/app` corta al suspendido y al de baja devolviéndolo a la portada, y este
+       * redirect lo mandaba de vuelta: rebote infinito, la pantalla en blanco y el
+       * servidor contestando 307 sin parar. Se ve solo si uno lo prueba entrando
+       * con la cuenta suspendida, que es lo que pasó.
+       *
+       * El estado del admin no se mira: no es socio, su acceso no depende de eso.
+       */
+      const sinAcceso = perfil.role === 'socio' && (perfil.status === 'suspendido' || perfil.status === 'baja');
+      if (!sinAcceso) {
+        const destino = perfil.role === 'admin' ? urls.admin : urls.webapp;
+        return NextResponse.redirect(new URL(destino, request.url));
+      }
     }
   }
 

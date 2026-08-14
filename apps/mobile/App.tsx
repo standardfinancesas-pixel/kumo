@@ -405,17 +405,25 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
 
       {dia && (
         <Sheet onClose={() => setDia(null)}>
-          <Text style={{ fontWeight: '700', fontSize: 18, color: INK, marginBottom: 20 }}>Vacunas del {calDiaLabel(dia.iso!)}</Text>
+          {/* "Carnet" y no "Vacunas": el día puede tener un estudio o un
+              antiparasitario, y el ícono sale del tipo en lugar de ser el escudo
+              de vacuna para todo. */}
+          <Text style={{ fontWeight: '700', fontSize: 18, color: INK, marginBottom: 20 }}>Carnet del {calDiaLabel(dia.iso!)}</Text>
           <View style={{ gap: 12 }}>
-            {dia.vaxes.map((v, i) => (
-              <View key={v.name + i} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 12, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                <View style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}><Ic d="shield" size={20} color="#fff" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '700', color: INK }}>{v.name}</Text>
-                  <Text style={{ fontSize: 12, color: '#8781a0', marginTop: 2 }}>{v.estado}</Text>
+            {dia.vaxes.map((v, i) => {
+              const tipo = (VACUNA_KINDS as string[]).includes(v.kind) ? (v.kind as VaccineKind) : 'Vacuna';
+              return (
+                <View key={v.name + i} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 12, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                    <Ic d={VAC_IC[KIND_ICON[tipo]]} size={20} color="#fff" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', color: INK }}>{v.name}</Text>
+                    <Text style={{ fontSize: 12, color: '#8781a0', marginTop: 2 }}>{tipo} · {v.estado}</Text>
+                  </View>
                 </View>
-              </View>
-            ))}
+              );
+            })}
           </View>
           <TouchableOpacity onPress={() => setDia(null)} style={{ backgroundColor: colors.violet[100], borderRadius: 14, padding: 13, alignItems: 'center', marginTop: 20 }}>
             <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
@@ -3008,6 +3016,34 @@ export default function App() {
     registrarDispositivo(userId).then((r) => {
       if (vivo && !r.ok) console.warn('[push] sin registrar:', r.motivo);
     });
+    return () => { vivo = false; };
+  }, [userId]);
+
+  /*
+   * El acceso también se corta en el celular.
+   *
+   * La webapp lo hace en el servidor, en `/app`; acá hay que preguntarlo, porque
+   * la sesión vive en el teléfono y se abre sin pasar por ningún servidor nuestro.
+   * Se chequea en cada arranque y en cada login: un socio suspendido tiene un token
+   * perfectamente válido, lo que cambió es que el club le cortó el acceso.
+   */
+  useEffect(() => {
+    if (!userId) return;
+    let vivo = true;
+    (async () => {
+      const { data } = await supabase.from('profiles').select('status, role').eq('id', userId).single();
+      if (!vivo || !data) return;
+      // El admin no es socio: su estado no lo bloquea.
+      if (data.role !== 'socio' || data.status === 'activo' || data.status === 'moroso') return;
+      Alert.alert(
+        data.status === 'suspendido' ? 'Tu cuenta está suspendida' : 'Tu membresía está dada de baja',
+        data.status === 'suspendido'
+          ? 'No podés entrar por ahora. Escribinos por WhatsApp y lo resolvemos.'
+          : 'Si querés volver al club, escribinos por WhatsApp.',
+      );
+      await olvidarDispositivo();
+      await supabase.auth.signOut();
+    })();
     return () => { vivo = false; };
   }, [userId]);
 

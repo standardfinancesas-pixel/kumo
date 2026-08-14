@@ -2661,17 +2661,25 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
 
       {dia && (
         <Sheet onClose={() => setDia(null)}>
-          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Vacunas del {calDiaLabel(dia.iso!)}</div>
+          {/* "Carnet" y no "Vacunas": el día puede tener un estudio o un
+              antiparasitario, y el ícono ahora sale del tipo en lugar de ser el
+              escudo de vacuna para todo. */}
+          <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 20 }}>Carnet del {calDiaLabel(dia.iso!)}</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {dia.vaxes.map((v, i) => (
-              <div key={v.name + i} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
-                <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#fff' }}>{ic(shieldPath, false, 20)}</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700 }}>{v.name}</div>
-                  <div style={{ fontSize: 12, color: 'rgb(135,129,160)', marginTop: 2 }}>{v.estado}</div>
+            {dia.vaxes.map((v, i) => {
+              const tipo = (VACUNA_KINDS as string[]).includes(v.kind) ? (v.kind as VaccineKind) : 'Vacuna';
+              const forma = KIND_ICON[tipo];
+              const inner = forma === 'shield' ? shieldPath : forma === 'pill' ? pillPath : plusCircle;
+              return (
+                <div key={v.name + i} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 12, padding: 14, display: 'flex', gap: 12, alignItems: 'center' }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 8, background: 'rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#fff' }}>{ic(inner, false, 20)}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700 }}>{v.name}</div>
+                    <div style={{ fontSize: 12, color: 'rgb(135,129,160)', marginTop: 2 }}>{tipo} · {v.estado}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <button onClick={() => setDia(null)} style={{ ...sheetBtn(false), width: '100%', marginTop: 20 }}>Cerrar</button>
         </Sheet>

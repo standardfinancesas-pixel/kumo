@@ -201,7 +201,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
+      .select('member_no, full_name, email, phone, address, city, province, dni, status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -246,6 +246,22 @@ export default async function Page() {
     supabase.from('plans').select('id, name, base_price, tagline').order('base_price'),
   ]);
   if (!profileRow) redirect(LANDING);
+
+  /*
+   * El acceso se corta acá, en el servidor.
+   *
+   * Es el único punto por el que pasa toda la webapp del socio, así que no hay
+   * pantalla que se pueda ver salteándolo. Un socio suspendido por el club o dado
+   * de baja tiene sesión válida —el token sigue siendo suyo— pero no cuenta:
+   * vuelve a la portada con el motivo.
+   *
+   * Ojo con el alcance: esto tapa la aplicación, no la base. Con el token en la
+   * mano todavía se podrían leer las propias filas por la API, porque las
+   * políticas de RLS miran `auth.uid()` y no el estado. Cerrarlo del todo es
+   * agregarle `status = 'activo'` a las políticas, y quedó anotado como pendiente.
+   */
+  if (profileRow.status === 'suspendido') redirect(`${LANDING}?cuenta=suspendida`);
+  if (profileRow.status === 'baja') redirect(`${LANDING}?cuenta=baja`);
 
   const plan = Array.isArray(profileRow.plans) ? profileRow.plans[0] : profileRow.plans;
   const profile: Profile = {

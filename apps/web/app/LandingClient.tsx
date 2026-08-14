@@ -795,6 +795,19 @@ export default function LandingClient({ content }: { content: LandingContent }) 
     const params = new URLSearchParams(window.location.search);
     const limpiarUrl = () => window.history.replaceState({}, '', window.location.pathname);
 
+    // `/app` manda para acá al socio que ya no tiene acceso. Se le dice por qué en
+    // el modal de login: si volviera a la portada sin explicación, lo único que
+    // vería es que su usuario "dejó de funcionar".
+    const cuenta = params.get('cuenta');
+    if (cuenta === 'suspendida' || cuenta === 'baja') {
+      setAvisoLogin(cuenta === 'suspendida'
+        ? 'Tu cuenta está suspendida, así que no podés entrar por ahora. Escribinos por WhatsApp y lo resolvemos.'
+        : 'Tu membresía está dada de baja. Si querés volver al club, escribinos por WhatsApp.');
+      setView('login');
+      limpiarUrl();
+      return;
+    }
+
     const p = params.get('login');
     if (p) {
       setAvisoLogin(AVISOS_LOGIN[p] ?? AVISOS_LOGIN.error!);
