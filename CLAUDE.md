@@ -54,6 +54,13 @@ la sesión de Supabase sin configurar nada:
   "los clics no hacen nada". Si pasa: matar el server, `rm -rf apps/web/.next` y
   levantarlo de nuevo.
 - `supabase db reset` — recrear la base local con schema + seed.
+- `vercel --prod` — publicar producción (el push a GitHub NO deploya). **Correrlo
+  desde la raíz del repo, nunca desde `apps/web`**: la raíz es la que está
+  linkeada al proyecto `kumo` (`.vercel/project.json`), y Vercel ahí ve el
+  monorepo y usa pnpm. Parado en `apps/web` ve una app Next suelta, instala con
+  npm —que no entiende `workspace:*`— y el build falla; peor, al no encontrar
+  proyecto linkeado **crea uno nuevo** con el nombre de la carpeta (`web`) en el
+  scope personal. Ya pasó una vez. Después del deploy, verificar en `kumo.pet`.
 
 ## Idioma
 - Producto y UI en español rioplatense (Argentina). Moneda ARS.
