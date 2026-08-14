@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { diasHasta, hoyISO, DIAS_AVISO_CARNET } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
-import { mandarPush } from '@/lib/push';
+import { mandarPush, CON_ACCESO } from '@/lib/push';
 import { sendVacunaProxima } from '@/lib/mail';
 
 /**
@@ -72,8 +72,10 @@ export async function GET(req: Request) {
     const mascota = Array.isArray(f.pets) ? f.pets[0] : f.pets;
     const perfil = mascota && (Array.isArray(mascota.profiles) ? mascota.profiles[0] : mascota.profiles);
     if (!mascota || !perfil) { saltadas.push(f.id); continue; }
-    // A quien se dio de baja no se le recuerda nada: ya no tiene cobertura.
-    if (perfil.status === 'baja') continue;
+    // Al que no tiene acceso no se le recuerda nada: no tiene cobertura. Va por
+    // lista blanca, igual que `tiene_acceso()` en la base y `CON_ACCESO` en el
+    // envío del panel: un estado nuevo no empieza a recibir avisos por descuido.
+    if (!CON_ACCESO.includes(perfil.status)) continue;
 
     const firstName = perfil.full_name?.trim().split(' ')[0] || 'Hola';
     const fecha = fmtFecha(f.due_on);

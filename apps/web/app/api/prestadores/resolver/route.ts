@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { getServiceClient } from '@/lib/supabase-service';
 import { sendNegocioPublicado, sendNegocioRechazado } from '@/lib/mail';
+import { mandarPush } from '@/lib/push';
 
 /**
  * El club publica o rechaza un negocio, y le avisa al dueño.
@@ -59,5 +60,23 @@ export async function POST(req: Request) {
 
   const opts = { to: dueño.email, firstName: dueño.full_name?.split(' ')[0] || 'Hola', negocio: fila.name };
   const res = status === 'verificado' ? await sendNegocioPublicado(opts) : await sendNegocioRechazado(opts);
-  return NextResponse.json({ ok: true, mailEnviado: 'ok' in res && res.ok === true });
+
+  // Y el mismo aviso al teléfono, si tiene la app con las notificaciones
+  // prendidas. Sin token no hay nada que mandar: es lo que apaga el switch de la
+  // pantalla de Notificaciones.
+  const { data: tokens } = await supabase.from('push_tokens').select('token').eq('member_id', fila.owner_id);
+  let pushEntregados = 0;
+  if (tokens?.length) {
+    const r = await mandarPush(
+      tokens.map((t) => t.token as string),
+      status === 'verificado' ? 'Tu negocio ya está publicado' : 'No pudimos publicar tu negocio',
+      status === 'verificado'
+        ? `${fila.name} ya aparece en Servicios para todos los socios.`
+        : `Entrá a Mi negocio para ver qué falta en ${fila.name}.`,
+      { pantalla: 'minegocio' },
+    );
+    pushEntregados = r.entregados;
+  }
+
+  return NextResponse.json({ ok: true, mailEnviado: 'ok' in res && res.ok === true, pushEntregados });
 }

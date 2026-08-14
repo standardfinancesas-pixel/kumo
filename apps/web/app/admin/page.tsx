@@ -102,7 +102,7 @@ export default async function Page() {
     // El autor sale de la fila, igual que en la webapp del socio.
     supabase.from('community_posts').select('id, category, title, author_name, report_reason').eq('reported', true),
     supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente'),
-    supabase.from('push_notifications').select('title, audience, sent_at').order('sent_at', { ascending: false }).limit(10),
+    supabase.from('push_notifications').select('id, title, audience, sent_at').order('sent_at', { ascending: false }).limit(10),
   ]);
   const socioList = profileRows ?? [];
   const planOf = (p: (typeof socioList)[number]) => (Array.isArray(p.plans) ? p.plans[0] : p.plans);
@@ -215,7 +215,7 @@ export default async function Page() {
     ...dist.map((d) => ({ label: `Plan ${d.plan}`, n: d.socios })),
     { label: 'Vacunas pendientes', n: new Set((pendVaxPets ?? []).map((v) => v.pet_id)).size },
   ];
-  const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—' }));
+  const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ id: s.id, title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—' }));
 
   return (
     <AppClient

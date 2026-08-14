@@ -18,7 +18,7 @@ import { supabase } from './lib/supabase';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
 import * as Notifications from 'expo-notifications';
-import { registrarDispositivo, olvidarDispositivo } from './lib/push';
+import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Login from './components/Login';
 
@@ -1967,8 +1967,47 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
 const NOTIF_DESTINO: Record<'carnet' | 'reintegros' | 'minegocio', Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio' };
 
-function Notificaciones({ groups, visto, marcarLeidas, go }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void }) {
+function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null }) {
   const vistoMs = visto ? new Date(visto).getTime() : 0;
+
+  /*
+   * El switch de push, que era de adorno: estaba pintado prendido y no había
+   * nada atrás.
+   *
+   * Prenderlo registra el token del aparato; apagarlo lo borra. Lo que corta el
+   * envío es la fila que no está: el club le manda a los tokens que tiene, así
+   * que sin token no le llega nada, sin necesidad de que cada envío pregunte por
+   * una preferencia.
+   */
+  const [pushOn, setPushOn] = useState<boolean | null>(null);
+  const [tocando, setTocando] = useState(false);
+  useEffect(() => { pushActivo().then(setPushOn); }, []);
+
+  const alternar = async () => {
+    if (pushOn === null || tocando || !userId) return;
+    setTocando(true);
+    if (pushOn) {
+      await olvidarDispositivo();
+      await guardarPushActivo(false);
+      setPushOn(false);
+    } else {
+      const r = await registrarDispositivo(userId);
+      if (r.ok) {
+        await guardarPushActivo(true);
+        setPushOn(true);
+      } else {
+        // El permiso del sistema no se puede volver a pedir desde acá una vez
+        // negado: hay que mandarlo a los ajustes del teléfono, y decírselo.
+        Alert.alert(
+          'No pudimos activarlos',
+          /permiso/i.test(r.motivo)
+            ? 'Kumo tiene las notificaciones bloqueadas en este teléfono. Habilitalas en los ajustes del sistema y volvé a probar.'
+            : 'Este teléfono no puede recibir notificaciones por ahora.',
+        );
+      }
+    }
+    setTocando(false);
+  };
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -2012,17 +2051,22 @@ function Notificaciones({ groups, visto, marcarLeidas, go }: { groups: NotifGrou
         </View>
       ))}
 
-      {/* Del prototipo. El push todavía no está implementado, así que el switch
-          es decorativo: no hay nada que apagar. */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginTop: 4 }}>
-        <View>
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={alternar}
+        disabled={pushOn === null || tocando}
+        style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginTop: 4, opacity: tocando ? 0.6 : 1 }}
+      >
+        <View style={{ flex: 1, paddingRight: 12 }}>
           <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>Push y recordatorios</Text>
-          <Text style={{ fontSize: 12, color: '#a29dba' }}>Vacunas, reintegros y beneficios</Text>
+          <Text style={{ fontSize: 12, color: '#a29dba' }}>
+            {pushOn === false ? 'Apagados en este teléfono' : 'Vacunas, reintegros y beneficios'}
+          </Text>
         </View>
-        <View style={{ width: 44, height: 26, borderRadius: 100, backgroundColor: BRAND, justifyContent: 'center', alignItems: 'flex-end', paddingRight: 3 }}>
+        <View style={{ width: 44, height: 26, borderRadius: 100, backgroundColor: pushOn === false ? '#d5d0e3' : BRAND, justifyContent: 'center', alignItems: pushOn === false ? 'flex-start' : 'flex-end', paddingHorizontal: 3 }}>
           <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff' }} />
         </View>
-      </View>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -3000,6 +3044,13 @@ export default function App() {
 
   useEffect(() => { AsyncStorage.getItem(VISTO_KEY).then(setVisto); }, []);
 
+  /** Tocar un push abre la pantalla del aviso, no el inicio. Se filtra contra la
+   *  lista de destinos posibles: el `data` de una notificación es texto que entra
+   *  de afuera, y no queremos que decida a dónde navegar. */
+  useEffect(() => alTocarNotificacion((pantalla) => {
+    if (pantalla === 'carnet' || pantalla === 'reintegros' || pantalla === 'minegocio') setScreen(pantalla);
+  }), []);
+
   /*
    * Registro para push, cada vez que hay un socio adentro.
    *
@@ -3013,9 +3064,13 @@ export default function App() {
   useEffect(() => {
     if (!userId) return;
     let vivo = true;
-    registrarDispositivo(userId).then((r) => {
+    (async () => {
+      // Si apagó el switch de Notificaciones, no se lo vuelve a registrar por la
+      // espalda en el próximo arranque.
+      if (!(await pushActivo())) return;
+      const r = await registrarDispositivo(userId);
       if (vivo && !r.ok) console.warn('[push] sin registrar:', r.motivo);
-    });
+    })();
     return () => { vivo = false; };
   }, [userId]);
 
@@ -3153,7 +3208,7 @@ export default function App() {
           {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
-          {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} />}
+          {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} />}
         </View>
         <View style={styles.tabbar}>
           {TABS.map((t) => {

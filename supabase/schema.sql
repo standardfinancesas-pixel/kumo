@@ -415,6 +415,11 @@ begin
   if auth.uid() is null then
     raise exception 'Hay que tener sesión para reportar.';
   end if;
+  -- Las funciones `security definer` se saltean las políticas, así que sin este
+  -- chequeo quedaban como la puerta de atrás del socio sin acceso.
+  if not tiene_acceso() then
+    raise exception 'Tu cuenta no está activa.';
+  end if;
   -- El primer motivo es el que queda, y nadie se reporta a sí mismo.
   update community_posts
      set reported      = true,
@@ -433,6 +438,24 @@ grant execute on function reportar_post(uuid, text) to authenticated;
 create or replace function is_admin()
 returns boolean language sql stable security definer set search_path = public as $$
   select exists (select 1 from profiles where id = auth.uid() and role = 'admin');
+$$;
+
+-- ============================================================
+--  Helper: ¿el que pide tiene acceso al club?
+-- ============================================================
+-- El corte del socio suspendido o de baja también vive en las pantallas, pero un
+-- token ya emitido sigue sirviendo hasta vencer (una hora) y con él la API
+-- contesta igual. Las políticas mandan más que cualquier pantalla, así que el
+-- estado se chequea también acá (ver las políticas más abajo).
+create or replace function tiene_acceso()
+returns boolean language sql stable security definer set search_path = public as $$
+  -- Lista blanca y no negra: si mañana aparece un estado nuevo, lo seguro es
+  -- que no dé acceso hasta que alguien lo decida.
+  -- Al prestador y al admin no los toca: su acceso no depende de la cuota.
+  select coalesce(
+    (select p.role <> 'socio' or p.status in ('activo', 'moroso')
+       from profiles p where p.id = auth.uid()),
+    false);
 $$;
 
 -- ============================================================
@@ -471,6 +494,11 @@ declare
 begin
   if quien is null then
     raise exception 'Hay que estar identificado para agregar una mascota.';
+  end if;
+  -- Igual que en `reportar_post`: esta función es `security definer` y no mira
+  -- políticas, así que el estado se chequea a mano.
+  if not tiene_acceso() then
+    raise exception 'Tu cuenta no está activa: no podés agregar mascotas.';
   end if;
   if p_name is null or length(trim(p_name)) = 0 then
     raise exception 'La mascota necesita un nombre.';
@@ -542,18 +570,25 @@ create policy "beneficios visibles" on benefits  for select using (status = 'act
 create policy "prestadores visibles" on providers for select using (status = 'verificado' or is_admin() or owner_id = auth.uid());
 
 -- Perfiles: cada quien ve/edita el suyo; admin ve todo
+-- El socio suspendido o de baja SÍ puede leer su perfil: es lo que la portada
+-- necesita para poder decirle por qué no entra en lugar de dejarlo adivinando.
+-- Editarlo, no.
 create policy "perfil propio - select" on profiles for select using (id = auth.uid() or is_admin());
 -- Ojo: la RLS es por fila, no por columna. El trigger `profiles_campos_guard`
 -- (ver migraciones) es lo que impide que un socio se cambie el rol o el estado.
-create policy "perfil propio - update" on profiles for update using (id = auth.uid() or is_admin());
+create policy "perfil propio - update" on profiles for update
+  using ((id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "perfil propio - insert" on profiles for insert with check (id = auth.uid());
 
 -- Los tokens de push: cada quien registra y borra los suyos; el club los lee para
 -- poder enviar. `vaccine_reminders` no lleva políticas a propósito: solo la
 -- service-role key la toca, desde el cron.
+-- El delete queda sin chequeo de acceso a propósito: es lo que corre la app al
+-- cerrar sesión, y que el token del suspendido se borre está bien.
 create policy "tokens propios - select" on push_tokens for select using (member_id = auth.uid() or is_admin());
-create policy "tokens propios - insert" on push_tokens for insert with check (member_id = auth.uid());
-create policy "tokens propios - update" on push_tokens for update using (member_id = auth.uid()) with check (member_id = auth.uid());
+create policy "tokens propios - insert" on push_tokens for insert with check (member_id = auth.uid() and tiene_acceso());
+create policy "tokens propios - update" on push_tokens for update
+  using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
 create policy "tokens propios - delete" on push_tokens for delete using (member_id = auth.uid() or is_admin());
 
 -- Mascotas: del dueño, pero el INSERT va aparte. Las preguntas de salud son por
@@ -562,72 +597,74 @@ create policy "tokens propios - delete" on push_tokens for delete using (member_
 -- socio pasa por `agregar_mascota()`, que crea la mascota y su declaración en una
 -- transacción; el alta corre con la service-role key y no mira políticas.
 create policy "mascotas del dueño - select" on pets for select
-  using (owner_id = auth.uid() or is_admin());
+  using ((owner_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "mascotas del dueño - update" on pets for update
-  using (owner_id = auth.uid() or is_admin())
-  with check (owner_id = auth.uid() or is_admin());
+  using ((owner_id = auth.uid() and tiene_acceso()) or is_admin())
+  with check ((owner_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "mascotas del dueño - delete" on pets for delete
-  using (owner_id = auth.uid() or is_admin());
+  using ((owner_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "mascotas - alta del admin" on pets for insert
   with check (is_admin());
 
 create policy "vacunas del dueño" on vaccinations for all
-  using (exists (select 1 from pets p where p.id = pet_id and (p.owner_id = auth.uid() or is_admin())))
-  with check (exists (select 1 from pets p where p.id = pet_id and (p.owner_id = auth.uid() or is_admin())));
+  using (exists (select 1 from pets p where p.id = pet_id and ((p.owner_id = auth.uid() and tiene_acceso()) or is_admin())))
+  with check (exists (select 1 from pets p where p.id = pet_id and ((p.owner_id = auth.uid() and tiene_acceso()) or is_admin())));
 
 -- Declaración jurada: se lee y se firma, no se edita ni se borra. Una
 -- declaración que el firmante puede reescribir después no declara nada, así que
 -- a propósito NO hay políticas de update ni de delete: ni el socio ni el admin
 -- pueden tocarla desde la app.
 create policy "el socio ve su declaración" on health_declarations for select
-  using (auth.uid() = member_id or is_admin());
+  using ((auth.uid() = member_id and tiene_acceso()) or is_admin());
 create policy "el socio firma su declaración" on health_declarations for insert
-  with check (auth.uid() = member_id);
+  with check (auth.uid() = member_id and tiene_acceso());
 
--- Reintegros: el socio ve/crea los suyos; solo admin cambia estado
+-- Reintegros: el socio ve/crea los suyos; solo admin cambia estado. El chequeo de
+-- acceso es el que más importa de todos: sin él, una cuenta suspendida podía
+-- seguir pidiendo plata.
 create policy "reintegros del socio - select" on reimbursements for select
-  using (member_id = auth.uid() or is_admin());
+  using ((member_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "reintegros del socio - insert" on reimbursements for insert
-  with check (member_id = auth.uid());
+  with check (member_id = auth.uid() and tiene_acceso());
 create policy "reintegros - admin update" on reimbursements for update using (is_admin());
 
--- Comunidad: lectura pública, escritura autenticada; admin modera
+-- Comunidad: lectura pública (el foro se ve sin cuenta), escritura solo del que
+-- tiene acceso; admin modera
 create policy "posts visibles"  on community_posts for select using (true);
-create policy "posts crear"     on community_posts for insert with check (author_id = auth.uid());
-create policy "posts editar"    on community_posts for update using (author_id = auth.uid() or is_admin());
-create policy "posts borrar"    on community_posts for delete using (author_id = auth.uid() or is_admin());
+create policy "posts crear"     on community_posts for insert with check (author_id = auth.uid() and tiene_acceso());
+create policy "posts editar"    on community_posts for update using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
+create policy "posts borrar"    on community_posts for delete using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "respuestas visibles" on community_answers for select using (true);
-create policy "respuestas crear"    on community_answers for insert with check (author_id = auth.uid());
-create policy "respuestas moderar"  on community_answers for update using (author_id = auth.uid() or is_admin());
+create policy "respuestas crear"    on community_answers for insert with check (author_id = auth.uid() and tiene_acceso());
+create policy "respuestas moderar"  on community_answers for update using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
 -- Sin política de delete nadie borra: la respuesta propia quedaba para siempre.
-create policy "respuestas borrar"   on community_answers for delete using (author_id = auth.uid() or is_admin());
-create policy "respuestas borrar"   on community_answers for delete using (author_id = auth.uid() or is_admin());
+create policy "respuestas borrar"   on community_answers for delete using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
 
 -- Likes: se cuentan en público, cada socio maneja los suyos
 create policy "likes visibles" on post_likes for select using (true);
 create policy "like propio"    on post_likes for all
-  using (member_id = auth.uid()) with check (member_id = auth.uid());
+  using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
 create policy "likes de respuesta visibles" on answer_likes for select using (true);
 create policy "like de respuesta propio"    on answer_likes for all
-  using (member_id = auth.uid()) with check (member_id = auth.uid());
+  using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
 
 -- Contactos de emergencia: del dueño
 create policy "emergencias del dueño" on emergency_contacts for all
-  using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  using (owner_id = auth.uid() and tiene_acceso()) with check (owner_id = auth.uid() and tiene_acceso());
 
 -- Guardados: cada socio ve y maneja solo los suyos (el admin no los necesita)
 create policy "guardados del socio" on provider_favorites for all
-  using (member_id = auth.uid()) with check (member_id = auth.uid());
+  using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
 
 -- Reseñas: las de un prestador publicado son públicas; cada socio edita la suya
 create policy "reseñas visibles" on provider_reviews for select
   using (exists (select 1 from providers p where p.id = provider_id and p.status = 'verificado') or member_id = auth.uid() or is_admin());
 create policy "reseña propia - insert" on provider_reviews for insert
-  with check (member_id = auth.uid());
+  with check (member_id = auth.uid() and tiene_acceso());
 create policy "reseña propia - update" on provider_reviews for update
-  using (member_id = auth.uid()) with check (member_id = auth.uid());
+  using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
 create policy "reseña propia - delete" on provider_reviews for delete
-  using (member_id = auth.uid() or is_admin());
+  using ((member_id = auth.uid() and tiene_acceso()) or is_admin());
 
 -- Notificaciones push: solo admin gestiona
 create policy "push admin" on push_notifications for all using (is_admin()) with check (is_admin());

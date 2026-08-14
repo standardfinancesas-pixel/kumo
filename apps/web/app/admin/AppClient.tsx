@@ -47,7 +47,7 @@ export type ProviderAdminRow = {
 };
 export type ReportRow = { id: string; cat: string; autor: string; titulo: string; motivo: string };
 export type AudienceVM = { label: string; n: number };
-export type SentPushVM = { title: string; audience: string; when: string };
+export type SentPushVM = { id: string; title: string; audience: string; when: string };
 
 /* ── Iconos del sidebar ────────────────────────────────────────── */
 const I = (inner: ReactNode) => (
@@ -1155,6 +1155,13 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
     router.refresh();
     setBusy(false);
   };
+  /** Saca un aviso del historial. Lo que ya llegó a los teléfonos no se puede
+   *  volver atrás: esto limpia la lista del panel, nada más. */
+  const borrar = async (id: string) => {
+    const { error } = await supabase.from('push_notifications').delete().eq('id', id);
+    setAviso(error ? 'No pudimos borrarlo. Probá de nuevo.' : 'Lo saqué del historial.');
+    router.refresh();
+  };
   return (
     <div>
       <h1 className="adm-h1" style={h1}>Notificaciones push</h1>
@@ -1192,7 +1199,22 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 10 }}>ENVIADAS</div>
           {sent.length === 0 ? <div style={{ fontSize: 13, color: '#8781a0' }}>Todavía no enviaste ninguna.</div> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {sent.map((s, i) => <div key={i} style={{ ...card, padding: 12 }}><div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div><div style={{ fontSize: 12, color: '#8781a0' }}>→ {s.audience} · {s.when}</div></div>)}
+              {sent.map((s) => (
+                <div key={s.id} style={{ ...card, padding: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
+                    <div style={{ fontSize: 12, color: '#8781a0' }}>→ {s.audience} · {s.when}</div>
+                  </div>
+                  <MenuAcciones acciones={[{
+                    label: 'Borrar del historial',
+                    destructiva: true,
+                    // Se aclara que el aviso ya salió: borrar la fila limpia esta
+                    // lista, no la notificación que la gente ya tiene en el celular.
+                    confirmar: `¿Borrar "${s.title}" del historial? El aviso ya salió a los celulares: esto solo lo saca de esta lista.`,
+                    onClick: () => borrar(s.id),
+                  }]} />
+                </div>
+              ))}
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 
 /**
@@ -32,6 +33,29 @@ Notifications.setNotificationHandler({
 });
 
 export type ResultadoRegistro = { ok: true; token: string } | { ok: false; motivo: string };
+
+/**
+ * El switch de "Push y recordatorios" de la pantalla de Notificaciones.
+ *
+ * La preferencia vive en el teléfono y no en el perfil a propósito: es una
+ * decisión del aparato, no de la persona. El mismo socio puede querer los avisos
+ * en el celular y no en la tablet de la casa.
+ *
+ * Lo que de verdad corta el envío es que no haya token: al apagar el switch se
+ * borra la fila de `push_tokens`, así que el club no tiene a dónde mandarle nada.
+ * Este valor es para acordarse de no volver a registrarlo en el próximo arranque.
+ */
+const PREF_KEY = 'kumo:push-activo';
+
+/** Sin nada guardado, activados: es lo que el socio espera después de haber
+ *  aceptado el permiso del sistema. */
+export async function pushActivo(): Promise<boolean> {
+  return (await AsyncStorage.getItem(PREF_KEY)) !== 'off';
+}
+
+export async function guardarPushActivo(on: boolean): Promise<void> {
+  await AsyncStorage.setItem(PREF_KEY, on ? 'on' : 'off');
+}
 
 export async function registrarDispositivo(memberId: string): Promise<ResultadoRegistro> {
   if (!Device.isDevice) return { ok: false, motivo: 'Los push solo funcionan en un teléfono real.' };
@@ -70,6 +94,33 @@ export async function registrarDispositivo(memberId: string): Promise<ResultadoR
   } catch (e) {
     return { ok: false, motivo: e instanceof Error ? e.message : 'no pudimos obtener el token' };
   }
+}
+
+/**
+ * Tocar el aviso abre la pantalla que corresponde.
+ *
+ * Todos los envíos viajan con `data.pantalla` (`carnet`, `reintegros`,
+ * `minegocio`) pero nadie lo leía: el push abría la app en el inicio y el socio
+ * tenía que ir a buscar a mano el reintegro que se le acababa de resolver.
+ *
+ * Cubre los dos casos, que son distintos: la app en segundo plano recibe el
+ * evento, y la app cerrada arranca POR la notificación — ahí el evento ya pasó
+ * antes de que existiera el listener y hay que preguntarlo.
+ */
+export function alTocarNotificacion(ir: (pantalla: string) => void): () => void {
+  const pantallaDe = (r: Notifications.NotificationResponse | null) => {
+    const p = r?.notification.request.content.data?.pantalla;
+    return typeof p === 'string' ? p : null;
+  };
+  Notifications.getLastNotificationResponseAsync().then((r) => {
+    const p = pantallaDe(r);
+    if (p) ir(p);
+  });
+  const sub = Notifications.addNotificationResponseReceivedListener((r) => {
+    const p = pantallaDe(r);
+    if (p) ir(p);
+  });
+  return () => sub.remove();
 }
 
 /** Al cerrar sesión: el aparato deja de ser de esa persona. */

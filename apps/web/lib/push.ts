@@ -19,6 +19,11 @@ const EXPO_PUSH = 'https://exp.host/--/api/v2/push/send';
 /** Expo acepta hasta 100 mensajes por pedido. */
 const LOTE = 100;
 
+/** Los estados de socio que reciben avisos: al día o debiendo la cuota. El
+ *  suspendido y el de baja no tienen cobertura, así que no les llega nada.
+ *  Es el mismo criterio que la función `tiene_acceso()` de la base. */
+export const CON_ACCESO = ['activo', 'moroso'];
+
 export type ResultadoPush = { entregados: number; fallados: number; detalle: string[] };
 
 type TicketExpo = { status: 'ok' | 'error'; id?: string; message?: string; details?: { error?: string } };
@@ -110,11 +115,16 @@ export async function tokensDeAudiencia(audiencia: string): Promise<string[]> {
       const p = Array.isArray(v.pets) ? v.pets[0] : v.pets;
       if (p?.owner_id) ids.add(p.owner_id);
     }
-    return tokensDe(svc, [...ids]);
+    // Esta audiencia sale de las mascotas, no de los socios: sin este filtro el
+    // aviso también salía para el suspendido y el de baja.
+    const { data: conAcceso } = await svc.from('profiles').select('id').in('id', [...ids]).in('status', CON_ACCESO);
+    return tokensDe(svc, (conAcceso ?? []).map((p) => p.id));
   }
 
-  // Todos los socios: los de baja no reciben avisos del club.
-  const { data } = await svc.from('profiles').select('id').eq('role', 'socio').neq('status', 'baja');
+  // Todos los socios: el que no tiene acceso no recibe avisos del club. Sale por
+  // lista blanca y no descartando 'baja': un estado nuevo no debería empezar a
+  // recibir avisos solo porque nadie se acordó de agregarlo acá.
+  const { data } = await svc.from('profiles').select('id').eq('role', 'socio').in('status', CON_ACCESO);
   return tokensDe(svc, (data ?? []).map((p) => p.id));
 }
 
