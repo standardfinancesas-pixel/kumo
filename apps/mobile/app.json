@@ -20,6 +20,8 @@
     },
     "android": {
       "package": "pet.kumo.app",
+      "//googleServicesFile": "Config de cliente de Firebase (proyecto kumo-b79fb). Va commiteado a propósito: no es un secreto —la api_key de ahí es un identificador público— y EAS solo sube al build lo que está en git. Lo secreto es la clave privada de la cuenta de servicio, que vive en las credenciales de EAS y nunca en el repo.",
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#5D5491"

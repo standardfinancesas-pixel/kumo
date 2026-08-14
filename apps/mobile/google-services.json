@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "377857423009",
+    "project_id": "kumo-b79fb",
+    "storage_bucket": "kumo-b79fb.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:377857423009:android:b1d5f051508889992fa2e0",
+        "android_client_info": {
+          "package_name": "pet.kumo.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBT6fX84uieWsYgztbWDRkVINJuVj7Owlc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
