@@ -227,14 +227,24 @@ de cada pantalla.
       a quien no entraba no le llegaba nada, que es justo el caso que un
       recordatorio tiene que cubrir. La marca de "ya avisado" es por vacuna, y un
       trigger la borra si la vacuna se aplica o se reprograma.
-      **Falta config, sin código de por medio:**
-      1. `CRON_SECRET` en Vercel. El cron se niega a correr en producción sin ella:
-         mejor que no funcione y avise, que quedar abierto a cualquiera que sepa la
-         URL y pueda disparar avisos a todos los socios.
-      2. **Credenciales de FCM** subidas a EAS, o Android no entrega en el APK
-         instalado (Expo usa FCM por debajo). Es un proyecto de Firebase gratis más
-         `eas credentials`. iOS además necesita cuenta de Apple Developer.
-      3. Un **build nuevo**: `expo-notifications` es módulo nativo y no sale por OTA.
+      **La config, ya hecha:** `CRON_SECRET` en Vercel (el cron se niega a correr
+      en producción sin ella: mejor que no funcione y avise, que quedar abierto a
+      cualquiera que sepa la URL), credenciales de FCM subidas a EAS —sin eso
+      Android no entrega en el APK instalado, porque Expo usa FCM por debajo— y el
+      build nuevo, que hacía falta porque `expo-notifications` es módulo nativo y
+      no sale por OTA. Envío verificado: "llegó a 1 dispositivo".
+      **Para iOS falta cuenta de Apple Developer** (usa APNs, no Firebase).
+- [x] **El socio decide si los quiere.** El switch "Push y recordatorios" de la
+      pantalla de Notificaciones estaba pintado prendido y no había nada atrás.
+      Ahora prende y apaga de verdad: apagarlo borra el token, y lo que corta el
+      envío es el token que no está — el club le manda a los tokens que tiene, así
+      que no hace falta que cada envío pregunte por una preferencia. La preferencia
+      vive en el teléfono, no en el perfil: es del aparato, no de la persona.
+      Y tocar un aviso abre la pantalla del aviso: todos viajaban con
+      `data.pantalla` desde el cron y el panel, y nadie lo leía.
+- [ ] **Probar de punta a punta el push de "reintegro resuelto" y "negocio
+      publicado".** El código está y usa el mismo envío que ya entregó, pero
+      dispararlo manda un mail real al socio, así que quedó sin probar en vivo.
 
 - [x] **Reseñas de prestadores reales** (`provider_reviews`): el socio califica y
       comenta, una reseña por prestador y editable. El promedio y el conteo los
