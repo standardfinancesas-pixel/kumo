@@ -30,6 +30,30 @@ const DESTINO_CROQUETA = 'apps/web/public/img/hero-croqueta.png';
 /** La caja de la croqueta, con el halo blanco de la foto adentro. */
 const CAJA = { x: 40, y: 208, w: 133, h: 98 };
 
+/*
+ * El lado del hocico se desvanece en vez de cortarse.
+ *
+ * Entre las filas 218 y 258 la croqueta está PEGADA al hocico: los píxeles son
+ * opacos (alfa 254) hasta el borde del recorte, porque en la foto el brillo de
+ * la galletita se funde con el pelo. Con el corte a filo, al moverse la capa se
+ * veía una línea recta y vertical — fue lo primero que se notó.
+ *
+ * Así que del borde derecho hacia adentro el alfa baja de a poco hasta cero. La
+ * croqueta termina difusa de ese lado, que es lo que corresponde: está volando y
+ * en la foto ese borde es puro movimiento. El halo que quedaba entre la croqueta
+ * y el hocico no va a ninguna de las dos capas: se borra, si no queda un brillo
+ * pegado al pelo señalando el lugar de donde salió.
+ */
+const DIFUMINADO = { desde: 158, hasta: 173 };
+const suave = (t) => t * t * (3 - 2 * t); // smoothstep: sin saltos en las puntas
+
+/** Cuánto de este píxel se lleva la croqueta (1 = todo, 0 = nada). */
+function peso(x) {
+  if (x <= DIFUMINADO.desde) return 1;
+  if (x >= DIFUMINADO.hasta) return 0;
+  return 1 - suave((x - DIFUMINADO.desde) / (DIFUMINADO.hasta - DIFUMINADO.desde));
+}
+
 const { data, info } = await sharp(ORIGEN).raw().ensureAlpha().toBuffer({ resolveWithObject: true });
 const { width: W, height: H } = info;
 
@@ -39,12 +63,14 @@ const croqueta = Buffer.alloc(W * H * 4, 0);
 for (let y = CAJA.y; y < CAJA.y + CAJA.h; y++) {
   for (let x = CAJA.x; x < CAJA.x + CAJA.w; x++) {
     const i = (y * W + x) * 4;
-    // La croqueta se lleva el píxel tal cual...
+    // La croqueta se lleva el color tal cual y el alfa según el difuminado...
     croqueta[i] = data[i];
     croqueta[i + 1] = data[i + 1];
     croqueta[i + 2] = data[i + 2];
-    croqueta[i + 3] = data[i + 3];
-    // ...y en el perro queda transparente, si no se ve dos veces.
+    croqueta[i + 3] = Math.round(data[i + 3] * peso(x));
+    // ...y en el perro queda transparente TODA la caja, no solo lo que se llevó
+    // la croqueta: lo que se desvanece es el halo que la unía al hocico, y
+    // dejarlo acá sería marcar con un brillo el lugar de donde salió.
     perro[i] = 0; perro[i + 1] = 0; perro[i + 2] = 0; perro[i + 3] = 0;
   }
 }
