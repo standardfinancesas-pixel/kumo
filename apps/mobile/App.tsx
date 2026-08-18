@@ -1990,16 +1990,40 @@ function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => vo
   const suscribirme = async () => {
     setYendo(true); setError('');
     try {
-      // El token de la sesión: la app no tiene cookies, así que la ruta lo recibe
-      // en el header y lo valida contra Supabase (ver lib/quien-pide.ts).
+      /*
+       * El token de la sesión: la app no tiene cookies, así que la ruta lo recibe
+       * en el header y lo valida contra Supabase (ver lib/quien-pide.ts).
+       *
+       * Se reintenta UNA vez renovando el token. Pasó de verdad: con la app un
+       * rato en segundo plano el token guardado ya había vencido, el servidor
+       * contestaba "Sin sesión" y el socio quedaba sin poder pagar sin entender
+       * por qué. La causa de fondo está arreglada en `lib/supabase.ts`, pero acá
+       * igual conviene el reintento: es la pantalla donde no se puede fallar.
+       */
+      const pedir = async (token: string) => {
+        const res = await fetch(`${SITIO}/api/pagos/crear`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        return { res, data: await res.json() };
+      };
+
       const { data: ses } = await supabase.auth.getSession();
-      const token = ses.session?.access_token;
-      if (!token) { setError('Se cerró tu sesión. Volvé a entrar.'); setYendo(false); return; }
-      const res = await fetch(`${SITIO}/api/pagos/crear`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await res.json();
+      let token = ses.session?.access_token;
+      if (!token) { setError('Se cerró tu sesión. Volvé a entrar y probá de nuevo.'); setYendo(false); return; }
+
+      let { res, data } = await pedir(token);
+      if (res.status === 401) {
+        const { data: nueva } = await supabase.auth.refreshSession();
+        token = nueva.session?.access_token;
+        if (!token) {
+          setError('Se cerró tu sesión. Volvé a entrar y probá de nuevo.');
+          setYendo(false);
+          return;
+        }
+        ({ res, data } = await pedir(token));
+      }
+
       if (data.yaAutorizada) { setError('Tu suscripción ya está autorizada: estamos esperando el primer débito.'); setYendo(false); recargar(); return; }
       if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir la suscripción.'); setYendo(false); return; }
       await Linking.openURL(data.initPoint);
