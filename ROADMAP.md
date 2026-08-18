@@ -213,6 +213,23 @@ de cada pantalla.
       que la empezó. Las dos cosas se arreglan con una fila en Mi perfil que use la
       misma ruta `/api/pagos/crear`. Salió al mirar por qué no aparecía el botón de
       baja — correcto que no aparezca: solo existe con la suscripción autorizada.
+- [ ] **Las credenciales de MP que hacen falta son DOS, y ninguna es la que
+      probamos el 18/08.** Con el token de **prueba de la cuenta real** del club
+      (`TEST-…`) las suscripciones no funcionan de ninguna forma, y MP lo dice
+      desde los dos lados: con un pagador de prueba responde *"Both payer and
+      collector must be real or test users"* (400), y con un pagador real, el
+      checkout corta con *"una de las partes es de prueba"*. Para MP, ese token
+      hace que **el que cobra sea "de prueba"**, así que no hay pagador que
+      combine. Sirvió para verificar que la integración habla con MP y nada más.
+      Hacen falta:
+      1. **Token de una aplicación creada DENTRO de una cuenta de prueba
+         vendedora** (pestaña *Vendedor* en Cuentas de prueba) → para probar sin
+         plata, con la cuenta de prueba compradora como socio.
+      2. **Token de producción de la cuenta real** (`APP_USR-…`) → para cobrar de
+         verdad.
+      Ojo: cada aplicación tiene su propia clave de webhook, así que al cambiar el
+      token hay que cambiar también `MP_WEBHOOK_SECRET` y reconfigurar la URL en el
+      panel de esa aplicación.
 - [ ] **BLOQUEANTE antes del primer socio real: volver al token de producción de
       Mercado Pago.** Para probar se usa el token de una cuenta de PRUEBA (una
       cuenta distinta de la del club, no un "modo"), y va a quedar puesta varios
