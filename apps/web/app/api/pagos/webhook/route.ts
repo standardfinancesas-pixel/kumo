@@ -55,6 +55,16 @@ export async function POST(req: Request) {
   }
   if (!dataId) return NextResponse.json({ ok: true, ignorado: 'sin id' });
 
+  /*
+   * De qué modo del panel de MP vino el aviso: productivo o pruebas.
+   *
+   * Queda anotado en cada pago, porque mientras probemos con credenciales de
+   * prueba contra producción, un mes acreditado por un aviso de prueba NO es plata
+   * que entró. Sin esta marca, en la tabla los dos casos se ven idénticos y el
+   * club no tiene cómo saber qué cobró de verdad.
+   */
+  const marcaModo = firma.modo === 'prueba' ? ' · aviso de PRUEBA (no es plata real)' : '';
+
   const svc = getServiceClient();
 
   // ── La suscripción cambió de estado ──
@@ -76,7 +86,7 @@ export async function POST(req: Request) {
       p_preapproval_id: sus.id,
       p_status: sus.status,
     });
-    console.log('[pagos/webhook] suscripción', sus.id, '→', sus.status);
+    console.log('[pagos/webhook] suscripción', sus.id, '→', sus.status, '· modo', firma.modo);
     // Ojo: autorizada NO es pagada. El acceso lo da el primer débito, que llega
     // como `subscription_authorized_payment`.
     return NextResponse.json({ ok: true, suscripcion: sus.status });
@@ -109,7 +119,7 @@ export async function POST(req: Request) {
         method: 'mercadopago',
         mp_payment_id: debito.payment?.id ? String(debito.payment.id) : `ap:${debito.id}`,
         external_reference: `ap:${debito.id}`,
-        detail: `débito ${debito.status} · pago ${debito.payment?.status ?? 'sin pago'}${debito.payment?.status_detail ? ` (${debito.payment.status_detail})` : ''}`,
+        detail: `débito ${debito.status} · pago ${debito.payment?.status ?? 'sin pago'}${debito.payment?.status_detail ? ` (${debito.payment.status_detail})` : ''}${marcaModo}`,
       });
       return NextResponse.json({ ok: true, acreditado: false, estado: debito.status });
     }
@@ -119,7 +129,7 @@ export async function POST(req: Request) {
       p_mp_payment_id: String(debito.payment!.id),
       p_amount: Math.round(debito.transaction_amount),
       p_method: 'mercadopago',
-      p_detalle: `débito automático de la suscripción ${debito.preapproval_id}`,
+      p_detalle: `débito automático de la suscripción ${debito.preapproval_id}${marcaModo}`,
     });
     if (error) {
       console.error('[pagos/webhook] acreditar_cuota falló', error);
@@ -128,7 +138,7 @@ export async function POST(req: Request) {
     // `acreditado: false` no es un error: casi siempre es el mismo aviso llegando
     // por segunda vez. Se contesta 200 para que MP deje de reintentar.
     const r = Array.isArray(data) ? data[0] : data;
-    console.log('[pagos/webhook] débito', debito.payment!.id, r?.motivo, r?.hasta ?? '');
+    console.log('[pagos/webhook] débito', debito.payment!.id, r?.motivo, r?.hasta ?? '', '· modo', firma.modo);
     return NextResponse.json({ ok: true, acreditado: r?.acreditado === true, hasta: r?.hasta ?? null });
   }
 

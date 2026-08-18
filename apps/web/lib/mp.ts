@@ -208,13 +208,33 @@ export async function traerPago(id: string): Promise<PagoMP> {
  * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` — con los nombres en
  * minúscula y el punto y coma final, que es fácil de pasar por alto.
  */
+export type Modo = 'produccion' | 'prueba';
+
 export function firmaValida(opts: {
   signature: string | null;
   requestId: string | null;
   dataId: string | null;
-}): { ok: true } | { ok: false; motivo: string } {
-  const secreto = process.env.MP_WEBHOOK_SECRET;
-  if (!secreto) return { ok: false, motivo: 'falta MP_WEBHOOK_SECRET' };
+}): { ok: true; modo: Modo } | { ok: false; motivo: string } {
+  /*
+   * Dos claves, no una: el panel de Mercado Pago tiene modo productivo y modo
+   * pruebas, cada uno con su URL y su PROPIA clave secreta.
+   *
+   * Se aceptan las dos en paralelo para que el día que el club pase a cobrar de
+   * verdad no se caigan los avisos porque nadie se acordó de cambiar la variable
+   * —el clásico— y para poder probar en producción con credenciales de prueba,
+   * que es lo que estamos haciendo ahora.
+   *
+   * OJO cuando empiece a entrar plata real: hay que BORRAR `MP_WEBHOOK_SECRET_TEST`.
+   * Mientras esté, quien tenga esa clave puede avisar "este socio pagó" desde el
+   * simulador del panel y regalar meses. Por eso, además, cada mes acreditado por
+   * un aviso de prueba queda marcado como tal en `payments.detail`.
+   */
+  const claves: { modo: Modo; valor: string }[] = [
+    { modo: 'produccion', valor: process.env.MP_WEBHOOK_SECRET ?? '' },
+    { modo: 'prueba', valor: process.env.MP_WEBHOOK_SECRET_TEST ?? '' },
+  ].filter((c) => c.valor.length > 0) as { modo: Modo; valor: string }[];
+
+  if (claves.length === 0) return { ok: false, motivo: 'no hay ninguna clave de webhook configurada' };
   if (!opts.signature) return { ok: false, motivo: 'el aviso vino sin x-signature' };
 
   const partes = new Map(
@@ -228,14 +248,15 @@ export function firmaValida(opts: {
   if (!ts || !v1) return { ok: false, motivo: 'x-signature mal formado' };
 
   const manifest = `id:${(opts.dataId ?? '').toLowerCase()};request-id:${opts.requestId ?? ''};ts:${ts};`;
-  const esperado = crypto.createHmac('sha256', secreto).update(manifest).digest('hex');
+  const recibido = Buffer.from(v1, 'utf8');
 
-  // Comparación en tiempo constante: comparar con === filtra información sobre
-  // el hash correcto a quien mida los tiempos de respuesta.
-  const a = Buffer.from(esperado, 'utf8');
-  const b = Buffer.from(v1, 'utf8');
-  if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-    return { ok: false, motivo: 'la firma no coincide' };
+  for (const clave of claves) {
+    const esperado = Buffer.from(crypto.createHmac('sha256', clave.valor).update(manifest).digest('hex'), 'utf8');
+    // Comparación en tiempo constante: comparar con === filtra información sobre
+    // el hash correcto a quien mida los tiempos de respuesta.
+    if (esperado.length === recibido.length && crypto.timingSafeEqual(esperado, recibido)) {
+      return { ok: true, modo: clave.modo };
+    }
   }
-  return { ok: true };
+  return { ok: false, motivo: 'la firma no coincide con ninguna de las claves configuradas' };
 }
