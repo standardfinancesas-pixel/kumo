@@ -3089,7 +3089,9 @@ export default function App() {
       const { data } = await supabase.from('profiles').select('status, role').eq('id', userId).single();
       if (!vivo || !data) return;
       // El admin no es socio: su estado no lo bloquea.
-      if (data.role !== 'socio' || data.status === 'activo' || data.status === 'moroso') return;
+      // Solo 'activo' entra. La cuota vencida NO cierra la sesión: para eso está
+      // el muro de la cuota, que le ofrece pagar en lugar de echarlo del club.
+      if (data.role !== 'socio' || data.status === 'activo') return;
       Alert.alert(
         data.status === 'suspendido' ? 'Tu cuenta está suspendida' : 'Tu membresía está dada de baja',
         data.status === 'suspendido'

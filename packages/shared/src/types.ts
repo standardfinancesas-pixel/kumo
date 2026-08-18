@@ -65,7 +65,8 @@ export type Member = {
   dni: string | null;
   birthDate: string | null; // ISO date
   planId: string;
-  status: 'activo' | 'moroso' | 'baja';
+  /** La relación con el club, no la cuota: para la cuota está `paidUntil`. */
+  status: 'activo' | 'suspendido' | 'baja';
   joinedOn: string; // ISO date
   // Lo contratado y aceptado en el alta. `monthlyFeeAgreed` es la cuota que
   // firmó, no la de hoy: el precio del plan cambia.

@@ -445,6 +445,7 @@ function Socios({ socios }: { socios: SocioRow[] }) {
   const router = useRouter();
   const [plan, setPlan] = useState('Todos');
   const [estado, setEstado] = useState('Todos');
+  const [cuotaF, setCuotaF] = useState('Todas');
   const [ficha, setFicha] = useState<SocioRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [aviso, setAviso] = useState('');
@@ -496,7 +497,15 @@ function Socios({ socios }: { socios: SocioRow[] }) {
     router.refresh();
     setBusyId(null);
   };
-  const list = socios.filter((s) => (plan === 'Todos' || s.plan === plan) && (estado === 'Todos' || s.estado === estado));
+  /*
+   * El filtro de cuota es aparte del de estado a propósito: son dos preguntas
+   * distintas y antes estaban mezcladas en una sola lista de chips, donde "En
+   * mora" nunca devolvía nada porque ningún socio tenía ese estado.
+   */
+  const list = socios.filter((s) =>
+    (plan === 'Todos' || s.plan === plan)
+    && (estado === 'Todos' || s.estado === estado)
+    && (cuotaF === 'Todas' || (cuotaF === 'Al día' ? s.cuotaAlDia : !s.cuotaAlDia)));
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
     <div>
@@ -510,7 +519,14 @@ function Socios({ socios }: { socios: SocioRow[] }) {
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>ESTADO</div>
-          <div style={{ display: 'flex', gap: 8 }}>{['Todos', 'Al día', 'En mora', 'Suspendido', 'De baja'].map((e) => <button key={e} onClick={() => setEstado(e)} style={chip(estado === e)}>{e}</button>)}</div>
+          <div style={{ display: 'flex', gap: 8 }}>{['Todos', 'Activo', 'Suspendido', 'De baja'].map((e) => <button key={e} onClick={() => setEstado(e)} style={chip(estado === e)}>{e}</button>)}</div>
+        </div>
+        {/* La cuota va en su propio filtro y no mezclada con el estado: antes "En
+            mora" era un chip de ESTADO y no devolvía nunca nada, porque ningún
+            socio tenía ese estado. Son dos preguntas distintas. */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>CUOTA</div>
+          <div style={{ display: 'flex', gap: 8 }}>{['Todas', 'Al día', 'Vencida'].map((c) => <button key={c} onClick={() => setCuotaF(c)} style={chip(cuotaF === c)}>{c}</button>)}</div>
         </div>
       </div>
       <Aviso texto={aviso} />

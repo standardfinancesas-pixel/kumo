@@ -22,7 +22,7 @@ const LOTE = 100;
 /** Los estados de socio que reciben avisos: al día o debiendo la cuota. El
  *  suspendido y el de baja no tienen cobertura, así que no les llega nada.
  *  Es el mismo criterio que la función `tiene_acceso()` de la base. */
-export const CON_ACCESO = ['activo', 'moroso'];
+export const CON_ACCESO = ['activo'];
 
 export type ResultadoPush = { entregados: number; fallados: number; detalle: string[] };
 

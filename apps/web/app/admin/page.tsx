@@ -30,7 +30,18 @@ function relTime(iso: string): string {
 }
 /** Cómo se lee cada estado en el panel. 'suspendido' (lo corta el club) y 'baja'
  *  (se fue el socio) son distintos a propósito: solo la baja cuenta para el churn. */
-const ESTADO_SOCIO: Record<string, string> = { activo: 'Al día', moroso: 'En mora', suspendido: 'Suspendido', baja: 'De baja' };
+/*
+ * Cómo se lee cada estado en el panel.
+ *
+ * Dice la RELACIÓN con el club y nada más. Antes 'activo' se mostraba como "Al
+ * día", que hablaba de la cuota, y el panel terminaba diciendo "Al día" y "Sin
+ * pagar" en la misma fila. La cuota tiene su propia columna, que sale de
+ * `paid_until`.
+ *
+ * 'moroso' quedó del modelo anterior y no lo escribía nadie (ver la migración
+ * 20260818150000). Se mapea a 'Activo' por si sobrevive alguna fila vieja.
+ */
+const ESTADO_SOCIO: Record<string, string> = { activo: 'Activo', moroso: 'Activo', suspendido: 'Suspendido', baja: 'De baja' };
 
 export default async function Page() {
   const supabase = await createClient();
