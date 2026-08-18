@@ -124,9 +124,11 @@ export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number;
  * pago, así que ni el monto ni el plan pueden falsificarse desde el navegador.
  */
 function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
+  const router = useRouter();
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
   const [confirmando, setConfirmando] = useState(cuota.enCurso);
+  const [intentos, setIntentos] = useState(0);
 
   // El scroll del fondo se bloquea mientras el muro está puesto: si no, se puede
   // pasear por la app con la rueda del mouse.
@@ -148,11 +150,26 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
     if (p === 'error') setError('El pago no se pudo hacer. Probá de nuevo o con otra tarjeta.');
   }, []);
 
+  /*
+   * Mientras esperamos el aviso de Mercado Pago, se vuelve a preguntar al
+   * servidor cada 3 segundos. Con dos límites que NO son opcionales:
+   *
+   * · Se corta a los 10 intentos (30 segundos). La primera versión hacía
+   *   `location.reload()` en un `setInterval` sin fin: si el aviso no llegaba
+   *   —MP mal configurado, un débito que quedó pendiente en Rapipago, cualquier
+   *   cosa— el socio quedaba en una pantalla recargándose para siempre, sin
+   *   poder leer ni el mensaje. Al llegar al límite se le dice que está tardando
+   *   y se le deja un botón para reintentar.
+   * · Es `router.refresh()` y no recargar la página entera: `/app` hace una
+   *   docena de consultas en cada carga, y multiplicarlas por 10 para esperar un
+   *   webhook es castigar a la base por algo que no depende de ella.
+   */
+  const LIMITE = 10;
   useEffect(() => {
-    if (!confirmando) return;
-    const t = setInterval(() => window.location.reload(), 3000);
-    return () => clearInterval(t);
-  }, [confirmando]);
+    if (!confirmando || intentos >= LIMITE) return;
+    const t = setTimeout(() => { setIntentos((n) => n + 1); router.refresh(); }, 3000);
+    return () => clearTimeout(t);
+  }, [confirmando, intentos, router]);
 
   const pagar = async () => {
     setYendo(true); setError('');
@@ -185,10 +202,24 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
               Mercado Pago nos tiene que avisar del primer débito, y a veces tarda unos segundos. Esta pantalla se actualiza sola.
               {' '}Si pagaste con transferencia o en efectivo puede demorar más: te avisamos por mail cuando se acredite.
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600 }}>
-              <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgb(93,84,145)', borderTopColor: 'transparent', animation: 'kspin 0.9s linear infinite', flex: '0 0 auto' }} />
-              Esperando la confirmación…
-            </div>
+            {intentos < LIMITE ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600 }}>
+                <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgb(93,84,145)', borderTopColor: 'transparent', animation: 'kspin 0.9s linear infinite', flex: '0 0 auto' }} />
+                Esperando la confirmación…
+              </div>
+            ) : (
+              <>
+                {/* Se agotó la espera. Lo importante del texto: que NO pague de
+                    nuevo. Un socio que ve una pantalla trabada después de pagar
+                    vuelve a pagar, y ahí el problema pasa a ser plata. */}
+                <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, lineHeight: 1.5, marginBottom: 12 }}>
+                  Está tardando más de lo normal. Si ya autorizaste el pago, tu acceso se activa solo cuando Mercado Pago nos confirme: <strong>no hace falta pagar de nuevo</strong>.
+                </div>
+                <button onClick={() => setIntentos(0)} style={{ width: '100%', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 14.5, padding: '13px 18px', borderRadius: 13, cursor: 'pointer' }}>
+                  Volver a chequear
+                </button>
+              </>
+            )}
           </>
         ) : (
           <>
