@@ -2555,10 +2555,13 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }:
               </button>
             : <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{cuota.debePagar ? 'Pendiente' : '—'}</span>)}
         {/* Dónde cobra los reintegros: es plata que le entra, así que verlo acá
-            evita que descubra un CBU mal cargado cuando ya esperaba el dinero. */}
+            evita que descubra un CBU mal cargado cuando ya esperaba el dinero.
+            Sin cargar NO dice "Pendiente": no le falta hacer nada, y esa palabra
+            suena a deuda. La cuenta se pide cuando pide el primer reintegro, que
+            es cuando la persona está esperando plata y la completa sin quejarse. */}
         {row(ic(wallet, false, 19), 'Cuenta para reintegros',
-          profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Se pide al cargar el primer reintegro',
-          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.banco.cbu || profile.banco.alias ? 'Cargada' : 'Pendiente'}</span>)}
+          profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Te la pedimos cuando cargues tu primer reintegro',
+          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.banco.cbu || profile.banco.alias ? 'Cargada' : 'Todavía no hace falta'}</span>)}
       </div>
 
       {/* Datos personales */}

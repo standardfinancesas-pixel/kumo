@@ -1425,7 +1425,9 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
       ) : (
         <View style={{ marginBottom: 20 }}>
           {dato('DNI', profile.dni)}{dato('Domicilio', profile.address)}{dato('Localidad', profile.city)}{dato('Provincia', profile.province)}{dato('Teléfono', profile.phone)}{dato('Email', profile.email)}
-          {dato('Cuenta para reintegros', profile.banco.cbu ? `····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Sin cargar')}
+          {/* "Sin cargar" sonaba a que le faltaba hacer algo. No le falta: la
+              cuenta se pide cuando carga el primer reintegro. */}
+          {dato('Cuenta para reintegros', profile.banco.cbu ? `····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Se pide con tu primer reintegro')}
           {dato('Medio de pago', profile.tarjeta ?? 'Sin configurar')}
         </View>
       )}
