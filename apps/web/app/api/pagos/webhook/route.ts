@@ -1,6 +1,19 @@
 import { NextResponse } from 'next/server';
+import { tarjetaLabel } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
 import { firmaValida, traerDebito, traerSuscripcion } from '@/lib/mp';
+import { sendCuotaRechazada, sendCuotaAcreditada } from '@/lib/mail';
+import { mandarPush } from '@/lib/push';
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+/** El mes del que habla el mail. Sale de la fecha del débito que informa Mercado
+ *  Pago, no del reloj del servidor: un cobro que se acredita el 1° a la mañana es
+ *  la cuota del mes anterior, y decirle el mes equivocado en el comprobante hace
+ *  dudar de todo lo demás. */
+function mesDe(fecha?: string): string {
+  const d = fecha ? new Date(fecha) : new Date();
+  return Number.isNaN(d.getTime()) ? MESES[new Date().getMonth()]! : MESES[d.getMonth()]!;
+}
 
 /**
  * El aviso de Mercado Pago: es lo único que da acceso al club.
@@ -103,24 +116,68 @@ export async function POST(req: Request) {
     }
 
     const pagoOk = debito.payment?.status === 'approved';
-    const socio = await svc.from('profiles').select('id').eq('mp_preapproval_id', debito.preapproval_id).maybeSingle();
+    const socio = await svc
+      .from('profiles')
+      .select('id, email, full_name, monthly_fee_agreed, card_brand, card_last4, plans(name)')
+      .eq('mp_preapproval_id', debito.preapproval_id)
+      .maybeSingle();
     if (!socio.data) {
       console.error('[pagos/webhook] no encontramos socio para la suscripción', debito.preapproval_id);
       return NextResponse.json({ ok: true, ignorado: 'suscripción desconocida' });
     }
+    const quien = socio.data;
+    const nombre = quien.full_name?.trim().split(' ')[0] || 'Hola';
+    const plan = Array.isArray(quien.plans) ? quien.plans[0] : quien.plans;
+    const monto = Math.round(debito.transaction_amount || 0) || quien.monthly_fee_agreed || 1;
 
     if (!pagoOk) {
-      // La tarjeta rebotó o el débito está agendado. No se acredita nada, pero
-      // queda la fila: es lo que explica por qué el socio se encontró el muro.
-      await svc.from('payments').insert({
-        member_id: socio.data.id,
-        amount: Math.round(debito.transaction_amount || 0) || 1,
-        status: debito.status === 'scheduled' ? 'pendiente' : 'rechazado',
+      /*
+       * La tarjeta rebotó, o el débito todavía está agendado.
+       *
+       * `upsert` y no `insert`: MP reintenta el MISMO débito varios días, y con un
+       * insert el segundo intento choca contra el índice único de
+       * `external_reference` y se pierde. Quedaba guardado el motivo del primer
+       * rechazo y no el del último, así que el club veía información vieja.
+       */
+      const rechazado = debito.status !== 'scheduled';
+      await svc.from('payments').upsert({
+        member_id: quien.id,
+        amount: monto,
+        status: rechazado ? 'rechazado' : 'pendiente',
         method: 'mercadopago',
         mp_payment_id: debito.payment?.id ? String(debito.payment.id) : `ap:${debito.id}`,
         external_reference: `ap:${debito.id}`,
+        plan_name: plan?.name ?? null,
         detail: `débito ${debito.status} · pago ${debito.payment?.status ?? 'sin pago'}${debito.payment?.status_detail ? ` (${debito.payment.status_detail})` : ''}${marcaModo}`,
-      });
+      }, { onConflict: 'external_reference' });
+
+      /*
+       * Y se le avisa, que es lo que faltaba: sin el mail, el socio se enteraba
+       * recién al chocarse con el muro, sin saber que era su tarjeta. El aviso va
+       * sólo cuando el pago fue RECHAZADO, no cuando está agendado — avisar de un
+       * débito que todavía no se intentó es asustar por nada.
+       *
+       * Ni el mail ni el push revierten nada si fallan: el cobro rebotó igual, y
+       * el estado ya quedó guardado arriba.
+       */
+      if (rechazado && quien.email) {
+        await sendCuotaRechazada({
+          to: quien.email,
+          firstName: nombre,
+          mes: mesDe(debito.debit_date),
+          cuota: monto,
+          reintentoEl: 'los próximos días',
+        });
+        const { data: tokens } = await svc.from('push_tokens').select('token').eq('member_id', quien.id);
+        if (tokens?.length) {
+          await mandarPush(
+            tokens.map((t) => t.token as string),
+            'No pudimos cobrar tu cuota',
+            'Tu tarjeta rechazó el pago. Revisá los datos así no se corta tu cobertura.',
+            { pantalla: 'perfil' },
+          );
+        }
+      }
       return NextResponse.json({ ok: true, acreditado: false, estado: debito.status });
     }
 
@@ -139,6 +196,24 @@ export async function POST(req: Request) {
     // por segunda vez. Se contesta 200 para que MP deje de reintentar.
     const r = Array.isArray(data) ? data[0] : data;
     console.log('[pagos/webhook] débito', debito.payment!.id, r?.motivo, r?.hasta ?? '', '· modo', firma.modo);
+
+    /*
+     * El comprobante del mes, sólo si este aviso fue el que acreditó.
+     *
+     * Con `acreditado: false` no se manda nada: es el mismo aviso repetido, y
+     * mandar tres veces "cobramos tu cuota" por un solo cobro es peor que no
+     * mandar nada — el socio cree que le cobraron tres veces.
+     */
+    if (r?.acreditado === true && quien.email) {
+      await sendCuotaAcreditada({
+        to: quien.email,
+        firstName: nombre,
+        mes: mesDe(debito.debit_date),
+        cuota: monto,
+        planName: plan?.name ?? '—',
+        tarjeta: tarjetaLabel(quien.card_brand, quien.card_last4) ?? 'tu medio de pago',
+      });
+    }
     return NextResponse.json({ ok: true, acreditado: r?.acreditado === true, hasta: r?.hasta ?? null });
   }
 

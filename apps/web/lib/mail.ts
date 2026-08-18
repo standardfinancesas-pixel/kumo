@@ -325,10 +325,14 @@ export async function sendNegocioRechazado(opts: { to: string; firstName: string
 }
 
 /* ── Cobro de la cuota ──────────────────────────────────────────
- * Los dos que siguen NO LOS LLAMA NADIE todavía: no hay cobro. Quedan escritos
- * para que, cuando se enganche Mercado Pago, el mail no sea lo último que se
- * improvisa. El del pago rechazado es el que más importa: es plata que no entró y
- * un socio que no sabe que su cobertura está por caerse.
+ * Los dos que siguen los dispara el webhook de Mercado Pago
+ * (`/api/pagos/webhook`), uno por cada débito de la suscripción: el rechazado
+ * cuando la tarjeta rebota, el acreditado como comprobante del mes cobrado.
+ *
+ * El del rechazo es el que más importa: es plata que no entró y un socio que, sin
+ * el mail, se entera recién cuando se choca con el muro de la cuota — sin saber
+ * que era su tarjeta y sin nada que hacer al respecto. Eso es un socio que se va
+ * en lugar de actualizar los datos.
  */
 
 /** 12 · No se pudo cobrar la cuota. */
