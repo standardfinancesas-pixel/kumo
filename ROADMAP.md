@@ -157,24 +157,34 @@ de cada pantalla.
       una casilla o un reenvío: lo más rápido es el forwarding gratis de GoDaddy
       hacia flor@cambalache.studio; lo prolijo, Google Workspace. Hasta que esté,
       el canal que el club atiende de verdad es el WhatsApp.
-- [ ] **Cobro de la cuota mensual — no existe.** El paso 5 valida la tarjeta y la
-      descarta (bien: el CVV no se puede almacenar y el número obliga a certificar
-      PCI DSS), así que **el socio queda `activo` sin que se le cobre nada**. El
-      medio de pago ya queda identificado en el perfil (marca, últimos 4,
-      vencimiento) y la cuota aceptada también, así que lo que falta es el cobro
-      en sí: **suscripción de Mercado Pago** (decidido) — tokenizar con el SDK de
-      MP en el navegador, crear el `preapproval`, guardar su id, y un webhook con
-      validación HMAC que mueva al socio entre `activo` y `moroso`. Necesita el
-      Access Token y la Public Key de la cuenta del cliente, y definir si se cobra
-      desde el día 1 o hay período de gracia.
-      **A confirmar con la API de MP** (no de memoria; hay un MCP de Mercado Pago
-      que hay que autorizar desde una sesión interactiva): si el preapproval
-      soporta debitar de un CBU. Hoy el paso 5 ofrece "Débito por CBU/CVU" y a
-      quien lo elige no se le guarda tarjeta, así que no habría con qué debitarle.
-      Ojo, son dos flujos opuestos y no hay que mezclarlos: el reintegro **no** se
-      paga a la tarjeta, sale por transferencia al CBU del socio, y **la hace el
-      club a mano** desde su home banking. El sistema no mueve plata: solo le
-      muestra al admin a dónde mandarla.
+- [x] **Cobro de la cuota mensual, hecho.** Suscripción de Mercado Pago con débito
+      automático: el socio no ve la app hasta que la cuota está paga (muro en la
+      webapp y en la app, con los tres planes y la cobertura odontológica adentro),
+      autoriza una vez en el sitio de MP —la tarjeta nunca pasa por Kumo— y de ahí
+      MP debita todos los meses. El acceso lo da **solo** el webhook, nunca la
+      vuelta del navegador: `?suscripcion=ok` lo puede tipear cualquiera, y el que
+      pagó puede cerrar el navegador antes de volver. El webhook verifica la firma,
+      no le cree al cuerpo del aviso (le pregunta a MP por el id) y acredita en una
+      función de la base que bloquea las filas: cinco avisos simultáneos del mismo
+      cobro acreditan uno solo. Si la tarjeta rebota, MP reintenta unos días, cada
+      intento queda registrado con su motivo, y el socio recibe mail y push — el
+      acceso no se corta ese día, sino cuando se le termina el mes que ya pagó. La
+      baja del débito está en Mi perfil en las dos superficies. El club lo ve todo
+      en **Cobros**, y tiene "Registrar pago" para el efectivo y las
+      transferencias. Los estados y la concurrencia están probados (14 chequeos).
+      **Falta la corrida real contra MP**: que acepte la suscripción con un pagador
+      de prueba y si la vuelta al sitio es automática.
+- [ ] **Limpiar el paso 5 del alta, que quedó desfasado.** Ahí se elige "tarjeta o
+      CBU" y ya no define nada del cobro: la cuota la cobra Mercado Pago y la
+      tarjeta se pone en su sitio. Los últimos 4 de la tarjeta que quedan en el
+      perfil son decorativos. Y la opción "CBU" en realidad carga la **cuenta de
+      los reintegros**, que es el flujo contrario: son dos cosas distintas y en esa
+      pantalla se ven como una sola. Decisión del cliente (18/08: prefiere dejarlo
+      como está por ahora, entendiendo que ese paso es para el reintegro).
+      Ojo con la confusión de fondo, que ya se dio: el reintegro **no** se paga a
+      la tarjeta, sale por transferencia al CBU del socio, y **la hace el club a
+      mano** desde su home banking. El sistema no mueve esa plata: solo le muestra
+      al admin a dónde mandarla.
 - [x] **Fecha de resolución de un reintegro** (`resolved_at`). La escribe el route
       handler que resuelve, que es el único lugar donde un reintegro cambia de
       estado. El seguimiento fecha el estado FINAL al que llegó y deja los
