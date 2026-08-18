@@ -1430,6 +1430,61 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
         </View>
       )}
 
+      {/*
+        * La cuota y la baja del débito automático.
+        *
+        * Estaba solo en la webapp: el muro de la app cobraba pero no había dónde
+        * cortar, y encima su propio texto dice que se puede dar de baja cuando
+        * quiera. Con débito automático la baja tiene que ser tan fácil como el
+        * alta y estar donde el socio se suscribió, no en un mail al club.
+        *
+        * Se corta el cobro futuro, no el mes ya pagado: sigue entrando hasta que
+        * se le vence. Cobrarle un mes y sacárselo el mismo día sería quedarse con
+        * la plata.
+        */}
+      <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Tu cuota</Text>
+      <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 20 }}>
+        <Text style={{ fontSize: 13.5, color: INK, fontWeight: '600' }}>
+          {profile.suscripcion === 'authorized'
+            ? `Débito automático activo · ${money(profile.planPrice)}/mes`
+            : profile.cuotaHasta && !profile.debePagar
+              ? `Paga hasta el ${fmtFechaCorta(profile.cuotaHasta)} · sin débito automático`
+              : 'Sin suscripción activa'}
+        </Text>
+        {profile.suscripcion === 'authorized' && (
+          <TouchableOpacity
+            onPress={() => Alert.alert(
+              '¿Dar de baja el débito?',
+              'No se te va a cobrar más. Podés seguir usando el club hasta que se te venza el mes que ya pagaste.',
+              [
+                { text: 'No, dejalo', style: 'cancel' },
+                {
+                  text: 'Dar de baja',
+                  style: 'destructive',
+                  onPress: async () => {
+                    const { data: ses } = await supabase.auth.getSession();
+                    const token = ses.session?.access_token;
+                    if (!token) { Alert.alert('Se cerró tu sesión', 'Volvé a entrar y probá de nuevo.'); return; }
+                    const res = await fetch(`${SITIO}/api/suscripcion/baja`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+                    const data = await res.json();
+                    Alert.alert(
+                      res.ok ? 'Listo' : 'No pudimos darlo de baja',
+                      res.ok
+                        ? `No te vamos a cobrar más.${data.hasta ? ` Podés usar el club hasta el ${fmtFechaCorta(data.hasta)}.` : ''}`
+                        : (data.error ?? 'Probá de nuevo o escribinos por WhatsApp.'),
+                    );
+                    reload();
+                  },
+                },
+              ],
+            )}
+            style={{ marginTop: 10 }}
+          >
+            <Text style={{ fontSize: 13, fontWeight: '700', color: '#b03a3a' }}>Dar de baja el débito</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Cambiar de plan</Text>
       <View style={{ gap: 8, marginBottom: 20 }}>
         {planes.map((p) => {
