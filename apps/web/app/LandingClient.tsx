@@ -254,9 +254,36 @@ function Hero() {
             </div>
           </div>
         </div>
-        <div className="r-hero-img-wrap" style={{ flex: '1 1 320px', minWidth: 0, alignSelf: 'flex-end', width: 709, maxWidth: 709, height: 715, position: 'relative' }}>
+        {/*
+          * El perro apoyado en el borde de abajo de la sección, sin aire.
+          *
+          * Dos cosas lo separaban. El `margin-bottom` negativo se come el
+          * padding de abajo de la fila —30px que el perro no necesita, pero el
+          * texto de la izquierda sí—, y como la sección tiene `overflow:
+          * hidden` no se derrama para afuera. Y `bottom` en lugar de `center`:
+          * cuando la caja es más alta que la foto (pasa entre 900 y ~1180px de
+          * ancho, donde el `contain` la achica), el sobrante quedaba repartido
+          * mitad arriba y mitad abajo. Medido: 69px de hueco a 960px de ancho.
+          *
+          * En mobile el margen se anula (ver `.r-hero-img-wrap` en globals.css):
+          * ahí la foto es una tira de 260px con la sección apilada, y comerse
+          * ese espacio la pega contra lo que viene después.
+          */}
+        <div className="r-hero-img-wrap" style={{ flex: '1 1 320px', minWidth: 0, alignSelf: 'flex-end', width: 709, maxWidth: 709, height: 715, marginBottom: -30, position: 'relative' }}>
           <div className="r-hero-circle" style={{ position: 'absolute', right: 40, top: '50%', transform: 'translateY(-50%)', width: 520, height: 520, borderRadius: '50%', background: 'rgb(107,98,163)', zIndex: 0 }} />
-          <div style={{ position: 'relative', zIndex: 1, width: '100%', height: '100%', background: `url(${IMG('asset-837cff30.png')}) center center / contain no-repeat` }} />
+          {/*
+            * Dos capas, no una: la croqueta venía DENTRO de la foto y así no hay
+            * nada que animar. `scripts/cortar-croqueta.mjs` la separó en su
+            * propio PNG, del mismo tamaño de lienzo que el del perro y con todo
+            * lo demás transparente. Por eso las dos se dibujan con el mismo
+            * `contain center bottom` y caen alineadas solas, a cualquier ancho,
+            * sin una sola coordenada a mano en el CSS.
+            */}
+          <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: `url(${IMG('hero-perro.png')}) center bottom / contain no-repeat` }} />
+          {/* El 9.5%/22.4% es el centro de la croqueta dentro del lienzo, y lo
+              calcula el script: sin eso el `rotate` la haría orbitar alrededor
+              del medio de la foto en lugar de ladearse donde está. */}
+          <div className="r-hero-croqueta" style={{ position: 'absolute', inset: 0, zIndex: 2, background: `url(${IMG('hero-croqueta.png')}) center bottom / contain no-repeat`, transformOrigin: '9.5% 22.4%' }} />
         </div>
       </div>
     </section>
@@ -667,7 +694,12 @@ function FinalCta() {
           <p style={{ color: 'rgb(179,171,214)', fontSize: 16.5, lineHeight: 1.5, margin: '0 0 24px', maxWidth: 400 }}>Desde $18.000/mes. Sin permanencia. Con derecho de arrepentimiento de 10 días.</p>
           <button onClick={() => openAuth('register')} className="scpg" style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 17, padding: '16px 34px', borderRadius: 14, display: 'inline-block', transition: 'background 0.15s', cursor: 'pointer' }}>Unirme ahora →</button>
         </div>
-        <img className="r-cta-img" src={IMG('asset-298f6560.webp')} alt="Mascotas" style={{ flex: '1 1 420px', minWidth: 0, maxWidth: 560, height: 245, objectFit: 'contain', objectPosition: 'right center', position: 'relative', zIndex: 2 }} />
+        {/* Los animales apoyados en el piso de la tarjeta, igual que el perro del
+            hero: el margen negativo se come los 44px de padding de abajo (que el
+            texto sí necesita) y `bottom` manda el sobrante del `contain` arriba.
+            En mobile el override de `.r-cta-img` pone `margin: 0 auto`, así que
+            allá esto no aplica: la tarjeta se apila y centra. */}
+        <img className="r-cta-img" src={IMG('asset-298f6560.webp')} alt="Mascotas" style={{ flex: '1 1 420px', minWidth: 0, maxWidth: 560, height: 245, objectFit: 'contain', objectPosition: 'right bottom', alignSelf: 'flex-end', marginBottom: -44, position: 'relative', zIndex: 2 }} />
       </div>
     </section>
   );

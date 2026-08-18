@@ -32,6 +32,22 @@ a:hover { color: #443d6e; }
 @keyframes kmarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 @keyframes kpulse { 0% { box-shadow: 0 0 0 0 rgba(225,251,98,.7); } 70% { box-shadow: 0 0 0 7px rgba(225,251,98,0); } 100% { box-shadow: 0 0 0 0 rgba(225,251,98,0); } }
 @keyframes kslideup { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
+/* La croqueta que el perro del hero está por atrapar: flota y se ladea sobre sí
+   misma, como suspendida en el aire. Es una capa aparte de la foto (ver
+   `scripts/cortar-croqueta.mjs`), así que mover la capa mueve solo la croqueta.
+   Lento y de pocos píxeles a propósito: es el fondo de un titular, no un cartel
+   que compita con lo que hay que leer. */
+/* El recorrido va en variables porque depende del tamaño en que se dibuje la
+   foto: en desktop la croqueta mide unos 82px y 13px de vaivén son un 16%; en
+   mobile mide 37px y los mismos 13px serían un salto de más de un tercio. Los
+   valores chicos están en el breakpoint de 900px. */
+@keyframes kcroqueta { 0%, 100% { transform: translate3d(0, 0, 0) rotate(-3deg); } 50% { transform: translate3d(var(--croqueta-x, -7px), var(--croqueta-y, -13px), 0) rotate(3deg); } }
+.r-hero-croqueta { animation: kcroqueta 3.4s ease-in-out infinite; }
+/* A quien pidió menos movimiento en su sistema, la croqueta le queda quieta y en
+   su lugar de siempre. */
+@media (prefers-reduced-motion: reduce) {
+  .r-hero-croqueta { animation: none; }
+}
 
 input[type="range"]::-webkit-slider-thumb {
   appearance: none; width: 22px; height: 22px; border-radius: 50%;
@@ -62,8 +78,12 @@ input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: 
 /* Breakpoints responsive del prototipo */
 @media (max-width: 900px) {
   .r-hero-row { flex-direction: column !important; align-items: stretch !important; }
-  .r-hero-img-wrap { width: 100% !important; max-width: 100% !important; height: 260px !important; align-self: center !important; }
+  /* `margin-bottom: 0` anula el -30px del layout ancho: acá la sección está
+     apilada y ese margen negativo pegaría la foto contra lo que viene abajo. */
+  .r-hero-img-wrap { width: 100% !important; max-width: 100% !important; height: 260px !important; align-self: center !important; margin-bottom: 0 !important; }
   .r-hero-circle { right: 50% !important; transform: translate(50%, -50%) !important; width: 240px !important; height: 240px !important; }
+  /* La foto se dibuja chica: el vaivén de la croqueta se achica con ella. */
+  .r-hero-croqueta { --croqueta-x: -3px; --croqueta-y: -6px; }
   .r-cta-final { padding: 36px 26px !important; text-align: center !important; justify-content: center !important; }
   .r-cta-img { margin: 0 auto !important; object-position: center center !important; height: 180px !important; }
   .r-foot-grid { grid-template-columns: 1fr !important; gap: 28px !important; }
