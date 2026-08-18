@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, mesActualISO, hoyISO } from '@kumo/shared';
+import { urls, mesActualISO, hoyISO, diaISO } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, {
   type AdminProfile, type KpiVM, type DistRow, type SocioRow, type ColaRow, type HistRow,
@@ -12,13 +12,22 @@ const WEBAPP = urls.webapp;
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+/*
+ * Las fechas del panel, siempre en día de Buenos Aires.
+ *
+ * Un `timestamptz` guarda un instante en UTC y `new Date(...)` lo formatea con la
+ * zona de quien mira: el mismo cobro se veía con un día de diferencia según desde
+ * dónde se abriera el panel. Se normaliza con `diaISO` —que pasa el instante al
+ * día argentino— y de ahí se parte el texto, sin volver a construir un Date local.
+ */
+const partesFecha = (iso: string) => (iso.length > 10 ? diaISO(iso) : iso).split('-').map(Number);
 function fmtShort(iso: string): string {
-  const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
-  return `${MESES[d.getMonth()]} ${d.getFullYear()}`;
+  const [a, m] = partesFecha(iso);
+  return `${MESES[(m ?? 1) - 1]} ${a}`;
 }
 function fmtDay(iso: string): string {
-  const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
-  return `${String(d.getDate()).padStart(2, '0')} ${MESES[d.getMonth()]}`;
+  const [, m, d] = partesFecha(iso);
+  return `${String(d).padStart(2, '0')} ${MESES[(m ?? 1) - 1]}`;
 }
 function relTime(iso: string): string {
   const mins = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
@@ -272,7 +281,10 @@ export default async function Page() {
       monto: c.amount,
       estado: c.status,
       medio: c.method,
-      cuando: (c.paid_at ?? c.created_at).slice(0, 10),
+      // El día ARGENTINO del cobro. Antes se cortaba el timestamp a 10 caracteres,
+      // que da el día UTC: un pago acreditado a las 22:00 de Buenos Aires (01:00 UTC
+      // del día siguiente) aparecía fechado un día después.
+      cuando: diaISO(c.paid_at ?? c.created_at),
       cubreHasta: c.covers_until,
       detalle: c.detail,
       deprueba: /PRUEBA/.test(c.detail ?? ''),

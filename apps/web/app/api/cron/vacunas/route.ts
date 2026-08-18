@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { diasHasta, hoyISO, DIAS_AVISO_CARNET } from '@kumo/shared';
+import { diasHasta, hoyISO, diaISO, DIAS_AVISO_CARNET } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
 import { mandarPush, CON_ACCESO } from '@/lib/push';
 import { sendVacunaProxima } from '@/lib/mail';
@@ -51,7 +51,9 @@ export async function GET(req: Request) {
     .eq('status', 'pendiente')
     .not('due_on', 'is', null)
     .gte('due_on', hoyISO())
-    .lte('due_on', new Date(Date.now() + (DIAS_ANTES + 1) * 86400000).toISOString().slice(0, 10));
+    // El fin de la ventana, en días argentinos: con el día UTC, entre las 21:00 y
+    // la medianoche el cron miraba un día de más.
+    .lte('due_on', diaISO(new Date(Date.now() + (DIAS_ANTES + 1) * 86400000).toISOString()));
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const { data: yaAvisadas } = await svc.from('vaccine_reminders').select('vaccination_id');

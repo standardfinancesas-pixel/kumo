@@ -6,7 +6,7 @@
  * a reference/kumo-prototype.html.
  */
 
-import { diasHasta } from './fechas';
+import { diasHasta, diaISO } from './fechas';
 import type { VaccineKind } from './types';
 
 export const VACUNA_KINDS: VaccineKind[] = ['Vacuna', 'Estudio', 'Antiparasitario'];
@@ -56,9 +56,15 @@ export const calDiaLabel = (iso: string) => {
   const [, m, d] = iso.split('-');
   return `${Number(d)} de ${MESES_LARGOS[Number(m) - 1]!.toLowerCase()}`;
 };
-/** "15 ago 2026", el formato que muestran las dos superficies. */
+/**
+ * "15 ago 2026", el formato que muestran las dos superficies.
+ *
+ * Acepta un día ("YYYY-MM-DD") o un instante (`timestamptz`), y en el segundo caso
+ * muestra el día ARGENTINO: partir el texto crudo daría el día UTC, y un cobro
+ * acreditado a las 22:00 de Buenos Aires aparecería fechado al día siguiente.
+ */
 export const fmtFechaCorta = (iso: string) => {
-  const [y, m, d] = iso.split('-');
+  const [y, m, d] = (iso.length > 10 ? diaISO(iso) : iso).split('-');
   return `${d} ${MESES_CORTOS[Number(m) - 1]} ${y}`;
 };
 

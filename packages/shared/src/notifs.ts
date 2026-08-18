@@ -7,7 +7,7 @@
  * una armaba su propia lista, terminaron mostrando cosas distintas.
  */
 
-import { diasHasta } from './fechas';
+import { diasHasta, diaISO } from './fechas';
 
 /** Cuántos días antes se avisa un vencimiento del carnet. Dos: alcanza para
  *  conseguir turno y no tan temprano como para olvidarse. Lo usa también el cron
@@ -44,7 +44,13 @@ export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield'; 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 const asDate = (iso: string) => new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''));
-const fmtDia = (iso: string) => { const d = asDate(iso); return `${d.getDate()} ${MESES[d.getMonth()]}`; };
+/** El día que se muestra es el argentino, no el del reloj de quien mira: con
+ *  `getMonth()` sobre un instante, un aviso de las 22:00 de Buenos Aires salía
+ *  fechado al día siguiente para quien abriera la app desde otra zona. */
+const fmtDia = (iso: string) => {
+  const [, m, d] = (iso.length > 10 ? diaISO(iso) : iso).split('-').map(Number);
+  return `${d} ${MESES[(m ?? 1) - 1]}`;
+};
 
 /** "Recién", "Hace 2 h", "Ayer", "Hace 3 días". */
 export function notifTiempo(iso: string): string {
