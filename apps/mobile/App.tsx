@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, PanResponder, SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { Alert, AppState, PanResponder, SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
@@ -11,7 +11,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -75,6 +75,9 @@ type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'foros';
 const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '').replace(/\D/g, ''));
 /** Del ícono genérico que devuelve `KIND_ICON` al nombre que entiende `Ic`. */
 const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
+/** WhatsApp del club, para el muro de la cuota. Pendiente: sacarlo de
+ *  `club_settings`, que es donde el panel lo edita — igual que en la webapp. */
+const WA_CLUB = '5491125168802';
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
 type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone' | 'image';
@@ -1963,6 +1966,100 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   );
 }
 
+/* ── El muro de la cuota ───────────────────────────────────────── */
+/**
+ * Sin la cuota paga, el socio no usa la app.
+ *
+ * Es un muro y no un aviso: se dibuja encima de todo, tapa la navegación y no
+ * tiene forma de cerrarse. Lo que sí tiene es salida —cerrar sesión y el WhatsApp
+ * del club—: un modal sin ninguna salida no es un paywall, es una persona
+ * encerrada que no puede ni preguntar qué pasó.
+ *
+ * El pago no se hace acá adentro: se abre el navegador en Mercado Pago. Los datos
+ * de la tarjeta no pasan por Kumo, y de paso el socio puede usar su cuenta de MP
+ * ya logueada en el teléfono.
+ *
+ * Al volver del navegador la app se refresca sola (ver el efecto de `AppState`):
+ * el acceso lo da el aviso de MP a nuestro servidor, que puede tardar unos
+ * segundos, así que la pantalla vuelve a preguntar en lugar de dejarlo trabado.
+ */
+function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => void }) {
+  const [yendo, setYendo] = useState(false);
+  const [error, setError] = useState('');
+
+  const suscribirme = async () => {
+    setYendo(true); setError('');
+    try {
+      // El token de la sesión: la app no tiene cookies, así que la ruta lo recibe
+      // en el header y lo valida contra Supabase (ver lib/quien-pide.ts).
+      const { data: ses } = await supabase.auth.getSession();
+      const token = ses.session?.access_token;
+      if (!token) { setError('Se cerró tu sesión. Volvé a entrar.'); setYendo(false); return; }
+      const res = await fetch(`${SITIO}/api/pagos/crear`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.yaAutorizada) { setError('Tu suscripción ya está autorizada: estamos esperando el primer débito.'); setYendo(false); recargar(); return; }
+      if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir la suscripción.'); setYendo(false); return; }
+      await Linking.openURL(data.initPoint);
+    } catch {
+      setError('No pudimos abrir la suscripción. Revisá la conexión.');
+    }
+    setYendo(false);
+  };
+
+  return (
+    <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 99, backgroundColor: 'rgba(33,30,51,0.78)', justifyContent: 'center', paddingHorizontal: 18 }}>
+      <View style={{ backgroundColor: '#fff', borderRadius: 22, padding: 22 }}>
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: BRAND, marginBottom: 2 }}>Kumo</Text>
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>
+          {profile.cuotaHasta ? `${profile.firstName}, se te venció la cuota` : `¡Bienvenido, ${profile.firstName}!`}
+        </Text>
+        <Text style={{ fontSize: 14, color: '#5b5670', lineHeight: 20, marginBottom: 16 }}>
+          {profile.cuotaHasta
+            ? 'Para volver a usar tus beneficios, el carnet y los reintegros, activá tu suscripción.'
+            : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
+        </Text>
+        <View style={{ borderWidth: 1, borderColor: '#e6e3f0', borderRadius: 14, padding: 14, marginBottom: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5 }}>TU PLAN</Text>
+            <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>{profile.planName}</Text>
+          </View>
+          <View style={{ alignItems: 'flex-end' }}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5 }}>POR MES</Text>
+            <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>${profile.planPrice.toLocaleString('es-AR')}</Text>
+          </View>
+        </View>
+        {!!error && (
+          <View style={{ backgroundColor: '#fdf2f2', borderWidth: 1, borderColor: '#f5d6d6', borderRadius: 12, padding: 11, marginBottom: 12 }}>
+            <Text style={{ fontSize: 13, color: '#b03a3a' }}>{error}</Text>
+          </View>
+        )}
+        <TouchableOpacity
+          onPress={suscribirme}
+          disabled={yendo}
+          activeOpacity={0.85}
+          style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo ? 0.65 : 1, marginBottom: 8 }}
+        >
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{yendo ? 'Abriendo Mercado Pago…' : 'Suscribirme con Mercado Pago'}</Text>
+        </TouchableOpacity>
+        <Text style={{ fontSize: 11.5, color: '#a29dba', textAlign: 'center', lineHeight: 16, marginBottom: 14 }}>
+          Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras.
+        </Text>
+        <View style={{ borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => openWa(WA_CLUB)}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: BRAND }}>¿Algún problema? Escribinos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => supabase.auth.signOut()}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: '#8781a0' }}>Cerrar sesión</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 /* ── Sub-pantalla: Notificaciones ──────────────────────────────── */
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
 const NOTIF_DESTINO: Record<'carnet' | 'reintegros' | 'minegocio', Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio' };
@@ -3052,6 +3149,21 @@ export default function App() {
   }), []);
 
   /*
+   * Al volver a la app, recargar.
+   *
+   * El caso que importa es el del muro: el socio se va al navegador a autorizar el
+   * débito y vuelve. El acceso lo da el aviso de Mercado Pago a nuestro servidor y
+   * puede tardar unos segundos, así que la app vuelve a preguntar en lugar de
+   * mostrarle el muro sobre una cuota que ya está paga.
+   */
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (estado) => {
+      if (estado === 'active' && userId) reload();
+    });
+    return () => sub.remove();
+  }, [userId, reload]);
+
+  /*
    * Registro para push, cada vez que hay un socio adentro.
    *
    * Va acá y no en el login porque también corre cuando la app arranca con la
@@ -3229,6 +3341,9 @@ export default function App() {
         {masOpen && <MasSheet onClose={() => setMasOpen(false)} onGo={go} />}
           </>
         )}
+        {/* Último y encima de todo, tabbar incluida: mientras la cuota esté
+            vencida no se puede usar nada de lo que hay atrás. */}
+        {data?.profile?.debePagar && <MuroCuota profile={data.profile} recargar={reload} />}
       </View>
     </SafeAreaView>
   );

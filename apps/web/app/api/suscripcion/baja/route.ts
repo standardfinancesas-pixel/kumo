@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
+import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
 import { cancelarSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
 
@@ -19,15 +19,15 @@ import { cancelarSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
  * socio en Mi perfil. Se puede dar de baja el débito y seguir siendo socio hasta
  * fin de mes.
  */
-export async function POST() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return NextResponse.json({ error: 'Sin sesión.' }, { status: 401 });
+export async function POST(req: Request) {
+  // Igual que crear: la baja tiene que poder hacerse desde el celular también.
+  const quien = await quienPide(req);
+  if (!quien) return NextResponse.json({ error: 'Sin sesión.' }, { status: 401 });
 
-  const { data: perfil } = await supabase
+  const { data: perfil } = await getServiceClient()
     .from('profiles')
     .select('id, mp_preapproval_id, mp_subscription_status, paid_until')
-    .eq('id', auth.user.id)
+    .eq('id', quien.id)
     .single();
   if (!perfil) return NextResponse.json({ error: 'No encontramos tu perfil.' }, { status: 404 });
   if (!perfil.mp_preapproval_id) {

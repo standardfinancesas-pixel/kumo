@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -19,6 +19,16 @@ export type Profile = {
    *  el formulario de reintegro la prefija. */
   banco: { holder: string | null; cuit: string | null; cbu: string | null; alias: string | null };
   tarjeta: string | null;
+  /**
+   * La cuota. `debePagar` es una fecha comparada con hoy, no un "al día"
+   * guardado: un booleano hay que apagarlo con un cron y mientras no corre miente.
+   *
+   * Si debe, la app le pone el muro encima. Es distinto de estar suspendido —ahí se
+   * cierra la sesión—: acá el socio está bien con el club y lo que falta es pagar.
+   */
+  cuotaHasta: string | null;
+  debePagar: boolean;
+  suscripcion: string | null;
 };
 export type ProviderVM = {
   id: string; name: string; category: string; zone: string; km: number; badge?: string;
@@ -156,7 +166,7 @@ export function useKumoData(userId: string | null) {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, dni, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
+      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
@@ -206,6 +216,9 @@ export function useKumoData(userId: string | null) {
       address: p.address ?? '—', city: p.city ?? '—', province: p.province ?? '—', dni: p.dni ?? '—',
       banco: { holder: p.bank_holder, cuit: p.bank_cuit, cbu: p.bank_cbu, alias: p.bank_alias },
       tarjeta: tarjetaLabel(p.card_brand, p.card_last4),
+      cuotaHasta: p.paid_until ?? null,
+      debePagar: !p.paid_until || p.paid_until < hoyISO(),
+      suscripcion: p.mp_subscription_status ?? null,
     } : null;
 
     const pets: Pet[] = (petsRes.data ?? []).map((row, i) => {

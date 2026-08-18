@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { cuotaMensual, urls, SITIO } from '@kumo/shared';
-import { createClient } from '@/lib/supabase-server';
+import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
 import { crearSuscripcion, traerSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
 
@@ -15,15 +15,16 @@ import { crearSuscripcion, traerSuscripcion, MercadoPagoSinConfigurar } from '@/
  * El plan tampoco se elige acá: es el que eligió en el paso 3 del alta y quedó en
  * su perfil, con el add-on odontológico si lo contrató.
  */
-export async function POST() {
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return NextResponse.json({ error: 'Sin sesión.' }, { status: 401 });
+export async function POST(req: Request) {
+  // Sirve a la webapp (sesión en cookies) y a la app del celular (token en el
+  // header): el muro existe en las dos y en las dos tiene que poder pagar.
+  const quien = await quienPide(req);
+  if (!quien) return NextResponse.json({ error: 'Sin sesión.' }, { status: 401 });
 
-  const { data: perfil } = await supabase
+  const { data: perfil } = await getServiceClient()
     .from('profiles')
     .select('id, email, role, status, plan_id, addon_odonto, monthly_fee_agreed, paid_until, mp_preapproval_id, mp_subscription_status, plans(name, base_price)')
-    .eq('id', auth.user.id)
+    .eq('id', quien.id)
     .single();
 
   if (!perfil) return NextResponse.json({ error: 'No encontramos tu perfil.' }, { status: 404 });

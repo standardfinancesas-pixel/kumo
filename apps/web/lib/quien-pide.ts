@@ -1,27 +1,28 @@
-import { createClient as createServerClient } from './supabase-server';
-import { createClient as createAnonClient } from './supabase-public';
+import { createClient } from './supabase-server';
+import { getServiceClient } from './supabase-service';
 
 /**
- * Quién hace el pedido a un route handler, sirva desde la webapp o desde la app
- * móvil.
+ * Quién está haciendo el pedido, venga de la web o de la app.
  *
- * La webapp manda la sesión en cookies (`@supabase/ssr`), pero la app móvil no
- * tiene cookies: guarda la sesión en el storage de Expo y puede mandar el token
- * en `Authorization: Bearer`. Sin esto, los mails que dispara el socio saldrían
- * solo cuando la acción se hace desde la web, y el mismo botón mandaría o no
- * mandaría el aviso según el aparato — que es peor que no tenerlo.
+ * La webapp manda la sesión en cookies (las escribe `@supabase/ssr`). La app del
+ * celular no tiene cookies: guarda el token de Supabase en el teléfono y lo manda
+ * en `Authorization: Bearer ...`. Sin esto, las rutas de la cuota sólo funcionaban
+ * desde el navegador y en mobile el muro no tenía botón que apretar.
  *
- * El token lo valida Supabase (`getUser` chequea la firma contra el proyecto),
- * así que un token inventado o vencido devuelve null. Nunca se confía en un id
- * que venga en el body.
+ * El token NO se cree por venir en el header: se valida contra Supabase, que es
+ * quien lo firmó. Un JWT que uno se inventa no pasa este chequeo.
  */
 export async function quienPide(req: Request): Promise<{ id: string } | null> {
-  const cabecera = req.headers.get('authorization');
-  if (cabecera?.toLowerCase().startsWith('bearer ')) {
-    const { data } = await createAnonClient().auth.getUser(cabecera.slice(7).trim());
-    return data.user ? { id: data.user.id } : null;
+  const auth = req.headers.get('authorization');
+  const token = auth?.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
+
+  if (token) {
+    const { data, error } = await getServiceClient().auth.getUser(token);
+    if (error || !data.user) return null;
+    return { id: data.user.id };
   }
-  const supabase = await createServerClient();
+
+  const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   return data.user ? { id: data.user.id } : null;
 }
