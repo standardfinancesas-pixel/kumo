@@ -32,6 +32,8 @@ a:hover { color: #443d6e; }
 @keyframes kmarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 @keyframes kpulse { 0% { box-shadow: 0 0 0 0 rgba(225,251,98,.7); } 70% { box-shadow: 0 0 0 7px rgba(225,251,98,0); } 100% { box-shadow: 0 0 0 0 rgba(225,251,98,0); } }
 @keyframes kslideup { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
+/* El girito del "esperando la confirmación" del pago. */
+@keyframes kspin { to { transform: rotate(360deg); } }
 /* El resaltador verde de "más barato" se pinta de izquierda a derecha al cargar,
    como el trazo de un marcador. Una sola vez y no en loop: es el titular, y algo
    que late abajo de la palabra más importante de la página cansa a los tres

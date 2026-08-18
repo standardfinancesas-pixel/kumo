@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { urls, diaISO, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
-import AppClient, { type PlanVM, type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio } from './AppClient';
+import AppClient, { type PlanVM, type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM } from './AppClient';
 
 /** Landing: ahí está el login si no hay sesión. */
 const LANDING = urls.landing;
@@ -198,10 +198,11 @@ export default async function Page() {
     { data: ansLikeRows },
     { data: favRows },
     { data: planRows },
+    { data: pagoRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, dni, status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
+      .select('member_no, full_name, email, phone, address, city, province, dni, status, paid_until, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -244,6 +245,9 @@ export default async function Page() {
     supabase.from('answer_likes').select('answer_id').eq('member_id', auth.user.id),
     supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id),
     supabase.from('plans').select('id, name, base_price, tagline').order('base_price'),
+    // Los últimos pagos del socio, para que el muro de la cuota sepa si hay uno
+    // en curso en vez de tratarlo como si nunca hubiera intentado.
+    supabase.from('payments').select('status, method, detail, created_at').eq('member_id', auth.user.id).order('created_at', { ascending: false }).limit(5),
   ]);
   if (!profileRow) redirect(LANDING);
 
@@ -255,15 +259,36 @@ export default async function Page() {
    * de baja tiene sesión válida —el token sigue siendo suyo— pero no cuenta:
    * vuelve a la portada con el motivo.
    *
-   * Ojo con el alcance: esto tapa la aplicación, no la base. Con el token en la
-   * mano todavía se podrían leer las propias filas por la API, porque las
-   * políticas de RLS miran `auth.uid()` y no el estado. Cerrarlo del todo es
-   * agregarle `status = 'activo'` a las políticas, y quedó anotado como pendiente.
+   * La base también lo corta, no solo la pantalla: las políticas de RLS pasan por
+   * `tiene_acceso()`, así que el token de un suspendido tampoco puede leer sus
+   * mascotas ni cargar un reintegro por la API (ver la migración
+   * `20260814050000_acceso_en_rls.sql`).
    */
   if (profileRow.status === 'suspendido') redirect(`${LANDING}?cuenta=suspendida`);
   if (profileRow.status === 'baja') redirect(`${LANDING}?cuenta=baja`);
 
+  /*
+   * La cuota. Distinto del estado: acá el socio está bien con el club, lo que le
+   * falta es pagar el mes.
+   *
+   * Es una fecha y no un "al día": un booleano hay que apagarlo con un cron todas
+   * las noches y mientras no corre, miente. La fecha se compara con hoy.
+   *
+   * No es un `redirect`: el socio se queda en la app con el muro encima, porque
+   * tiene que poder pagar desde acá. Lo que hay atrás no se ve.
+   */
   const plan = Array.isArray(profileRow.plans) ? profileRow.plans[0] : profileRow.plans;
+  const cuota: CuotaVM = {
+    debePagar: !profileRow.paid_until || profileRow.paid_until < hoyISO(),
+    hasta: profileRow.paid_until ?? null,
+    monto: profileRow.monthly_fee_agreed ?? plan?.base_price ?? 0,
+    planName: plan?.name ?? '—',
+    // Si dejó un pago abierto (una transferencia o un Rapipago tardan, o cerró el
+    // checkout a mitad de camino), el muro lo cuenta en lugar de mostrarle un
+    // botón que parece no haber hecho nada.
+    enCurso: (pagoRows ?? []).some((p) => p.status === 'pendiente' && p.method === 'mercadopago'),
+  };
+
   const profile: Profile = {
     id: auth.user.id,
     firstName: profileRow.full_name.split(' ')[0] ?? profileRow.full_name,
@@ -335,5 +360,5 @@ export default async function Page() {
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} />;
 }

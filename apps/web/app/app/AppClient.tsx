@@ -22,6 +22,10 @@ import { supabase } from '@/lib/supabase-browser';
 /** Landing: login, planes y destino al cerrar sesión. */
 const LANDING = urls.landing;
 
+/** WhatsApp del club. Pendiente: sacarlo de `club_settings`, que es donde el panel
+ *  lo edita — hoy también está escrito a mano en la pantalla de ayuda. */
+const WHATSAPP = '5491125168802';
+
 /**
  * Le pide al servidor que mande un mail: la API key de Resend no puede llegar al
  * navegador, así que la escritura la sigue haciendo Supabase desde acá y el aviso
@@ -102,6 +106,132 @@ export type ProfileBanco = { holder: string | null; cuit: string | null; cbu: st
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
 export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
+
+/** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
+export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; enCurso: boolean };
+
+/* ── El muro de la cuota ───────────────────────────────────────── */
+/**
+ * Sin la cuota paga, el socio no ve la app.
+ *
+ * Es un muro y no un aviso: no tiene botón de cerrar, no se cierra con Escape ni
+ * clickeando afuera, y bloquea el scroll de lo que hay atrás. Lo que sí tiene es
+ * salida: cerrar sesión y el WhatsApp del club. Un modal sin ninguna salida no es
+ * un paywall, es una persona encerrada que no puede ni preguntar qué pasó.
+ *
+ * El plan y el monto NO se eligen acá: son los que el socio eligió en el paso 3
+ * del alta y quedaron en su perfil. El servidor los vuelve a leer al crear el
+ * pago, así que ni el monto ni el plan pueden falsificarse desde el navegador.
+ */
+function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
+  const [yendo, setYendo] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmando, setConfirmando] = useState(cuota.enCurso);
+
+  // El scroll del fondo se bloquea mientras el muro está puesto: si no, se puede
+  // pasear por la app con la rueda del mouse.
+  useEffect(() => {
+    const antes = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = antes; };
+  }, []);
+
+  /*
+   * Vuelta de Mercado Pago. `?pago=ok` es sólo un cartel —lo puede tipear
+   * cualquiera— así que no da acceso: lo único que hace es esperar al aviso de MP,
+   * que es quien acredita. Se refresca la página cada 3 segundos hasta que el
+   * servidor diga que la cuota está paga.
+   */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search).get('pago');
+    if (p === 'ok' || p === 'pendiente') setConfirmando(true);
+    if (p === 'error') setError('El pago no se pudo hacer. Probá de nuevo o con otra tarjeta.');
+  }, []);
+
+  useEffect(() => {
+    if (!confirmando) return;
+    const t = setInterval(() => window.location.reload(), 3000);
+    return () => clearInterval(t);
+  }, [confirmando]);
+
+  const pagar = async () => {
+    setYendo(true); setError('');
+    try {
+      const res = await fetch('/api/pagos/crear', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir el pago.'); setYendo(false); return; }
+      window.location.href = data.initPoint;
+    } catch {
+      setError('No pudimos abrir el pago. Revisá la conexión.');
+      setYendo(false);
+    }
+  };
+
+  const salir = async () => { await supabase.auth.signOut(); window.location.href = urls.landing; };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="muro-titulo"
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(33,30,51,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}
+    >
+      <div style={{ background: '#fff', borderRadius: 22, maxWidth: 440, width: '100%', padding: '28px 26px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: 'rgb(93,84,145)', marginBottom: 4 }}>Kumo</div>
+        {confirmando ? (
+          <>
+            <h2 id="muro-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>Estamos confirmando tu pago</h2>
+            <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
+              Mercado Pago nos tiene que avisar, y a veces tarda unos segundos. Esta pantalla se actualiza sola.
+              {' '}Si pagaste con transferencia o en efectivo puede demorar más: te avisamos por mail cuando se acredite.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600 }}>
+              <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgb(93,84,145)', borderTopColor: 'transparent', animation: 'kspin 0.9s linear infinite', flex: '0 0 auto' }} />
+              Esperando la confirmación…
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 id="muro-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>
+              {cuota.hasta ? `${nombre}, se te venció la cuota` : `¡Bienvenido, ${nombre}!`}
+            </h2>
+            <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
+              {cuota.hasta
+                ? 'Para volver a usar tus beneficios, carnet y reintegros, pagá el mes.'
+                : 'Falta un paso: pagá tu primera cuota y ya tenés todo el club disponible.'}
+            </p>
+            <div style={{ border: '1px solid rgb(230,227,240)', borderRadius: 14, padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em' }}>TU PLAN</div>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 19, color: 'rgb(33,30,51)' }}>{cuota.planName}</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em' }}>POR MES</div>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 19, color: 'rgb(33,30,51)' }}>${cuota.monto.toLocaleString('es-AR')}</div>
+              </div>
+            </div>
+            {error && <div style={{ background: 'rgb(253,242,242)', color: 'rgb(176,58,58)', border: '1px solid rgb(245,214,214)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, marginBottom: 14 }}>{error}</div>}
+            <button
+              onClick={pagar}
+              disabled={yendo}
+              style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: yendo ? 'default' : 'pointer', opacity: yendo ? 0.65 : 1, marginBottom: 10 }}
+            >
+              {yendo ? 'Abriendo Mercado Pago…' : 'Pagar con Mercado Pago →'}
+            </button>
+            <p style={{ fontSize: 12, color: '#a29dba', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5 }}>
+              Pagás en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo.
+            </p>
+          </>
+        )}
+        {/* La salida. Un muro sin salida deja a la persona sin poder ni preguntar. */}
+        <div style={{ borderTop: '1px solid rgb(238,236,245)', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+          <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(93,84,145)' }}>¿Algún problema? Escribinos</a>
+          <button onClick={salir} style={{ background: 'none', border: 'none', fontFamily: '"DM Sans"', fontSize: 13.5, fontWeight: 600, color: '#8781a0', cursor: 'pointer', padding: 0 }}>Cerrar sesión</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Las mismas cinco promos que la app móvil, con sus colores: eran tres y con
  *  otras fotos, así que las dos superficies mostraban cosas distintas. */
@@ -3024,7 +3154,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[] }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -3043,6 +3173,9 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#fff' }}>
+      {/* El muro de la cuota va primero y por encima de todo: mientras esté, lo de
+          atrás se renderiza pero no se puede usar ni scrollear. */}
+      {cuota.debePagar && <MuroCuota cuota={cuota} nombre={profile.firstName} />}
       {/* Barra superior (solo abajo de 1024px) */}
       <div className="wa-topbar">
         <button onClick={() => setNavOpen(true)} aria-label="Abrir menú" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', color: 'rgb(93,84,145)' }}>

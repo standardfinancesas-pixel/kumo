@@ -79,6 +79,40 @@ export type Member = {
   /** Socio → club: con qué se le cobra la cuota. Solo metadata — el número
    *  completo y el CVV no se guardan (PCI DSS). */
   card: TarjetaMeta | null;
+  /** Hasta cuándo tiene la cuota paga (ISO date). Null = nunca pagó. Si es menor
+   *  a hoy, la webapp le pone el muro de la cuota y no ve nada hasta pagar. La
+   *  escribe únicamente `acreditar_pago()` en la base. */
+  paidUntil: string | null;
+};
+
+/**
+ * Una cuota. Hay una fila por INTENTO, no por mes: los rechazados y los
+ * abandonados quedan, porque son lo que explica por qué un socio no entró.
+ *
+ * `coversUntil` es hasta dónde llevó la cuota este pago, y se decide al
+ * acreditar y no al crear: un pago que aprueba tarde —una transferencia, un
+ * Rapipago— no puede acreditar un mes que ya venció.
+ */
+export type Payment = {
+  id: string;
+  memberId: string;
+  planId: string | null;
+  planName: string | null;
+  amount: number;
+  status: 'pendiente' | 'aprobado' | 'rechazado' | 'devuelto';
+  method: 'mercadopago' | 'manual';
+  coversUntil: string | null;
+  /** Lo que viaja a Mercado Pago y vuelve en el aviso: es la llave para cruzar el
+   *  aviso con la fila. */
+  externalReference: string | null;
+  mpPreferenceId: string | null;
+  mpPaymentId: string | null;
+  initPoint: string | null;
+  /** Quién lo registró, si el club lo cobró por fuera (efectivo, transferencia). */
+  registeredBy: string | null;
+  detail: string | null;
+  createdAt: string;
+  paidAt: string | null;
 };
 
 /**

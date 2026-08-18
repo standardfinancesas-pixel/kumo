@@ -684,6 +684,66 @@ create policy "prestador borra lo suyo" on providers for delete
   using (owner_id = auth.uid() or is_admin());
 
 -- ============================================================
+--  LA CUOTA
+-- ============================================================
+-- Ver las migraciones `20260818120000_cuota_y_pagos.sql` y
+-- `20260818130000_acreditar_pago_arreglos.sql`, que son la fuente de verdad de
+-- esta parte: ahí están `acreditar_pago()` —que es donde vive todo lo delicado de
+-- concurrencia— y el permiso mínimo que necesita el trigger de perfiles.
+--
+-- Acá queda la forma de las tablas, para que `supabase db reset` la levante y para
+-- que esto siga siendo comparable con `packages/shared/src/types.ts`.
+do $$ begin
+  create type payment_status as enum ('pendiente', 'aprobado', 'rechazado', 'devuelto');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type payment_method as enum ('mercadopago', 'manual');
+exception when duplicate_object then null; end $$;
+
+-- `profiles.paid_until`: hasta cuándo tiene la cuota paga. Null = nunca pagó. Si
+-- es menor a hoy, la webapp le pone el muro. Solo la escribe acreditar_pago().
+alter table profiles add column if not exists paid_until date;
+
+create table if not exists payments (
+  id          uuid primary key default uuid_generate_v4(),
+  member_id   uuid not null references profiles(id) on delete cascade,
+  -- El plan y el monto quedan congelados: el precio cambia y un pago tiene que
+  -- poder explicarse a sí mismo dentro de dos años.
+  plan_id     uuid references plans(id),
+  plan_name   text,
+  amount      integer not null check (amount > 0),
+  status      payment_status not null default 'pendiente',
+  method      payment_method not null default 'mercadopago',
+  -- Hasta dónde llevó la cuota este pago. Se calcula al acreditar, no al crear.
+  covers_until date,
+  external_reference text unique,
+  mp_preference_id   text,
+  mp_payment_id      text,
+  init_point  text,
+  registered_by uuid references profiles(id),
+  detail      text,
+  created_at  timestamptz not null default now(),
+  paid_at     timestamptz
+);
+
+-- Un pago de Mercado Pago se acredita UNA vez, por más veces que avise.
+create unique index if not exists payments_mp_payment_id_uniq
+  on payments (mp_payment_id) where mp_payment_id is not null;
+-- Un solo intento abierto por socio: dos clics en "Pagar" reusan la preferencia.
+create unique index if not exists payments_un_pendiente_por_socio
+  on payments (member_id) where status = 'pendiente';
+create index if not exists payments_member_idx on payments (member_id, created_at desc);
+
+alter table payments enable row level security;
+-- El socio ve su historial de cuotas pero no escribe ninguna: los pagos los crea
+-- el servidor y los acredita acreditar_pago(). Si pudiera insertar, se regalaría
+-- el acceso al club.
+create policy "pagos propios - select" on payments for select
+  using (member_id = auth.uid() or is_admin());
+create policy "pagos - admin escribe" on payments for all
+  using (is_admin()) with check (is_admin());
+
+-- ============================================================
 --  REALTIME  (todo se actualiza en vivo)
 --  Publicá en la publication `supabase_realtime` las tablas que
 --  la UI escucha con subscribeTable() (ver packages/shared/src/supabase.ts).
