@@ -11,7 +11,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -1983,9 +1983,18 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
  * el acceso lo da el aviso de MP a nuestro servidor, que puede tardar unos
  * segundos, así que la pantalla vuelve a preguntar en lugar de dejarlo trabado.
  */
-function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => void }) {
+function MuroCuota({ profile, planes, recargar }: { profile: Profile; planes: PlanVM[]; recargar: () => void }) {
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
+  /*
+   * Mismo criterio que en la webapp: el plan del alta viene preseleccionado pero
+   * se puede cambiar acá, con la cobertura odontológica aparte. Al servidor va el
+   * NOMBRE del plan y el sí/no del add-on; el precio lo pone el servidor.
+   */
+  const [planSel, setPlanSel] = useState(profile.planName);
+  const [odonto, setOdonto] = useState(profile.addonOdonto);
+  const elegido = planes.find((p) => p.name === planSel);
+  const total = (elegido?.basePrice ?? profile.planPrice) + (odonto ? ODONTO_PRECIO : 0);
   /*
    * Autorizar el débito NO es que Mercado Pago ya haya cobrado: entre una cosa y
    * la otra pasan segundos o minutos, y el acceso lo da el aviso del cobro. Sin
@@ -2010,7 +2019,8 @@ function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => vo
       const pedir = async (token: string) => {
         const res = await fetch(`${SITIO}/api/pagos/crear`, {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan: planSel, odonto }),
         });
         return { res, data: await res.json() };
       };
@@ -2056,16 +2066,48 @@ function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => vo
               ? 'Para volver a usar tus beneficios, el carnet y los reintegros, activá tu suscripción.'
               : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
         </Text>
-        <View style={{ borderWidth: 1, borderColor: '#e6e3f0', borderRadius: 14, padding: 14, marginBottom: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5 }}>TU PLAN</Text>
-            <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>{profile.planName}</Text>
-          </View>
-          <View style={{ alignItems: 'flex-end' }}>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5 }}>POR MES</Text>
-            <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>${profile.planPrice.toLocaleString('es-AR')}</Text>
-          </View>
-        </View>
+        {!confirmando && (
+          <>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5, marginBottom: 8 }}>TU PLAN</Text>
+            <View style={{ gap: 8, marginBottom: 12 }}>
+              {planes.map((p) => {
+                const sel = p.name === planSel;
+                return (
+                  <TouchableOpacity
+                    key={p.id}
+                    onPress={() => setPlanSel(p.name)}
+                    activeOpacity={0.85}
+                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: sel ? BRAND : '#e6e3f0', backgroundColor: sel ? '#f0edf9' : '#fff', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11 }}
+                  >
+                    <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 16, color: INK }}>{p.name}</Text>
+                    <Text style={{ fontWeight: '700', fontSize: 14.5, color: sel ? BRAND : '#5b5670' }}>${p.basePrice.toLocaleString('es-AR')}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* La cobertura odontológica es un add-on con precio propio: se suma
+                acá y el total se recalcula a la vista. */}
+            <TouchableOpacity
+              onPress={() => setOdonto((v) => !v)}
+              activeOpacity={0.85}
+              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: odonto ? BRAND : '#e6e3f0', backgroundColor: odonto ? '#f0edf9' : '#fff', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11, marginBottom: 12 }}
+            >
+              <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Cobertura odontológica</Text>
+                <Text style={{ fontSize: 12, color: '#8781a0' }}>Limpieza y extracciones · +${ODONTO_PRECIO.toLocaleString('es-AR')}</Text>
+              </View>
+              <View style={{ width: 42, height: 25, borderRadius: 100, backgroundColor: odonto ? BRAND : '#d5d0e3', justifyContent: 'center', alignItems: odonto ? 'flex-end' : 'flex-start', paddingHorizontal: 3 }}>
+                <View style={{ width: 19, height: 19, borderRadius: 10, backgroundColor: '#fff' }} />
+              </View>
+            </TouchableOpacity>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 12, marginBottom: 14 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#5b5670' }}>Tu cuota por mes</Text>
+              <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>${total.toLocaleString('es-AR')}</Text>
+            </View>
+          </>
+        )}
         {!!error && (
           <View style={{ backgroundColor: '#fdf2f2', borderWidth: 1, borderColor: '#f5d6d6', borderRadius: 12, padding: 11, marginBottom: 12 }}>
             <Text style={{ fontSize: 13, color: '#b03a3a' }}>{error}</Text>
@@ -3388,7 +3430,7 @@ export default function App() {
         )}
         {/* Último y encima de todo, tabbar incluida: mientras la cuota esté
             vencida no se puede usar nada de lo que hay atrás. */}
-        {data?.profile?.debePagar && <MuroCuota profile={data.profile} recargar={reload} />}
+        {data?.profile?.debePagar && <MuroCuota profile={data.profile} planes={data.planes} recargar={reload} />}
       </View>
     </SafeAreaView>
   );

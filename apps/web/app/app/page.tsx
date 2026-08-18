@@ -283,6 +283,7 @@ export default async function Page() {
     hasta: profileRow.paid_until ?? null,
     monto: profileRow.monthly_fee_agreed ?? plan?.base_price ?? 0,
     planName: plan?.name ?? '—',
+    odonto: profileRow.addon_odonto === true,
     // Si dejó un pago abierto (una transferencia o un Rapipago tardan, o cerró el
     // checkout a mitad de camino), el muro lo cuenta en lugar de mostrarle un
     // botón que parece no haber hecho nada.

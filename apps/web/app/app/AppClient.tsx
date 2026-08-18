@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, FOTO_MAX,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
-  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
@@ -108,7 +108,7 @@ export type ProfileBanco = { holder: string | null; cuit: string | null; cbu: st
 export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
 
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
-export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
+export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; odonto: boolean; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
 
 /* ── El muro de la cuota ───────────────────────────────────────── */
 /**
@@ -123,12 +123,26 @@ export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number;
  * del alta y quedaron en su perfil. El servidor los vuelve a leer al crear el
  * pago, así que ni el monto ni el plan pueden falsificarse desde el navegador.
  */
-function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
+function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; planes: PlanVM[] }) {
   const router = useRouter();
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
   const [confirmando, setConfirmando] = useState(cuota.enCurso);
   const [intentos, setIntentos] = useState(0);
+  /*
+   * El plan viene preseleccionado con el del alta, pero se puede cambiar acá y
+   * sumar la cobertura odontológica: es el momento en que el socio está mirando
+   * cuánto va a pagar, y mandarlo a otra pantalla para cambiarlo —cuando además
+   * tiene el muro puesto y no puede navegar— sería absurdo.
+   *
+   * Lo que se manda al servidor es el NOMBRE del plan y el sí/no del add-on. El
+   * precio lo pone el servidor: si el monto saliera de acá, cualquiera se
+   * suscribiría por $1.
+   */
+  const [planSel, setPlanSel] = useState(cuota.planName);
+  const [odonto, setOdonto] = useState(cuota.odonto);
+  const elegido = planes.find((p) => p.name === planSel);
+  const total = (elegido?.price ?? cuota.monto) + (odonto ? ODONTO_PRECIO : 0);
 
   // El scroll del fondo se bloquea mientras el muro está puesto: si no, se puede
   // pasear por la app con la rueda del mouse.
@@ -174,7 +188,11 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
   const pagar = async () => {
     setYendo(true); setError('');
     try {
-      const res = await fetch('/api/pagos/crear', { method: 'POST' });
+      const res = await fetch('/api/pagos/crear', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: planSel, odonto }),
+      });
       const data = await res.json();
       if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir el pago.'); setYendo(false); return; }
       window.location.href = data.initPoint;
@@ -231,15 +249,44 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
                 ? 'Para volver a usar tus beneficios, carnet y reintegros, activá tu suscripción.'
                 : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
             </p>
-            <div style={{ border: '1px solid rgb(230,227,240)', borderRadius: 14, padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em' }}>TU PLAN</div>
-                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 19, color: 'rgb(33,30,51)' }}>{cuota.planName}</div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em' }}>POR MES</div>
-                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 19, color: 'rgb(33,30,51)' }}>${cuota.monto.toLocaleString('es-AR')}</div>
-              </div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>TU PLAN</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+              {planes.map((p) => {
+                const sel = p.name === planSel;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setPlanSel(p.name)}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, textAlign: 'left', background: sel ? 'rgb(240,237,249)' : '#fff', border: `1.5px solid ${sel ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`, borderRadius: 13, padding: '11px 14px', cursor: 'pointer', fontFamily: '"DM Sans"' }}
+                  >
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 16, color: 'rgb(33,30,51)' }}>{p.name}</span>
+                      <span style={{ display: 'block', fontSize: 12, color: '#8781a0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.tagline}</span>
+                    </span>
+                    <span style={{ fontWeight: 700, fontSize: 14.5, color: sel ? 'rgb(93,84,145)' : '#5b5670', flex: '0 0 auto' }}>${p.price.toLocaleString('es-AR')}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* La cobertura odontológica: es un add-on con precio propio, así que se
+                suma acá y el total se recalcula a la vista. */}
+            <button
+              onClick={() => setOdonto((v) => !v)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, textAlign: 'left', background: odonto ? 'rgb(240,237,249)' : '#fff', border: `1.5px solid ${odonto ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`, borderRadius: 13, padding: '11px 14px', cursor: 'pointer', fontFamily: '"DM Sans"', marginBottom: 12 }}
+            >
+              <span>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: 14, color: 'rgb(33,30,51)' }}>Cobertura odontológica</span>
+                <span style={{ display: 'block', fontSize: 12, color: '#8781a0' }}>Limpieza y extracciones · +${ODONTO_PRECIO.toLocaleString('es-AR')}</span>
+              </span>
+              <span style={{ width: 42, height: 25, borderRadius: 100, background: odonto ? 'rgb(93,84,145)' : '#d5d0e3', flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: odonto ? 'flex-end' : 'flex-start', padding: 3 }}>
+                <span style={{ width: 19, height: 19, borderRadius: '50%', background: '#fff', display: 'block' }} />
+              </span>
+            </button>
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgb(238,236,245)', paddingTop: 12, marginBottom: 16 }}>
+              <span style={{ fontSize: 13.5, fontWeight: 600, color: '#5b5670' }}>Tu cuota por mes</span>
+              <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: 'rgb(33,30,51)' }}>${total.toLocaleString('es-AR')}</span>
             </div>
             {error && <div style={{ background: 'rgb(253,242,242)', color: 'rgb(176,58,58)', border: '1px solid rgb(245,214,214)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, marginBottom: 14 }}>{error}</div>}
             <button
@@ -3226,7 +3273,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
     <div style={{ display: 'flex', minHeight: '100vh', background: '#fff' }}>
       {/* El muro de la cuota va primero y por encima de todo: mientras esté, lo de
           atrás se renderiza pero no se puede usar ni scrollear. */}
-      {cuota.debePagar && <MuroCuota cuota={cuota} nombre={profile.firstName} />}
+      {cuota.debePagar && <MuroCuota cuota={cuota} nombre={profile.firstName} planes={planes} />}
       {/* Barra superior (solo abajo de 1024px) */}
       <div className="wa-topbar">
         <button onClick={() => setNavOpen(true)} aria-label="Abrir menú" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', color: 'rgb(93,84,145)' }}>
