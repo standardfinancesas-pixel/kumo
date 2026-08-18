@@ -202,7 +202,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, dni, status, paid_until, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
+      .select('member_no, full_name, email, phone, address, city, province, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -286,6 +286,7 @@ export default async function Page() {
     // Si dejó un pago abierto (una transferencia o un Rapipago tardan, o cerró el
     // checkout a mitad de camino), el muro lo cuenta en lugar de mostrarle un
     // botón que parece no haber hecho nada.
+    suscripcion: (profileRow.mp_subscription_status ?? null) as CuotaVM['suscripcion'],
     enCurso: (pagoRows ?? []).some((p) => p.status === 'pendiente' && p.method === 'mercadopago'),
   };
 

@@ -94,6 +94,89 @@ export async function crearPreferencia(opts: {
   });
 }
 
+export type Suscripcion = { id: string; init_point: string; status: string };
+
+/**
+ * Crea la suscripción: el socio autoriza una vez y Mercado Pago le debita todos
+ * los meses.
+ *
+ * Es el producto "Suscripciones" (preapproval), no Checkout Pro: acá no se cobra
+ * nada en el momento, se guarda una autorización. El primer débito lo hace MP
+ * enseguida y avisa por webhook, igual que todos los que siguen.
+ *
+ * `status: 'pending'` es a propósito: la suscripción nace pendiente y pasa a
+ * `authorized` cuando el socio pone la tarjeta en el sitio de MP. Nosotros nos
+ * enteramos por el aviso, no por la vuelta del navegador.
+ */
+export async function crearSuscripcion(opts: {
+  referencia: string;
+  motivo: string;
+  monto: number;
+  emailSocio: string;
+  volverA: string;
+}): Promise<Suscripcion> {
+  return mp<Suscripcion>('/preapproval', {
+    method: 'POST',
+    idempotencia: opts.referencia,
+    body: JSON.stringify({
+      reason: opts.motivo,
+      external_reference: opts.referencia,
+      payer_email: opts.emailSocio,
+      back_url: opts.volverA,
+      status: 'pending',
+      auto_recurring: {
+        frequency: 1,
+        frequency_type: 'months',
+        transaction_amount: opts.monto,
+        currency_id: 'ARS',
+      },
+    }),
+  });
+}
+
+export type SuscripcionMP = {
+  id: string;
+  status: 'pending' | 'authorized' | 'paused' | 'cancelled';
+  external_reference: string | null;
+  payer_email: string;
+  auto_recurring?: { transaction_amount: number };
+};
+
+/** El estado de una suscripción, preguntado a Mercado Pago. */
+export async function traerSuscripcion(id: string): Promise<SuscripcionMP> {
+  return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`);
+}
+
+/** Dar de baja. El socio tiene que poder hacerlo desde la app: con débito
+ *  automático, la baja tiene que ser tan fácil como el alta. */
+export async function cancelarSuscripcion(id: string): Promise<SuscripcionMP> {
+  return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ status: 'cancelled' }),
+  });
+}
+
+export type DebitoMP = {
+  id: number;
+  preapproval_id: string;
+  status: 'processed' | 'recycling' | 'scheduled' | 'cancelled';
+  /** 'approved' cuando el débito salió bien; 'rejected' si la tarjeta rebotó. */
+  payment?: { id: number; status: string; status_detail?: string };
+  transaction_amount: number;
+  debit_date?: string;
+};
+
+/**
+ * Un débito mensual de la suscripción.
+ *
+ * El aviso `subscription_authorized_payment` trae el id de ESTE objeto, que no es
+ * el id del pago: adentro viene el pago con su estado. Confundirlos es acreditar
+ * meses que la tarjeta rechazó.
+ */
+export async function traerDebito(id: string): Promise<DebitoMP> {
+  return mp<DebitoMP>(`/authorized_payments/${encodeURIComponent(id)}`);
+}
+
 export type PagoMP = {
   id: number;
   status: 'approved' | 'pending' | 'in_process' | 'rejected' | 'refunded' | 'cancelled' | 'charged_back';

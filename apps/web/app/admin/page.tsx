@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, mesActualISO } from '@kumo/shared';
+import { urls, mesActualISO, hoyISO } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, {
   type AdminProfile, type KpiVM, type DistRow, type SocioRow, type ColaRow, type HistRow,
@@ -63,7 +63,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, member_no, full_name, status, joined_on, monthly_fee_agreed, plans(name, base_price), pets(name)')
+      .select('id, member_no, full_name, status, joined_on, paid_until, monthly_fee_agreed, plans(name, base_price), pets(name)')
       .eq('role', 'socio'),
     supabase.from('reimbursements').select('refund').eq('status', 'en_revision'),
     // Se piden también los datos de la transferencia, el DNI del socio y la
@@ -139,6 +139,11 @@ export default async function Page() {
     plan: planOf(s)?.name ?? '—', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
     // El estado crudo, para que la acción sepa si toca suspender o reactivar.
     estadoRaw: s.status,
+    // La cuota es aparte del estado: el estado lo decide el club, la cuota la
+    // decide el pago. Se compara con hoy y no se guarda un "al día", que habría
+    // que apagar con un cron y mentiría hasta que corriera.
+    cuotaHasta: s.paid_until ?? null,
+    cuotaAlDia: !!s.paid_until && s.paid_until >= hoyISO(),
   }));
 
   const cola: ColaRow[] = (colaRows ?? []).map((r) => {

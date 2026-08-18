@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /*
@@ -17,7 +17,7 @@ const money = (n: number) => '$' + n.toLocaleString('es-AR');
 export type AdminProfile = { id: string; fullName: string };
 export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number };
 export type DistRow = { plan: string; socios: number; pct: number };
-export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string };
+export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string; cuotaHasta: string | null; cuotaAlDia: boolean };
 /**
  * Una solicitud en la cola. Trae todo lo que el club necesita para resolverla sin
  * salir de la pantalla: antes había que ir a Socios, buscar a la persona y abrir
@@ -469,6 +469,33 @@ function Socios({ socios }: { socios: SocioRow[] }) {
     router.refresh();
     setBusyId(null);
   };
+  /*
+   * Registrar un pago que el club cobró por fuera: efectivo, transferencia, un
+   * Mercado Pago hecho a mano. Sin esto, un socio que pagó por transferencia se
+   * queda con el muro puesto y el club no tiene cómo ponerlo al día.
+   *
+   * Va por la ruta del servidor y no por un update de `paid_until`: la cuenta de
+   * los meses vive en `acreditar_pago()`, junto con los bloqueos y la
+   * idempotencia. Dos caminos para sumar un mes es la forma segura de que uno de
+   * los dos quede mal.
+   */
+  const registrarPago = async (s: SocioRow) => {
+    setBusyId(s.id); setAviso('');
+    try {
+      const res = await fetch('/api/pagos/manual', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: s.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) setAviso(data.error ?? 'No pudimos registrar el pago.');
+      else setAviso(`Pago registrado: ${s.nombre} tiene la cuota paga hasta el ${fmtFechaCorta(data.hasta)}.`);
+    } catch {
+      setAviso('No pudimos registrar el pago. Revisá la conexión.');
+    }
+    router.refresh();
+    setBusyId(null);
+  };
   const list = socios.filter((s) => (plan === 'Todos' || s.plan === plan) && (estado === 'Todos' || s.estado === estado));
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
@@ -489,7 +516,7 @@ function Socios({ socios }: { socios: SocioRow[] }) {
       <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'ESTADO', 'ACCIÓN'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
+          <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'CUOTA', 'ESTADO', 'ACCIÓN'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
           <tbody>
             {list.map((s) => (
               <tr key={s.n} className="adm-row" onClick={() => setFicha(s)} style={{ cursor: 'pointer' }}>
@@ -498,12 +525,25 @@ function Socios({ socios }: { socios: SocioRow[] }) {
                 <td style={td}>{s.mascota}</td>
                 <td style={td}>{s.plan}</td>
                 <td style={{ ...td, color: '#8781a0' }}>{s.desde}</td>
+                {/* La cuota, que no es lo mismo que el estado: el estado lo decide
+                    el club y la cuota la decide el pago. Un socio puede estar
+                    perfecto con el club y deberle el mes. */}
+                <td style={td}>
+                  {s.cuotaAlDia
+                    ? <span style={{ fontSize: 13, color: 'rgb(47,143,91)', fontWeight: 600 }}>Hasta {fmtFechaCorta(s.cuotaHasta!)}</span>
+                    : <span style={{ fontSize: 13, color: s.cuotaHasta ? 'rgb(176,58,58)' : '#8781a0', fontWeight: 600 }}>{s.cuotaHasta ? `Vencida el ${fmtFechaCorta(s.cuotaHasta)}` : 'Sin pagar'}</span>}
+                </td>
                 <td style={td}><span style={estadoBadge(s.estado)}>{s.estado}</span></td>
                 <td style={td}>
                   <MenuAcciones
                     disabled={busyId === s.id}
                     acciones={[
                       { label: 'Ver ficha', onClick: () => setFicha(s) },
+                      {
+                        label: 'Registrar pago de un mes',
+                        confirmar: `¿Registrar un mes pagado para ${s.nombre}? Usalo cuando cobraste por fuera de la app (efectivo o transferencia).`,
+                        onClick: () => registrarPago(s),
+                      },
                       s.estadoRaw === 'activo' || s.estadoRaw === 'moroso'
                         ? {
                             label: 'Suspender el acceso',

@@ -108,7 +108,7 @@ export type ProfileBanco = { holder: string | null; cuit: string | null; cbu: st
 export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
 
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
-export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; enCurso: boolean };
+export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
 
 /* ── El muro de la cuota ───────────────────────────────────────── */
 /**
@@ -182,7 +182,7 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
           <>
             <h2 id="muro-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>Estamos confirmando tu pago</h2>
             <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
-              Mercado Pago nos tiene que avisar, y a veces tarda unos segundos. Esta pantalla se actualiza sola.
+              Mercado Pago nos tiene que avisar del primer débito, y a veces tarda unos segundos. Esta pantalla se actualiza sola.
               {' '}Si pagaste con transferencia o en efectivo puede demorar más: te avisamos por mail cuando se acredite.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600 }}>
@@ -197,8 +197,8 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
             </h2>
             <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
               {cuota.hasta
-                ? 'Para volver a usar tus beneficios, carnet y reintegros, pagá el mes.'
-                : 'Falta un paso: pagá tu primera cuota y ya tenés todo el club disponible.'}
+                ? 'Para volver a usar tus beneficios, carnet y reintegros, activá tu suscripción.'
+                : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
             </p>
             <div style={{ border: '1px solid rgb(230,227,240)', borderRadius: 14, padding: '14px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
@@ -216,10 +216,10 @@ function MuroCuota({ cuota, nombre }: { cuota: CuotaVM; nombre: string }) {
               disabled={yendo}
               style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: yendo ? 'default' : 'pointer', opacity: yendo ? 0.65 : 1, marginBottom: 10 }}
             >
-              {yendo ? 'Abriendo Mercado Pago…' : 'Pagar con Mercado Pago →'}
+              {yendo ? 'Abriendo Mercado Pago…' : 'Suscribirme con Mercado Pago →'}
             </button>
             <p style={{ fontSize: 12, color: '#a29dba', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5 }}>
-              Pagás en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo.
+              Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés dar de baja el débito cuando quieras desde Mi perfil.
             </p>
           </>
         )}
@@ -2329,7 +2329,7 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
  *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
  *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
  *  "Cambiar" plan te sacaba a la landing. */
-function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null }) {
+function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null; cuota: CuotaVM }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2449,13 +2449,33 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio }: { go: 
         {row(ic(storeIcon, false, 19), 'Mi negocio', negocioHint, chevron, () => go('negocio'))}
         {row(ic(wallet, false, 19), 'Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros'))}
         {row(ic(tagIcon, false, 19), 'Membresía', `Plan ${profile.planName}${profile.addonOdonto ? ' + odontológica' : ''} · ${m$(profile.planPrice)}/mes`, accion('Cambiar'), () => { setPlanSel(profile.planName); setPlanOpen(true); })}
-        {/* El medio de pago sale del alta. Antes decía "Visa ····4287", un número
-            fijo escrito en el código; después "Todavía no configurado", porque no
-            se guardaba nada. El cobro sigue sin conectarse: esto identifica con
-            qué se va a cobrar, no que ya se esté cobrando. */}
-        {row(ic(cardIcon, false, 19), 'Medio de pago',
-          profile.tarjeta ?? (profile.banco.cbu ? `Débito de CBU ····${profile.banco.cbu.slice(-4)}` : 'Todavía no configurado'),
-          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.tarjeta || profile.banco.cbu ? 'Sin cobro activo' : 'Pendiente'}</span>)}
+        {/* La cuota: el débito automático de Mercado Pago. La baja tiene que estar
+            acá y ser un botón, no un mail al club: con débito automático, cortar
+            tiene que ser tan fácil como suscribirse. Se corta el débito futuro y no
+            el mes ya pagado — sigue entrando hasta que se le vence. */}
+        {row(ic(cardIcon, false, 19), 'Cuota mensual',
+          cuota.suscripcion === 'authorized'
+            ? `Débito automático activo · ${m$(cuota.monto)}/mes${cuota.hasta ? ` · paga hasta el ${fmtFechaCorta(cuota.hasta)}` : ''}`
+            : cuota.hasta && !cuota.debePagar
+              ? `Paga hasta el ${fmtFechaCorta(cuota.hasta)} · sin débito automático`
+              : 'Sin suscripción activa',
+          cuota.suscripcion === 'authorized'
+            ? <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  if (!window.confirm('¿Dar de baja el débito automático? No se te va a cobrar más. Podés seguir usando el club hasta que se te venza el mes que ya pagaste.')) return;
+                  const res = await fetch('/api/suscripcion/baja', { method: 'POST' });
+                  const data = await res.json();
+                  window.alert(res.ok
+                    ? `Listo, no te vamos a cobrar más.${data.hasta ? ` Podés usar el club hasta el ${fmtFechaCorta(data.hasta)}.` : ''}`
+                    : (data.error ?? 'No pudimos dar de baja el débito.'));
+                  router.refresh();
+                }}
+                style={{ background: 'none', border: 'none', color: 'rgb(176,58,58)', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 12.5, cursor: 'pointer', padding: 0 }}
+              >
+                Dar de baja
+              </button>
+            : <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{cuota.debePagar ? 'Pendiente' : '—'}</span>)}
         {/* Dónde cobra los reintegros: es plata que le entra, así que verlo acá
             evita que descubra un CBU mal cargado cuando ya esperaba el dinero. */}
         {row(ic(wallet, false, 19), 'Cuenta para reintegros',
@@ -3208,7 +3228,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
           {screen === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
-          {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} />}
+          {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio}  cuota={cuota} />}
           {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>

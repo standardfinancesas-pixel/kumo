@@ -41,32 +41,19 @@ export async function POST(req: Request) {
   const importe = Math.round(monto ?? socio.monthly_fee_agreed ?? (plan ? cuotaMensual(plan.base_price, socio.addon_odonto === true) : 0));
   if (!importe || importe <= 0) return NextResponse.json({ error: 'No pudimos determinar el monto.' }, { status: 409 });
 
-  const referencia = crypto.randomUUID();
-  const { error: errFila } = await svc.from('payments').insert({
-    member_id: socio.id,
-    plan_id: socio.plan_id,
-    plan_name: plan?.name ?? null,
-    amount: importe,
-    status: 'pendiente',
-    method: 'manual',
-    external_reference: referencia,
-    registered_by: auth.user.id,
-    detail: detalle?.trim() || 'cobrado por fuera de la app',
-  });
-  if (errFila) {
-    // El índice de "un solo pendiente por socio" puede rechazarlo si el socio
-    // dejó un checkout abierto. Se lo dice, en lugar de fallar en silencio.
-    console.error('[pagos/manual] insert', errFila);
-    return NextResponse.json({ error: 'El socio tiene un pago en curso. Esperá que se resuelva o cancelalo.' }, { status: 409 });
-  }
-
-  const { data, error } = await svc.rpc('acreditar_pago', {
-    p_external_reference: referencia,
-    p_mp_payment_id: `manual:${referencia}`,
+  // Un id propio, con el mismo formato de llave que los débitos de MP: es lo que
+  // hace que dos avisos del mismo cobro no acrediten dos veces. Acá lo genera el
+  // servidor porque el cobro fue por fuera y no tiene id de Mercado Pago.
+  const { data, error } = await svc.rpc('acreditar_cuota', {
+    p_member_id: socio.id,
+    p_mp_payment_id: `manual:${crypto.randomUUID()}`,
     p_amount: importe,
+    p_method: 'manual',
+    p_detalle: detalle?.trim() || 'cobrado por fuera de la app',
+    p_registrado_por: auth.user.id,
   });
   if (error) {
-    console.error('[pagos/manual] acreditar_pago', error);
+    console.error('[pagos/manual] acreditar_cuota', error);
     return NextResponse.json({ error: 'No pudimos acreditar el pago.' }, { status: 500 });
   }
 
