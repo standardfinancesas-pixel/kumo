@@ -33,6 +33,19 @@ export async function GET(req: Request) {
     return NextResponse.redirect(new URL('/?login=error', url.origin));
   }
 
+  /*
+   * `next` es para el link de recuperar contraseña: el mail vuelve acá, se canjea
+   * el código por sesión y de ahí sigue a elegir la clave nueva.
+   *
+   * Solo se aceptan rutas internas que empiecen con una barra: si se redirigiera a
+   * cualquier cosa que venga en la query, este endpoint serviría para mandar a un
+   * socio recién autenticado a un sitio ajeno con un link que parece de Kumo.
+   */
+  const next = url.searchParams.get('next');
+  if (next && /^\/[A-Za-z0-9/_-]*$/.test(next)) {
+    return NextResponse.redirect(new URL(next, url.origin));
+  }
+
   const { data: perfil } = await supabase
     .from('profiles')
     .select('role')

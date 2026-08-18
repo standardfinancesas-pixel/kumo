@@ -360,3 +360,29 @@ export async function sendCuotaAcreditada(opts: {
   const text = `${firstName}, cobramos ${money(cuota)} del plan ${planName} por ${mes}, con tu ${tarjeta}.\n\nEl comprobante está en tu cuenta: ${SITE}${urls.webapp}`;
   return enviar(to, `Cobramos tu cuota de ${mes}`, layout('Pago acreditado', cuerpo, wa, verCuenta), text);
 }
+
+/**
+ * 14 · Recuperar la contraseña.
+ *
+ * Va por acá y no por el mail que manda Supabase solo, por dos razones: el de
+ * Supabase llega en inglés, sin la marca y desde un remitente `supabase.co` —o
+ * sea, exactamente igual a un mail de phishing—, y este es un mail que el socio
+ * recibe cuando ya está con un problema. El link lo genera Supabase igual (es la
+ * única forma de que el token sea válido), lo que cambia es quién lo manda y cómo
+ * se ve.
+ *
+ * Ojo con el texto: NO se le confirma si el mail estaba registrado o no. Quien
+ * pide el link sin ser dueño de la casilla no tiene que poder averiguar quién es
+ * socio del club.
+ */
+export async function sendRecuperarClave(opts: { to: string; firstName: string; link: string }) {
+  const { to, firstName, link } = opts;
+  const wa = await whatsappDelClub();
+  const cuerpo = `
+    ${h1('Cambiá tu contraseña')}
+    ${par(`${firstName}, alguien pidió recuperar la contraseña de esta cuenta. Si fuiste vos, el botón de abajo te deja elegir una nueva.`)}
+    ${par('El link vence en una hora y sirve una sola vez. Si no lo pediste, ignorá este mail: tu contraseña sigue siendo la de siempre.', true)}
+    ${par(`Cualquier cosa, escribinos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
+  const text = `${firstName}, alguien pidió recuperar la contraseña de esta cuenta.\n\nSi fuiste vos, elegí una nueva acá: ${link}\n\nEl link vence en una hora y sirve una sola vez. Si no lo pediste, ignorá este mail: tu contraseña sigue siendo la de siempre.`;
+  return enviar(to, 'Cambiá tu contraseña de Kumo', layout('Recuperar contraseña', cuerpo, wa, { label: 'Elegir una nueva', href: link }), text);
+}

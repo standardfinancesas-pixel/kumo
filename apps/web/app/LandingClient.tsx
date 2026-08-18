@@ -45,7 +45,42 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => { if (mode) { setEmail(''); setPassword(''); setError(''); } }, [mode]);
+  /** El paso de "olvidé mi contraseña", que vive dentro del mismo modal. */
+  const [olvido, setOlvido] = useState(false);
+  const [enviandoLink, setEnviandoLink] = useState(false);
+  const [linkListo, setLinkListo] = useState(false);
+  useEffect(() => { if (mode) { setEmail(''); setPassword(''); setError(''); setOlvido(false); setLinkListo(false); } }, [mode]);
+  /** Si el socio llega desde el link vencido de un mail, el modal abre directo en
+   *  "recuperar" en lugar de hacerlo buscar de nuevo dónde estaba. */
+  useEffect(() => {
+    if (mode && new URLSearchParams(window.location.search).get('recuperar') === '1') setOlvido(true);
+  }, [mode]);
+
+  /*
+   * Pedir el link para cambiar la contraseña.
+   *
+   * La respuesta del servidor es siempre la misma, exista o no la cuenta: si acá
+   * dijéramos "ese mail no está registrado", cualquiera podría averiguar quién es
+   * socio del club probando direcciones. Por eso el mensaje habla de "si esa
+   * dirección tiene una cuenta".
+   */
+  const pedirLink = async (e: FormEvent) => {
+    e.preventDefault();
+    if (enviandoLink) return;
+    setEnviandoLink(true); setError('');
+    try {
+      await fetch('/api/auth/recuperar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+      setLinkListo(true);
+    } catch {
+      setError('No pudimos pedir el link. Revisá la conexión.');
+    }
+    setEnviandoLink(false);
+  };
+
   if (!mode) return null;
   const copy = AUTH_COPY.login;
   const seg = (active: boolean): CSSProperties => ({ flex: 1, border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '8px 18px', borderRadius: 9, transition: 'all 0.15s', ...(active ? { background: '#5D5491', color: '#fff', boxShadow: '0 2px 8px rgba(93,84,145,0.3)' } : { background: 'transparent', color: '#c9c3e3' }) });
@@ -101,9 +136,44 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
           </div>
           <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: '#5D5491' }}>Kumo</span>
         </div>
-        <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, letterSpacing: '-0.01em', margin: '8px 0 4px' }}>{copy.title}</h2>
-        <p style={{ color: '#8781a0', fontSize: 14, margin: '0 0 20px' }}>{copy.subtitle}</p>
+        <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, letterSpacing: '-0.01em', margin: '8px 0 4px' }}>
+          {olvido ? (linkListo ? 'Mirá tu casilla' : '¿Olvidaste tu contraseña?') : copy.title}
+        </h2>
+        <p style={{ color: '#8781a0', fontSize: 14, margin: '0 0 20px' }}>
+          {olvido
+            ? (linkListo
+                ? 'Si esa dirección tiene una cuenta en Kumo, te mandamos un link para elegir una contraseña nueva. Vence en una hora.'
+                : 'Poné tu email y te mandamos un link para elegir una nueva.')
+            : copy.subtitle}
+        </p>
 
+        {olvido ? (
+          linkListo ? (
+            <>
+              <div style={{ background: '#f0f7f1', color: 'rgb(47,143,91)', fontSize: 13.5, lineHeight: 1.5, borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+                Si no te llega en unos minutos, revisá el correo no deseado.
+              </div>
+              <button type="button" onClick={() => { setOlvido(false); setLinkListo(false); }} style={{ width: '100%', background: '#5D5491', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: 14, borderRadius: 14, cursor: 'pointer' }}>
+                Volver a ingresar
+              </button>
+            </>
+          ) : (
+            <form onSubmit={pedirLink}>
+              <div style={{ marginBottom: 14 }}>
+                <label style={authLabel}>Email</label>
+                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="vos@email.com" style={authInput} />
+              </div>
+              {error && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13, borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>{error}</div>}
+              <button type="submit" disabled={enviandoLink} className="scpa" style={{ width: '100%', background: '#5D5491', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: 15, borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: enviandoLink ? 'default' : 'pointer', opacity: enviandoLink ? 0.7 : 1 }}>
+                {enviandoLink ? 'Enviando…' : 'Enviarme el link'}
+              </button>
+              <button type="button" onClick={() => setOlvido(false)} style={{ width: '100%', background: 'none', border: 'none', color: '#8781a0', fontFamily: '"DM Sans"', fontSize: 13.5, fontWeight: 600, cursor: 'pointer', marginTop: 12 }}>
+                ← Volver
+              </button>
+            </form>
+          )
+        ) : (
+        <>
         <div style={{ display: 'flex', gap: 4, background: '#f0edf9', padding: 4, borderRadius: 12, marginBottom: 20 }}>
           <button type="button" style={seg(true)}>Ingresar</button>
           <button type="button" onClick={() => openAuth('register')} style={seg(false)}>Crear cuenta</button>
@@ -118,7 +188,11 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
             <label style={authLabel}>Contraseña</label>
             <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={authInput} />
           </div>
-          <div style={{ textAlign: 'right', marginBottom: 14 }}><a href="#" style={{ fontSize: 13, color: '#5D5491', fontWeight: 600, textDecoration: 'none' }}>¿Olvidaste tu contraseña?</a></div>
+          {/* Era `href="#"`: no hacía nada, y un socio que olvidaba la contraseña
+              tenía que escribir por WhatsApp para que se la cambiaran a mano. */}
+          <div style={{ textAlign: 'right', marginBottom: 14 }}>
+            <button type="button" onClick={() => setOlvido(true)} style={{ background: 'none', border: 'none', padding: 0, fontFamily: '"DM Sans"', fontSize: 13, color: '#5D5491', fontWeight: 600, cursor: 'pointer' }}>¿Olvidaste tu contraseña?</button>
+          </div>
           {aviso && !error && <div style={{ background: '#fbf3e2', color: '#92690a', fontSize: 13, lineHeight: 1.5, borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>{aviso}</div>}
           {error && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13, borderRadius: 10, padding: '10px 12px', marginBottom: 14 }}>{error}</div>}
           <button type="submit" disabled={loading} className="scpa" style={{ width: '100%', display: 'block', textAlign: 'center', background: '#5D5491', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: 15, borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: loading ? 'default' : 'pointer', opacity: loading ? 0.7 : 1, transition: 'background 0.15s' }}>{loading ? 'Ingresando…' : copy.cta}</button>
@@ -131,6 +205,8 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
           <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.5 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2-1.9 3.3-4.7 3.3-7.8z" /><path fill="#34A853" d="M12 23c3 0 5.5-1 7.3-2.7l-3.5-2.7c-1 .7-2.3 1.1-3.8 1.1-2.9 0-5.4-2-6.3-4.6H2v2.8A11 11 0 0 0 12 23z" /><path fill="#FBBC05" d="M5.7 14.1a6.6 6.6 0 0 1 0-4.2V7.1H2a11 11 0 0 0 0 9.8z" /><path fill="#EA4335" d="M12 5.4c1.6 0 3 .6 4.2 1.7l3.1-3.1A11 11 0 0 0 2 7.1l3.7 2.8C6.6 7.3 9.1 5.4 12 5.4z" /></svg>
           {googleLoading ? 'Abriendo Google…' : 'Continuar con Google'}
         </button>
+        </>
+        )}
       </div>
     </div>
   );
