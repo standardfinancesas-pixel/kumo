@@ -195,6 +195,14 @@ de cada pantalla.
       (si no, no llegan al build). La `SUPABASE_SERVICE_ROLE_KEY` está
       encriptada y es la única sensible.
 - [x] URLs entre secciones por `urls` de `@kumo/shared`, sin `localhost`.
+- [ ] **Activar el débito automático desde Mi perfil.** Hoy el único lugar donde se
+      ofrece suscribirse es el muro de la cuota, así que un socio que pagó por
+      transferencia —o que está al día por un "Registrar pago" del panel— no tiene
+      forma de activar el débito: no tiene muro. Y el estado `pending` es invisible:
+      si dejó una suscripción a medias, Mi perfil dice "sin débito automático" y no
+      que la empezó. Las dos cosas se arreglan con una fila en Mi perfil que use la
+      misma ruta `/api/pagos/crear`. Salió al mirar por qué no aparecía el botón de
+      baja — correcto que no aparezca: solo existe con la suscripción autorizada.
 - [ ] **BLOQUEANTE antes del primer socio real: volver al token de producción de
       Mercado Pago.** Para probar se usa el token de una cuenta de PRUEBA (una
       cuenta distinta de la del club, no un "modo"), y va a quedar puesta varios
