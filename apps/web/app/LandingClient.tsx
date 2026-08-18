@@ -209,7 +209,9 @@ function Hero() {
           <h1 className="r-h1" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 58, lineHeight: 1.04, letterSpacing: '-0.02em', margin: '0 0 20px', color: '#fff' }}>
             Cuidar a tu mascota,<br />por fin <span style={{ color: 'rgb(199,224,79)' }}>simple</span> y{' '}
             <span style={{ position: 'relative', whiteSpace: 'nowrap' }}>más barato
-              <span style={{ position: 'absolute', left: 0, right: 0, bottom: 6, height: 12, background: 'rgb(199,224,79)', zIndex: -1, borderRadius: 3 }} />
+              {/* El resaltador se dibuja solo al entrar, de izquierda a derecha,
+                  como si alguien pasara el marcador. Ver `.r-subrayado`. */}
+              <span className="r-subrayado" style={{ position: 'absolute', left: 0, right: 0, bottom: 6, height: 12, background: 'rgb(199,224,79)', zIndex: -1, borderRadius: 3 }} />
             </span>.
           </h1>
           <p style={{ fontSize: 19, lineHeight: 1.55, color: 'rgba(255,255,255,0.85)', maxWidth: 480, margin: '0 0 30px' }}>

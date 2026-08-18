@@ -32,6 +32,20 @@ a:hover { color: #443d6e; }
 @keyframes kmarquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 @keyframes kpulse { 0% { box-shadow: 0 0 0 0 rgba(225,251,98,.7); } 70% { box-shadow: 0 0 0 7px rgba(225,251,98,0); } 100% { box-shadow: 0 0 0 0 rgba(225,251,98,0); } }
 @keyframes kslideup { 0% { transform: translateY(100%); } 100% { transform: translateY(0); } }
+/* El resaltador verde de "más barato" se pinta de izquierda a derecha al cargar,
+   como el trazo de un marcador. Una sola vez y no en loop: es el titular, y algo
+   que late abajo de la palabra más importante de la página cansa a los tres
+   segundos.
+   `both` en el fill importa: sin eso el trazo se ve entero durante el retardo y
+   después salta a cero para volver a dibujarse. El retardo es para que entre
+   después del título, no encima. */
+@keyframes ksubrayado { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.r-subrayado { transform-origin: left center; animation: ksubrayado 0.75s 0.3s cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  /* Quieto y ya pintado: el resaltado es parte del diseño, no un adorno. */
+  .r-subrayado { animation: none; }
+}
+
 /* La croqueta que el perro del hero está por atrapar: flota y se ladea sobre sí
    misma, como suspendida en el aire. Es una capa aparte de la foto (ver
    `scripts/cortar-croqueta.mjs`), así que mover la capa mueve solo la croqueta.
