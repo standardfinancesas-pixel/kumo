@@ -12,7 +12,12 @@ import { getServiceClient } from './supabase-service';
  * El token NO se cree por venir en el header: se valida contra Supabase, que es
  * quien lo firmó. Un JWT que uno se inventa no pasa este chequeo.
  */
-export async function quienPide(req: Request): Promise<{ id: string } | null> {
+export type Pedido = { id: string; desdeLaApp: boolean };
+
+/** `desdeLaApp` distingue quién llama, y no es un detalle: define a dónde vuelve
+ *  el socio después de pagar. El navegador puede volver a la webapp; el celular
+ *  tiene que volver a la app, y la web no puede adivinarlo. */
+export async function quienPide(req: Request): Promise<Pedido | null> {
   const auth = req.headers.get('authorization');
   const token = auth?.toLowerCase().startsWith('bearer ') ? auth.slice(7).trim() : null;
 
@@ -32,11 +37,11 @@ export async function quienPide(req: Request): Promise<{ id: string } | null> {
       console.error('[quienPide] token rechazado ·', error?.message ?? 'sin usuario', '· largo', token.length);
       return null;
     }
-    return { id: data.user.id };
+    return { id: data.user.id, desdeLaApp: true };
   }
 
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   if (!data.user) console.error('[quienPide] sin token en el header y sin sesión en cookies');
-  return data.user ? { id: data.user.id } : null;
+  return data.user ? { id: data.user.id, desdeLaApp: false } : null;
 }

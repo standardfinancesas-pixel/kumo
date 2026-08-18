@@ -287,7 +287,14 @@ export default async function Page() {
     // checkout a mitad de camino), el muro lo cuenta en lugar de mostrarle un
     // botón que parece no haber hecho nada.
     suscripcion: (profileRow.mp_subscription_status ?? null) as CuotaVM['suscripcion'],
-    enCurso: (pagoRows ?? []).some((p) => p.status === 'pendiente' && p.method === 'mercadopago'),
+    /*
+     * "Está en curso" incluye la suscripción ya autorizada, y esa parte importa:
+     * autorizar el débito NO es que MP ya haya cobrado. Entre una cosa y la otra
+     * pasan segundos o minutos, y sin esto el socio volvía del checkout y veía el
+     * muro igual que antes, como si no hubiera hecho nada — y volvía a pagar.
+     */
+    enCurso: profileRow.mp_subscription_status === 'authorized'
+      || (pagoRows ?? []).some((p) => p.status === 'pendiente' && p.method === 'mercadopago'),
   };
 
   const profile: Profile = {

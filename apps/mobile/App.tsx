@@ -1986,6 +1986,13 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
 function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => void }) {
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
+  /*
+   * Autorizar el débito NO es que Mercado Pago ya haya cobrado: entre una cosa y
+   * la otra pasan segundos o minutos, y el acceso lo da el aviso del cobro. Sin
+   * este estado el socio volvía del checkout y veía el mismo muro que antes, como
+   * si no hubiera hecho nada — y el próximo paso natural es pagar de nuevo.
+   */
+  const confirmando = profile.suscripcion === 'authorized';
 
   const suscribirme = async () => {
     setYendo(true); setError('');
@@ -2038,12 +2045,16 @@ function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => vo
       <View style={{ backgroundColor: '#fff', borderRadius: 22, padding: 22 }}>
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: BRAND, marginBottom: 2 }}>Kumo</Text>
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>
-          {profile.cuotaHasta ? `${profile.firstName}, se te venció la cuota` : `¡Bienvenido, ${profile.firstName}!`}
+          {confirmando
+            ? 'Estamos confirmando tu pago'
+            : profile.cuotaHasta ? `${profile.firstName}, se te venció la cuota` : `¡Bienvenido, ${profile.firstName}!`}
         </Text>
         <Text style={{ fontSize: 14, color: '#5b5670', lineHeight: 20, marginBottom: 16 }}>
-          {profile.cuotaHasta
-            ? 'Para volver a usar tus beneficios, el carnet y los reintegros, activá tu suscripción.'
-            : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
+          {confirmando
+            ? 'Ya autorizaste el débito. Mercado Pago nos tiene que confirmar el primer cobro, y a veces tarda unos minutos: no hace falta pagar de nuevo.'
+            : profile.cuotaHasta
+              ? 'Para volver a usar tus beneficios, el carnet y los reintegros, activá tu suscripción.'
+              : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
         </Text>
         <View style={{ borderWidth: 1, borderColor: '#e6e3f0', borderRadius: 14, padding: 14, marginBottom: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View>
@@ -2060,17 +2071,27 @@ function MuroCuota({ profile, recargar }: { profile: Profile; recargar: () => vo
             <Text style={{ fontSize: 13, color: '#b03a3a' }}>{error}</Text>
           </View>
         )}
-        <TouchableOpacity
-          onPress={suscribirme}
-          disabled={yendo}
-          activeOpacity={0.85}
-          style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo ? 0.65 : 1, marginBottom: 8 }}
-        >
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{yendo ? 'Abriendo Mercado Pago…' : 'Suscribirme con Mercado Pago'}</Text>
-        </TouchableOpacity>
-        <Text style={{ fontSize: 11.5, color: '#a29dba', textAlign: 'center', lineHeight: 16, marginBottom: 14 }}>
-          Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras.
-        </Text>
+        {confirmando ? (
+          // Nada de "suscribirme" acá: ya lo hizo. Solo volver a chequear, que es
+          // lo único que le puede faltar.
+          <TouchableOpacity onPress={recargar} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Volver a chequear</Text>
+          </TouchableOpacity>
+        ) : (
+          <>
+            <TouchableOpacity
+              onPress={suscribirme}
+              disabled={yendo}
+              activeOpacity={0.85}
+              style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo ? 0.65 : 1, marginBottom: 8 }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{yendo ? 'Abriendo Mercado Pago…' : 'Suscribirme con Mercado Pago'}</Text>
+            </TouchableOpacity>
+            <Text style={{ fontSize: 11.5, color: '#a29dba', textAlign: 'center', lineHeight: 16, marginBottom: 14 }}>
+              Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras.
+            </Text>
+          </>
+        )}
         <View style={{ borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <TouchableOpacity onPress={() => openWa(WA_CLUB)}>
             <Text style={{ fontSize: 13, fontWeight: '600', color: BRAND }}>¿Algún problema? Escribinos</Text>

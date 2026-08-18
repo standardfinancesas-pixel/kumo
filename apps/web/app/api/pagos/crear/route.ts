@@ -79,7 +79,15 @@ export async function POST(req: Request) {
       motivo: `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}`,
       monto,
       emailSocio: perfil.email,
-      volverA: `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}?suscripcion=ok`,
+      /*
+       * A dónde vuelve al terminar. Si vino de la app, NO a la webapp: en el
+       * navegador del teléfono no hay sesión, así que /app lo rebotaba a la
+       * portada y quedaba mirando la landing sin saber si el pago salió. Va a una
+       * página que le dice que vuelva a la app, con un botón que la abre.
+       */
+      volverA: quien.desdeLaApp
+        ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/suscripcion/listo`
+        : `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}?suscripcion=ok`,
     });
 
     // El estado y el id los escribe el servidor con la service-role key, y el
