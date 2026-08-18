@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /*
@@ -47,6 +47,19 @@ export type ProviderAdminRow = {
 };
 export type ReportRow = { id: string; cat: string; autor: string; titulo: string; motivo: string };
 export type AudienceVM = { label: string; n: number };
+/**
+ * Un cobro de la cuota, como lo mira el club.
+ *
+ * `modo` distingue el aviso de prueba del real: mientras se prueba con
+ * credenciales de prueba contra producción, un mes acreditado por un aviso de
+ * prueba NO es plata que entró, y en la tabla los dos se ven idénticos.
+ */
+export type CobroRow = {
+  id: string; socio: string; memberNo: string; plan: string; monto: number;
+  estado: 'aprobado' | 'pendiente' | 'rechazado' | 'devuelto';
+  medio: 'mercadopago' | 'manual';
+  cuando: string; cubreHasta: string | null; detalle: string | null; deprueba: boolean;
+};
 export type SentPushVM = { id: string; title: string; audience: string; when: string };
 
 /* ── Iconos del sidebar ────────────────────────────────────────── */
@@ -68,13 +81,17 @@ const icons = {
   prestadores: I(<><circle cx="5.5" cy="10" r="1.7" /><circle cx="9.7" cy="6.4" r="1.8" /><circle cx="14.3" cy="6.4" r="1.8" /><circle cx="18.5" cy="10" r="1.7" /><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" /></>),
   negocios: I(<><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>),
   moderacion: I(<><path d="M12 3l8 4v5c0 4.4-3.4 7.5-8 9-4.6-1.5-8-4.6-8-9V7z" /><path d="M9.5 12l1.8 1.8L15 10" /></>),
+  cobros: I(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 10v4M18 10v4" /></>),
   menu: I(<><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></>),
 };
 
-type Screen = 'dashboard' | 'socios' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'negocios' | 'moderacion';
+type Screen = 'dashboard' | 'socios' | 'cobros' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'negocios' | 'moderacion';
 const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
   { k: 'socios', label: 'Socios', icon: icons.socios },
+  // Cobros va pegado a Socios y antes de Reintegros: es la plata que ENTRA, y
+  // mirarla al lado de la que sale es como el club piensa su mes.
+  { k: 'cobros', label: 'Cobros', icon: icons.cobros },
   { k: 'reintegros', label: 'Reintegros', icon: icons.reintegros },
   { k: 'beneficios', label: 'Beneficios', icon: icons.beneficios },
   { k: 'planes', label: 'Planes', icon: icons.planes },
@@ -1541,6 +1558,128 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
 }
 
 /* ── Moderación ────────────────────────────────────────────────── */
+/* ── Cobros ────────────────────────────────────────────────────── */
+/**
+ * Todos los cobros de la cuota, uno por fila.
+ *
+ * Hasta acá construimos la tabla de pagos y nadie la mostraba: el club no tenía
+ * dónde ver qué entró este mes, y un socio que reclamaba "yo pagué" no se podía
+ * verificar sin entrar a la base.
+ *
+ * Hay una fila por INTENTO, no por mes: los rechazados quedan a la vista porque
+ * son la mitad de la información. Un socio con el muro puesto y tres rechazos
+ * seguidos no es un moroso, es una tarjeta que no funciona — y eso se resuelve
+ * llamándolo, no esperando.
+ */
+function Cobros({ cobros }: { cobros: CobroRow[] }) {
+  const [filtro, setFiltro] = useState('Todos');
+  const [medio, setMedio] = useState('Todos');
+
+  const ESTADO_LABEL: Record<CobroRow['estado'], string> = {
+    aprobado: 'Acreditado', pendiente: 'Pendiente', rechazado: 'Rechazado', devuelto: 'Devuelto',
+  };
+  const lista = cobros.filter((c) =>
+    (filtro === 'Todos' || ESTADO_LABEL[c.estado] === filtro)
+    && (medio === 'Todos' || (medio === 'Mercado Pago' ? c.medio === 'mercadopago' : c.medio === 'manual')));
+
+  /*
+   * Los totales cuentan SOLO lo acreditado, y descuentan lo de prueba: mientras
+   * probamos con credenciales de prueba contra producción, sumar esos montos haría
+   * que el panel informe una facturación que no existe.
+   */
+  const reales = cobros.filter((c) => c.estado === 'aprobado' && !c.deprueba);
+  const mesActual = mesActualISO();
+  const delMes = reales.filter((c) => c.cuando >= mesActual);
+  const totalMes = delMes.reduce((a, c) => a + c.monto, 0);
+  const rechazados = cobros.filter((c) => c.estado === 'rechazado').length;
+  const dePrueba = cobros.filter((c) => c.deprueba).length;
+
+  const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
+
+  return (
+    <div>
+      <h1 className="adm-h1" style={h1}>Cobros</h1>
+      <p style={sub}>Las cuotas de los socios: lo que entró, lo que rebotó y lo que cobraste por fuera.</p>
+
+      <div className="adm-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14, marginBottom: 18 }}>
+        <div style={card}>
+          <div style={{ fontSize: 12.5, color: '#8781a0', marginBottom: 6 }}>Cobrado este mes</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26 }}>{money(totalMes)}</div>
+          <div style={{ fontSize: 12, color: '#a29dba', marginTop: 4 }}>{delMes.length} cobro{delMes.length === 1 ? '' : 's'} acreditado{delMes.length === 1 ? '' : 's'}</div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12.5, color: '#8781a0', marginBottom: 6 }}>Rechazados</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26 }}>{rechazados}</div>
+          <div style={{ fontSize: 12, color: rechazados ? 'rgb(176,58,58)' : '#a29dba', marginTop: 4 }}>
+            {rechazados ? 'Conviene llamarlos: suele ser la tarjeta' : 'Ninguno'}
+          </div>
+        </div>
+        <div style={card}>
+          <div style={{ fontSize: 12.5, color: '#8781a0', marginBottom: 6 }}>Total acreditado</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26 }}>{money(reales.reduce((a, c) => a + c.monto, 0))}</div>
+          <div style={{ fontSize: 12, color: '#a29dba', marginTop: 4 }}>
+            {dePrueba > 0 ? `${dePrueba} de prueba, sin sumar` : 'Histórico del club'}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>ESTADO</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{['Todos', 'Acreditado', 'Pendiente', 'Rechazado', 'Devuelto'].map((e) => <button key={e} onClick={() => setFiltro(e)} style={chip(filtro === e)}>{e}</button>)}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>MEDIO</div>
+          <div style={{ display: 'flex', gap: 8 }}>{['Todos', 'Mercado Pago', 'Registrado a mano'].map((m) => <button key={m} onClick={() => setMedio(m)} style={chip(medio === m)}>{m}</button>)}</div>
+        </div>
+      </div>
+
+      {cobros.length === 0 ? (
+        <div style={{ ...card, textAlign: 'center', padding: '38px 20px' }}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Todavía no hay cobros</div>
+          <div style={{ fontSize: 13.5, color: '#8781a0', lineHeight: 1.5 }}>
+            Acá van a aparecer las cuotas a medida que Mercado Pago las debite, y las que registres a mano desde Socios.
+          </div>
+        </div>
+      ) : (
+        <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{['SOCIO', 'PLAN', 'MONTO', 'MEDIO', 'CUANDO', 'CUBRE HASTA', 'ESTADO'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
+            <tbody>
+              {lista.map((c) => (
+                <tr key={c.id} className="adm-row">
+                  <td style={{ ...td, fontWeight: 600 }}>
+                    {c.socio}
+                    <span style={{ display: 'block', fontSize: 11.5, color: '#a29dba', fontWeight: 400 }}>{c.memberNo}</span>
+                  </td>
+                  <td style={td}>{c.plan}</td>
+                  <td style={{ ...td, fontWeight: 700 }}>{money(c.monto)}</td>
+                  <td style={td}>
+                    {c.medio === 'manual' ? 'A mano' : 'Mercado Pago'}
+                    {/* El aviso de prueba se marca acá y no se esconde: es un mes
+                        acreditado sin plata detrás, y el club tiene que poder verlo. */}
+                    {c.deprueba && <span style={{ ...badge('rgb(251,243,226)', 'rgb(184,134,11)'), marginLeft: 6 }}>prueba</span>}
+                  </td>
+                  <td style={{ ...td, color: '#8781a0' }}>{fmtFechaCorta(c.cuando)}</td>
+                  <td style={{ ...td, color: '#8781a0' }}>{c.cubreHasta ? fmtFechaCorta(c.cubreHasta) : '—'}</td>
+                  <td style={td}>
+                    <span style={estadoBadge(ESTADO_LABEL[c.estado])}>{ESTADO_LABEL[c.estado]}</span>
+                    {/* El motivo del rechazo, que es lo que el club necesita para
+                        saber si llamar al socio o esperar el reintento de MP. */}
+                    {c.estado !== 'aprobado' && c.detalle && (
+                      <span style={{ display: 'block', fontSize: 11.5, color: '#8781a0', marginTop: 4, maxWidth: 260 }}>{c.detalle}</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Moderacion({ reports }: { reports: ReportRow[] }) {
   const router = useRouter();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1585,11 +1724,11 @@ function Moderacion({ reports }: { reports: ReportRow[] }) {
 
 /* ── Shell ─────────────────────────────────────────────────────── */
 export default function AppClient({
-  profile, kpi, dist, socios, cola, hist, benefits, plans, faqs, settings, providers, reports, audiences, sent,
+  profile, kpi, dist, socios, cola, hist, benefits, plans, faqs, settings, providers, reports, audiences, sent, cobros,
 }: {
   profile: AdminProfile; kpi: KpiVM; dist: DistRow[]; socios: SocioRow[]; cola: ColaRow[]; hist: HistRow[];
   benefits: BenefitAdminVM[]; plans: PlanAdminVM[]; faqs: FaqVM[]; settings: SettingsVM;
-  providers: ProviderAdminRow[]; reports: ReportRow[]; audiences: AudienceVM[]; sent: SentPushVM[];
+  providers: ProviderAdminRow[]; reports: ReportRow[]; audiences: AudienceVM[]; sent: SentPushVM[]; cobros: CobroRow[];
 }) {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>('dashboard');
@@ -1643,6 +1782,7 @@ export default function AppClient({
           {screen === 'ajustes' && <Ajustes settings={settings} />}
           {screen === 'prestadores' && <Prestadores providers={providers} />}
           {screen === 'negocios' && <Negocios providers={providers} />}
+          {screen === 'cobros' && <Cobros cobros={cobros} />}
           {screen === 'moderacion' && <Moderacion reports={reports} />}
         </div>
       </div>

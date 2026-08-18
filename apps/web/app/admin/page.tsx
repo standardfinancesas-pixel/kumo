@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server';
 import AppClient, {
   type AdminProfile, type KpiVM, type DistRow, type SocioRow, type ColaRow, type HistRow,
   type BenefitAdminVM, type PlanAdminVM, type FaqVM, type SettingsVM, type ProviderAdminRow,
-  type ReportRow, type AudienceVM, type SentPushVM,
+  type ReportRow, type AudienceVM, type SentPushVM, type CobroRow,
 } from './AppClient';
 
 const LANDING = urls.landing;
@@ -71,6 +71,7 @@ export default async function Page() {
     { data: reportRows },
     { data: pendVaxPets },
     { data: sentRows },
+    { data: cobroRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -114,6 +115,22 @@ export default async function Page() {
     supabase.from('community_posts').select('id, category, title, author_name, report_reason').eq('reported', true),
     supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente'),
     supabase.from('push_notifications').select('id, title, audience, sent_at').order('sent_at', { ascending: false }).limit(10),
+    /*
+     * Los cobros de la cuota, con el socio embebido: la pantalla los muestra por
+     * nombre y número, no por uuid.
+     *
+     * El join VA CON EL NOMBRE DE LA CLAVE. `payments` se relaciona con `profiles`
+     * por dos caminos —el socio (`member_id`) y quién registró el pago a mano
+     * (`registered_by`)—, así que un `profiles(...)` suelto es ambiguo: PostgREST
+     * responde 300, la consulta falla en silencio y la pantalla queda vacía con
+     * los totales en cero, como si el club no hubiera cobrado nunca. Es el mismo
+     * error que ya nos vació la lista de Prestadores.
+     */
+    supabase
+      .from('payments')
+      .select('id, amount, status, method, covers_until, detail, created_at, paid_at, plan_name, profiles!payments_member_id_fkey(full_name, member_no)')
+      .order('created_at', { ascending: false })
+      .limit(200),
   ]);
   const socioList = profileRows ?? [];
   const planOf = (p: (typeof socioList)[number]) => (Array.isArray(p.plans) ? p.plans[0] : p.plans);
@@ -233,11 +250,41 @@ export default async function Page() {
   ];
   const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ id: s.id, title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—' }));
 
+  /*
+   * Los cobros, como los mira el club.
+   *
+   * El aviso de PRUEBA se detecta por la marca que le deja el webhook en el
+   * detalle: es un mes acreditado sin plata detrás, y los totales de la pantalla
+   * lo descuentan en lugar de informar una facturación que no existe.
+   *
+   * `cuando` sale de `paid_at` y cae en `created_at` si todavía no se acreditó:
+   * la fecha que le importa al club es la del cobro, no la del intento.
+   */
+  type CobroSocio = { full_name: string; member_no: number | null };
+  const cobros: CobroRow[] = (cobroRows ?? []).map((c) => {
+    const p = Array.isArray(c.profiles) ? (c.profiles[0] as CobroSocio | undefined) : (c.profiles as CobroSocio | null);
+    return {
+      id: c.id,
+      // Un pago puede sobrevivir al socio si lo borran: mejor decirlo que mostrar vacío.
+      socio: p?.full_name ?? 'Socio dado de baja',
+      memberNo: p?.member_no ? `#${p.member_no}` : '—',
+      plan: c.plan_name ?? '—',
+      monto: c.amount,
+      estado: c.status,
+      medio: c.method,
+      cuando: (c.paid_at ?? c.created_at).slice(0, 10),
+      cubreHasta: c.covers_until,
+      detalle: c.detail,
+      deprueba: /PRUEBA/.test(c.detail ?? ''),
+    };
+  });
+
   return (
     <AppClient
       profile={profile} kpi={kpi} dist={dist} socios={socios} cola={cola} hist={hist}
       benefits={benefits} plans={plans} faqs={faqs} settings={settings}
       providers={providers} reports={reports} audiences={audiences} sent={sent}
+      cobros={cobros}
     />
   );
 }
