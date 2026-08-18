@@ -195,6 +195,19 @@ de cada pantalla.
       (si no, no llegan al build). La `SUPABASE_SERVICE_ROLE_KEY` está
       encriptada y es la única sensible.
 - [x] URLs entre secciones por `urls` de `@kumo/shared`, sin `localhost`.
+- [ ] **BLOQUEANTE antes del primer socio real: volver al token de producción de
+      Mercado Pago.** Para probar se usa el token de una cuenta de PRUEBA (una
+      cuenta distinta de la del club, no un "modo"), y va a quedar puesta varios
+      días. Mientras esté, un socio que se suscriba entra al club y **la plata no
+      entra a ningún lado**: el error no da ninguna señal, nadie se queja y se
+      descubre al cierre del mes. Hoy no hay socios reales pagando, así que no
+      corre riesgo; el día que se invite al primero, esto tiene que estar hecho.
+      Hay una capa parcial (los cobros que llegan por un aviso de prueba quedan
+      marcados en la fila y los totales de Cobros no los suman), pero avisa
+      después del cobro. Falta la capa que evita el olvido: un cartel en el panel
+      cuando la cuenta de cobro configurada es de prueba — el dato sale de
+      preguntarle a MP por la cuenta del token (`/users/me` devuelve el mail y si
+      es `test_user`). Son veinte minutos.
 - [ ] **Autorizar la GitHub App de Vercel en la organización** para tener
       deploys automáticos y preview URLs. Lo tiene que hacer un owner de la org
       del cliente; hoy cada deploy sale a mano desde el CLI.
