@@ -120,7 +120,14 @@ export async function POST(req: Request) {
       referencia: perfil.id,
       motivo: `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}`,
       monto,
-      emailSocio: perfil.email,
+      /*
+       * En sandbox el pagador tiene que ser el COMPRADOR de prueba: Mercado Pago
+       * exige que cobrador y pagador sean los dos reales o los dos de prueba, y
+       * con el email real del socio la creación da 400/500 (Biomea chocó con
+       * esto). `MP_PAYER_EMAIL_PRUEBA` se setea SOLO mientras el token cargado es
+       * el del vendedor de prueba; en producción no existe y va el email real.
+       */
+      emailSocio: process.env.MP_PAYER_EMAIL_PRUEBA || perfil.email,
       /*
        * A dónde vuelve al terminar. Si vino de la app, NO a la webapp: en el
        * navegador del teléfono no hay sesión, así que /app lo rebotaba a la
