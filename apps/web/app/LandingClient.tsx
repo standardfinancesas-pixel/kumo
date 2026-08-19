@@ -848,7 +848,7 @@ function Footer() {
         <div className="r-foot-grid" style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr 1fr 1fr', gap: 40, paddingBottom: 40 }}>
           <div>
             <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26, letterSpacing: '-0.01em', color: 'rgb(93,84,145)' }}>Kumo</span>
-            <p style={{ color: 'rgb(135,129,160)', fontSize: 14, lineHeight: 1.6, margin: '14px 0 18px', maxWidth: 260 }}>Club de beneficios para dueños de mascotas: descuentos, reintegros, carnet digital y una red de prestadores de confianza.</p>
+            <p style={{ color: 'rgb(135,129,160)', fontSize: 14, lineHeight: 1.6, margin: '14px 0 18px', maxWidth: 260 }}>La app de mascotas con beneficios: descuentos, reintegros, carnet digital y una red de prestadores de confianza.</p>
             <div style={{ display: 'flex', gap: 10 }}>
               <a href="#" className="scpp" style={{ width: 36, height: 36, borderRadius: 10, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)', textDecoration: 'none' }}>
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.2c-5.4 0-9.8 4.4-9.8 9.8 0 4.9 3.6 8.9 8.3 9.7v-6.9H8.1v-2.8h2.4V9.8c0-2.4 1.4-3.7 3.6-3.7 1 0 2.1.2 2.1.2v2.3h-1.2c-1.2 0-1.5.7-1.5 1.5v1.8h2.6l-.4 2.8h-2.2v6.9c4.7-.7 8.3-4.8 8.3-9.7 0-5.4-4.4-9.8-9.8-9.8z" /></svg>
