@@ -1,18 +1,26 @@
 import crypto from 'node:crypto';
+import { MercadoPagoConfig, Preference, PreApproval, Invoice, Payment } from 'mercadopago';
 
 /**
- * Mercado Pago: cobro de la cuota mensual con Checkout Pro.
+ * Mercado Pago: cobro de la cuota mensual con Checkout Pro + Suscripciones.
  *
- * Va contra la API REST y no contra el SDK a propósito: son tres llamadas y el
- * SDK traía su propia versión de conflicto con el runtime de Vercel. Todo esto
- * corre SOLO en el servidor — el access token es la llave de la cuenta de cobro
- * del club y no puede llegar al navegador ni por accidente.
+ * Va contra el SDK oficial (`mercadopago@3`). Todo esto corre SOLO en el
+ * servidor — el access token es la llave de la cuenta de cobro del club y no
+ * puede llegar al navegador ni por accidente.
  *
- * Por qué Checkout Pro (redirect) y no un formulario propio: la tarjeta se tipea
- * en el sitio de Mercado Pago. Nunca pasa por Kumo, así que no hay datos de
- * tarjeta que podamos filtrar ni obligaciones de PCI DSS que cumplir.
+ * Antes iba contra la API REST a mano, por un conflicto viejo del SDK con el
+ * runtime de Vercel que no quedó documentado con más detalle que eso. Al migrar
+ * (2026-08-19) se probó a fondo antes de asumir que seguía existiendo: build de
+ * producción limpio, y las cinco llamadas corridas en vivo contra la API de
+ * Mercado Pago dieron exactamente los mismos errores que la versión con fetch.
+ * No se pudo reproducir ningún conflicto. Si vuelve a aparecer alguno, anotar
+ * acá el error exacto para la próxima vez.
+ *
+ * Por qué Checkout Pro / Suscripciones (redirect) y no un formulario propio: la
+ * tarjeta se tipea en el sitio de Mercado Pago. Nunca pasa por Kumo, así que no
+ * hay datos de tarjeta que podamos filtrar ni obligaciones de PCI DSS que
+ * cumplir.
  */
-const API = 'https://api.mercadopago.com';
 
 /** Falta la config → el modal se lo dice al socio en lugar de romperse. */
 export class MercadoPagoSinConfigurar extends Error {
@@ -22,33 +30,23 @@ export class MercadoPagoSinConfigurar extends Error {
   }
 }
 
-function token(): string {
+function cliente(): MercadoPagoConfig {
   const t = process.env.MP_ACCESS_TOKEN;
   if (!t) throw new MercadoPagoSinConfigurar('MP_ACCESS_TOKEN');
-  return t;
+  return new MercadoPagoConfig({ accessToken: t });
 }
 
-async function mp<T>(ruta: string, init?: RequestInit & { idempotencia?: string }): Promise<T> {
-  const res = await fetch(`${API}${ruta}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token()}`,
-      'Content-Type': 'application/json',
-      // Mercado Pago acepta una llave de idempotencia: si el mismo pedido sale
-      // dos veces (reintento de red, doble clic), no crea dos cobros.
-      ...(init?.idempotencia ? { 'X-Idempotency-Key': init.idempotencia } : {}),
-      ...init?.headers,
-    },
-    cache: 'no-store',
-  });
-  const cuerpo = await res.text();
-  if (!res.ok) {
-    // El detalle va al log del servidor, no al socio: puede traer datos de la
-    // cuenta de cobro.
-    console.error('[mp] error', ruta, res.status, cuerpo.slice(0, 500));
-    throw new Error(`Mercado Pago devolvió ${res.status}`);
-  }
-  return JSON.parse(cuerpo) as T;
+/**
+ * El SDK tira sus propios errores (`MercadoPagoError` / `errors.ApiError`), sin
+ * un `status` consistente en todas las versiones. Se homogeneiza a lo que ya
+ * loguea todo el resto del código: el detalle completo al log del servidor
+ * (puede traer datos de la cuenta de cobro, nunca al socio) y un Error simple
+ * con el status hacia arriba.
+ */
+function relanzar(ruta: string, e: unknown): never {
+  const status = (e as { status?: number })?.status ?? (e as { statusCode?: number })?.statusCode ?? '?';
+  console.error('[mp] error', ruta, status, JSON.stringify((e as { cause?: unknown })?.cause ?? (e as Error)?.message ?? e).slice(0, 500));
+  throw new Error(`Mercado Pago devolvió ${status}`);
 }
 
 export type Preferencia = { id: string; init_point: string };
@@ -67,31 +65,38 @@ export async function crearPreferencia(opts: {
   volverA: string;
   avisarA: string;
 }): Promise<Preferencia> {
-  return mp<Preferencia>('/checkout/preferences', {
-    method: 'POST',
-    idempotencia: opts.referencia,
-    body: JSON.stringify({
-      items: [{
-        title: opts.titulo,
-        quantity: 1,
-        unit_price: opts.monto,
-        currency_id: 'ARS',
-      }],
-      payer: { email: opts.emailSocio },
-      external_reference: opts.referencia,
-      // A dónde vuelve el socio. Es sólo un cartel: el acceso lo da el webhook.
-      back_urls: {
-        success: `${opts.volverA}?pago=ok`,
-        pending: `${opts.volverA}?pago=pendiente`,
-        failure: `${opts.volverA}?pago=error`,
+  try {
+    const res = await new Preference(cliente()).create({
+      body: {
+        items: [{
+          id: opts.referencia,
+          title: opts.titulo,
+          quantity: 1,
+          unit_price: opts.monto,
+          currency_id: 'ARS',
+        }],
+        payer: { email: opts.emailSocio },
+        external_reference: opts.referencia,
+        // A dónde vuelve el socio. Es sólo un cartel: el acceso lo da el webhook.
+        back_urls: {
+          success: `${opts.volverA}?pago=ok`,
+          pending: `${opts.volverA}?pago=pendiente`,
+          failure: `${opts.volverA}?pago=error`,
+        },
+        auto_return: 'approved',
+        notification_url: opts.avisarA,
+        statement_descriptor: 'KUMO',
+        // Sin cuotas: es una cuota mensual, financiarla no tiene sentido.
+        payment_methods: { installments: 1 },
       },
-      auto_return: 'approved',
-      notification_url: opts.avisarA,
-      statement_descriptor: 'KUMO',
-      // Sin cuotas: es una cuota mensual, financiarla no tiene sentido.
-      installments: 1,
-    }),
-  });
+      requestOptions: { idempotencyKey: opts.referencia },
+    });
+    if (!res.id || !res.init_point) throw new Error('Mercado Pago no devolvió init_point');
+    return { id: res.id, init_point: res.init_point };
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar('/checkout/preferences', e);
+  }
 }
 
 export type Suscripcion = { id: string; init_point: string; status: string };
@@ -115,23 +120,29 @@ export async function crearSuscripcion(opts: {
   emailSocio: string;
   volverA: string;
 }): Promise<Suscripcion> {
-  return mp<Suscripcion>('/preapproval', {
-    method: 'POST',
-    idempotencia: opts.referencia,
-    body: JSON.stringify({
-      reason: opts.motivo,
-      external_reference: opts.referencia,
-      payer_email: opts.emailSocio,
-      back_url: opts.volverA,
-      status: 'pending',
-      auto_recurring: {
-        frequency: 1,
-        frequency_type: 'months',
-        transaction_amount: opts.monto,
-        currency_id: 'ARS',
+  try {
+    const res = await new PreApproval(cliente()).create({
+      body: {
+        reason: opts.motivo,
+        external_reference: opts.referencia,
+        payer_email: opts.emailSocio,
+        back_url: opts.volverA,
+        status: 'pending',
+        auto_recurring: {
+          frequency: 1,
+          frequency_type: 'months',
+          transaction_amount: opts.monto,
+          currency_id: 'ARS',
+        },
       },
-    }),
-  });
+      requestOptions: { idempotencyKey: opts.referencia },
+    });
+    if (!res.id || !res.init_point || !res.status) throw new Error('Mercado Pago no devolvió los datos de la suscripción');
+    return { id: res.id, init_point: res.init_point, status: res.status };
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar('/preapproval', e);
+  }
 }
 
 export type SuscripcionMP = {
@@ -144,7 +155,12 @@ export type SuscripcionMP = {
 
 /** El estado de una suscripción, preguntado a Mercado Pago. */
 export async function traerSuscripcion(id: string): Promise<SuscripcionMP> {
-  return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`);
+  try {
+    return (await new PreApproval(cliente()).get({ id })) as SuscripcionMP;
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/preapproval/${id}`, e);
+  }
 }
 
 /**
@@ -155,19 +171,26 @@ export async function traerSuscripcion(id: string): Promise<SuscripcionMP> {
  * suscriptos seguirían debitando el monto con el que firmaron para siempre.
  */
 export async function actualizarMontoSuscripcion(id: string, monto: number): Promise<SuscripcionMP> {
-  return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ auto_recurring: { transaction_amount: monto, currency_id: 'ARS' } }),
-  });
+  try {
+    return (await new PreApproval(cliente()).update({
+      id,
+      body: { auto_recurring: { transaction_amount: monto, currency_id: 'ARS' } },
+    })) as unknown as SuscripcionMP;
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/preapproval/${id}`, e);
+  }
 }
 
 /** Dar de baja. El socio tiene que poder hacerlo desde la app: con débito
  *  automático, la baja tiene que ser tan fácil como el alta. */
 export async function cancelarSuscripcion(id: string): Promise<SuscripcionMP> {
-  return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`, {
-    method: 'PUT',
-    body: JSON.stringify({ status: 'cancelled' }),
-  });
+  try {
+    return (await new PreApproval(cliente()).update({ id, body: { status: 'cancelled' } })) as unknown as SuscripcionMP;
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/preapproval/${id}`, e);
+  }
 }
 
 export type DebitoMP = {
@@ -183,12 +206,17 @@ export type DebitoMP = {
 /**
  * Un débito mensual de la suscripción.
  *
- * El aviso `subscription_authorized_payment` trae el id de ESTE objeto, que no es
- * el id del pago: adentro viene el pago con su estado. Confundirlos es acreditar
- * meses que la tarjeta rechazó.
+ * El aviso `subscription_authorized_payment` trae el id de ESTE objeto (lo que
+ * Mercado Pago llama "invoice"), que no es el id del pago: adentro viene el pago
+ * con su estado. Confundirlos es acreditar meses que la tarjeta rechazó.
  */
 export async function traerDebito(id: string): Promise<DebitoMP> {
-  return mp<DebitoMP>(`/authorized_payments/${encodeURIComponent(id)}`);
+  try {
+    return (await new Invoice(cliente()).get({ id })) as unknown as DebitoMP;
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/authorized_payments/${id}`, e);
+  }
 }
 
 export type PagoMP = {
@@ -208,7 +236,12 @@ export type PagoMP = {
  * JSON que diga "aprobado $50.000"; sólo Mercado Pago sabe la verdad.
  */
 export async function traerPago(id: string): Promise<PagoMP> {
-  return mp<PagoMP>(`/v1/payments/${encodeURIComponent(id)}`);
+  try {
+    return (await new Payment(cliente()).get({ id: Number(id) })) as unknown as PagoMP;
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/v1/payments/${id}`, e);
+  }
 }
 
 /**
@@ -218,9 +251,10 @@ export async function traerPago(id: string): Promise<PagoMP> {
  * este chequeo el endpoint queda abierto: cualquiera que conozca la URL puede
  * avisar "este socio pagó" y regalarse el acceso al club.
  *
- * El formato del header es `ts=1704908010,v1=<hmac>` y lo que se firma es
- * `id:<data.id>;request-id:<x-request-id>;ts:<ts>;` — con los nombres en
- * minúscula y el punto y coma final, que es fácil de pasar por alto.
+ * Esto NO pasa por el SDK: es una verificación local con HMAC (no una llamada a
+ * la API), y el SDK no la ofrece — el formato del header es `ts=...,v1=<hmac>` y
+ * lo que se firma es `id:<data.id>;request-id:<x-request-id>;ts:<ts>;`, con los
+ * nombres en minúscula y el punto y coma final, que es fácil de pasar por alto.
  */
 export type Modo = 'produccion' | 'prueba';
 
