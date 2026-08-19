@@ -20,7 +20,7 @@ import { sendRecuperarClave } from '@/lib/mail';
  * mail", cualquiera podría averiguar quién es socio del club probando direcciones.
  */
 export async function POST(req: Request) {
-  const { email } = (await req.json().catch(() => ({}))) as { email?: string };
+  const { email, origen } = (await req.json().catch(() => ({}))) as { email?: string; origen?: string };
   const dir = email?.trim().toLowerCase();
 
   // La respuesta única. Se arma una vez para que no haya forma de que una rama
@@ -34,9 +34,21 @@ export async function POST(req: Request) {
       type: 'recovery',
       email: dir,
       options: {
-        // La vuelta pasa por el callback, que canjea el código por sesión y de ahí
-        // manda a elegir la contraseña nueva.
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/auth/callback?next=/auth/nueva-clave`,
+        /*
+         * A dónde vuelve el socio con el link del mail. Son dos destinos NUESTROS,
+         * elegidos por un enum y no por una URL que mande el cliente: si el cliente
+         * pudiera elegir la URL, este endpoint serviría para mandar a alguien recién
+         * autenticado a un sitio ajeno con un link que parece de Kumo.
+         *
+         * Ojo con la variante web: va DIRECTO a la página, no al callback. Supabase
+         * devuelve la sesión en el fragmento de la URL (`#access_token=…`), que nunca
+         * llega al servidor: el callback pedía un `?code=` que no existe y terminaba
+         * rebotando a la portada, o sea que recuperar la clave no llegaba a ninguna
+         * parte. La página del navegador sí lee el fragmento, sola.
+         */
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${
+          origen === 'app' ? '/auth/abrir-app' : '/auth/nueva-clave'
+        }`,
       },
     });
 

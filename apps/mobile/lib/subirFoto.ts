@@ -39,6 +39,49 @@ const MIME: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', pn
 
 export type ResultadoFoto = { url: string } | { error: string } | { cancelado: true };
 
+/** Una foto elegida, en la forma que necesita `FormData` de React Native. */
+export type FotoElegida = { uri: string; name: string; type: string; bytes: number };
+export type ResultadoElegir = { foto: FotoElegida } | { error: string } | { cancelado: true };
+
+/**
+ * Elegir una foto, sin subirla.
+ *
+ * Es lo que usa el alta: ahí todavía no hay sesión, así que no hay `ownerId` con
+ * el que armar la ruta del bucket, y la foto viaja al servidor dentro del mismo
+ * pedido del alta (que la sube con la service-role, igual que hace la web).
+ *
+ * `name` y `type` no son decorativos: el servidor saca de ahí la extensión y el
+ * tipo del archivo, y si vienen vacíos descarta la foto y el alta se completa sin
+ * ella. Por eso se derivan acá y se validan antes de mandar nada.
+ */
+export async function elegirFoto(): Promise<ResultadoElegir> {
+  const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
+  if (!permiso.granted) {
+    return { error: 'Necesitamos permiso para ver tus fotos. Podés dárselo desde los ajustes del teléfono.' };
+  }
+  const elegida = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    quality: 0.6,
+  });
+  if (elegida.canceled) return { cancelado: true };
+
+  const asset = elegida.assets?.[0];
+  if (!asset?.uri) return { error: 'No pudimos leer la foto. Probá con otra.' };
+
+  // El ?? de atrás no es de más: con `noUncheckedIndexedAccess` el split devuelve
+  // `string | undefined`, y de `ext` depende el tipo que se le declara al servidor.
+  const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().split('?')[0] ?? 'jpg';
+  const type = asset.mimeType ?? MIME[ext] ?? 'image/jpeg';
+  const bytes = asset.fileSize ?? 0;
+
+  // El peso puede venir sin dato (`fileSize` es opcional según la plataforma):
+  // en ese caso no se rechaza acá y decide el servidor, que siempre lo mide.
+  const invalida = motivoFotoInvalida(type, bytes || 1);
+  if (invalida) return { error: invalida };
+
+  return { foto: { uri: asset.uri, name: `mascota.${MIME[ext] ? ext : 'jpg'}`, type, bytes } };
+}
+
 export async function elegirYSubirFoto(ownerId: string, prefijo = ''): Promise<ResultadoFoto> {
   const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permiso.granted) {

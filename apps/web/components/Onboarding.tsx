@@ -2,7 +2,10 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
-import { data, urls, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual, tarjetaMeta, cbuValido } from '@kumo/shared';
+import {
+  data, urls, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual, cbuValido,
+  PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, pasoOk, payloadAlta, type BorradorAlta,
+} from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
 /*
@@ -15,7 +18,8 @@ import { supabase } from '@/lib/supabase-browser';
 const WEBAPP = urls.webapp;
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 
-const PROVINCIAS = ['Buenos Aires', 'CABA', 'Catamarca', 'Chaco', 'Chubut', 'Córdoba', 'Corrientes', 'Entre Ríos', 'Formosa', 'Jujuy', 'La Pampa', 'La Rioja', 'Mendoza', 'Misiones', 'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe', 'Santiago del Estero', 'Tierra del Fuego', 'Tucumán'];
+// PROVINCIAS, los formateadores y las reglas de cada paso viven en
+// `@kumo/shared/alta`: la app del celular usa exactamente los mismos.
 
 // HEALTH_Q y SANITARIO_Q salen de `@kumo/shared`: el servidor usa la misma lista
 // para armar el par pregunta/respuesta que se guarda firmado.
@@ -40,11 +44,7 @@ const PAY_METHODS: { key: 'tarjeta' | 'cbu'; label: string; icon: ReactNode }[] 
   { key: 'cbu', label: 'Débito por CBU/CVU', icon: <><path d="M3 10.5 12 4l9 6.5" /><path d="M5 10v9h14v-9" /><line x1="9" y1="13" x2="9" y2="19" /><line x1="15" y1="13" x2="15" y2="19" /></> },
 ];
 
-const formatDni = (raw: string) => raw.replace(/\D/g, '').slice(0, 8).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-const formatTel = (raw: string) => {
-  const d = raw.replace(/\D/g, '').slice(0, 10);
-  return [d.slice(0, 2), d.slice(2, 6), d.slice(6, 10)].filter(Boolean).join(' ');
-};
+
 const todayShort = () => { const d = new Date(); return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`; };
 
 const input: CSSProperties = { width: '100%', padding: '13px 14px', border: '1.5px solid #e6e3f0', borderRadius: 12, fontSize: 15, background: '#fff', color: '#211E33', outline: 'none', fontFamily: '"DM Sans"', boxSizing: 'border-box' };
@@ -148,22 +148,21 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
 
   if (!open) return null;
 
-  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(socio.email);
-  const dniOk = /^\d{7,8}$/.test(socio.dni.replace(/\D/g, ''));
-  const telOk = socio.tel.replace(/\D/g, '').length === 10;
-  const fnacOk = /^\d{2}\/\d{2}\/\d{4}$/.test(socio.fnac);
-  const passwordOk = socio.password.length >= 6;
-  // Un socio se dio de alta con el mail en el campo del nombre (probablemente
-  // por el autocompletado) y el saludo de su cuenta quedó mostrando el mail.
-  const nombreOk = socio.nombre.trim().length > 1 && !socio.nombre.includes('@');
-  const step1Ok = pet.nombre.trim().length > 0;
-  // Con Google no hay contraseña que validar: la identidad ya está resuelta.
-  const step2Ok = nombreOk && dniOk && fnacOk && socio.domicilio.trim() && socio.localidad.trim() && socio.provincia && telOk && emailOk && (conGoogle || passwordOk);
-  const step3Ok = !!plan;
-  const step4Ok = Object.keys(health).length === HEALTH_Q.length && Object.keys(sanit).length === SANITARIO_Q.length && firma.trim().length > 2 && acepta;
-  const step5Ok = cardNum.replace(/\D/g, '').length >= 13 && cardExp.trim().length >= 4 && cardCvv.trim().length >= 3 && acceptaCuota;
+  /*
+   * El estado de los 5 pasos, junto, con la forma que entiende `@kumo/shared`.
+   * Las reglas de "este paso está completo" y el armado del pedido viven allá,
+   * así que este formulario y el de la app del celular no pueden divergir: un
+   * arreglo entra en los dos o en ninguno.
+   */
+  const borrador: BorradorAlta = {
+    socio, pet, plan, odonto,
+    declaracion: { health, sanit, firma, acepta },
+    pago: { metodo: payMethod, numero: cardNum, exp: cardExp, cvv: cardCvv, titular: cardHolder, banco, aceptaCuota: acceptaCuota },
+  };
+  // Campo por campo, para el borde rojo del que falla.
+  const v = validarSocio(socio, conGoogle);
 
-  const canNext = step === 1 ? step1Ok : step === 2 ? step2Ok : step === 3 ? step3Ok : step === 4 ? step4Ok : step === 5 ? step5Ok : true;
+  const canNext = pasoOk(step, borrador, conGoogle);
   const next = () => { if (step < 5) setStep(step + 1); else if (step === 5 && canNext) setConfirmOpen(true); };
   const back = () => { if (step > 1) setStep(step - 1); else onClose(); };
 
@@ -175,26 +174,11 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
     setSubmitError('');
     try {
       const form = new FormData();
-      // Van los 5 pasos, no tres. De la tarjeta viajan solo la marca, los
-      // últimos 4 y el vencimiento, calculados acá: si el número completo
-      // llegara al backend metería al servidor en el alcance de PCI DSS, aunque
-      // no se guardara. El CVV no sale de este formulario.
-      form.set(
-        'payload',
-        JSON.stringify({
-          socio,
-          pet,
-          plan,
-          odonto,
-          declaracion: { health, sanit, firma },
-          pago: {
-            metodo: payMethod,
-            aceptaCuota: acceptaCuota,
-            banco,
-            tarjeta: payMethod === 'tarjeta' ? tarjetaMeta({ numero: cardNum, exp: cardExp, holder: cardHolder }) : null,
-          },
-        })
-      );
+      // Van los 5 pasos, no tres. `payloadAlta` arma el cuerpo (y de la tarjeta
+      // manda solo marca, últimos 4 y vencimiento: el número completo metería al
+      // servidor en el alcance de PCI DSS aunque no se guarde, y el CVV no sale
+      // de este formulario).
+      form.set('payload', JSON.stringify(payloadAlta(borrador)));
       if (petPhotoFile) form.set('photo', petPhotoFile);
       const res = await fetch('/api/onboarding', { method: 'POST', body: form });
       const json = await res.json();
@@ -289,8 +273,8 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
             <p style={{ color: '#8781a0', fontSize: 15, margin: '0 0 22px' }}>Datos del socio titular.</p>
             {field('Apellido y nombre', <input autoComplete="name" value={socio.nombre} onChange={(e) => setSocio({ ...socio, nombre: e.target.value })} placeholder="Ej. Valentina Ruiz" style={input} />)}
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('DNI', <input autoComplete="off" value={socio.dni} onChange={(e) => setSocio({ ...socio, dni: formatDni(e.target.value) })} placeholder="00.000.000" style={{ ...input, borderColor: socio.dni && !dniOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
-              <div style={{ flex: 1 }}>{field('Fecha de nac.', <input autoComplete="bday" value={socio.fnac} onChange={(e) => setSocio({ ...socio, fnac: e.target.value })} placeholder="dd/mm/aaaa" style={{ ...input, borderColor: socio.fnac && !fnacOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('DNI', <input autoComplete="off" value={socio.dni} onChange={(e) => setSocio({ ...socio, dni: formatDni(e.target.value) })} placeholder="00.000.000" style={{ ...input, borderColor: socio.dni && !v.dni ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Fecha de nac.', <input autoComplete="bday" value={socio.fnac} onChange={(e) => setSocio({ ...socio, fnac: formatFecha(e.target.value) })} placeholder="dd/mm/aaaa" style={{ ...input, borderColor: socio.fnac && !v.fnac ? '#c14d7a' : '#e6e3f0' }} />)}</div>
             </div>
             {field('Domicilio', <input autoComplete="street-address" value={socio.domicilio} onChange={(e) => setSocio({ ...socio, domicilio: e.target.value })} placeholder="Calle y número" style={input} />)}
             <div style={{ display: 'flex', gap: 12 }}>
@@ -298,8 +282,8 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
               <div style={{ flex: 1 }}>{field('Provincia', <select value={socio.provincia} onChange={(e) => setSocio({ ...socio, provincia: e.target.value })} style={input}><option value="">Elegí una provincia</option>{PROVINCIAS.map((p) => <option key={p}>{p}</option>)}</select>)}</div>
             </div>
             <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('Teléfono', <input autoComplete="tel" value={socio.tel} onChange={(e) => setSocio({ ...socio, tel: formatTel(e.target.value) })} placeholder="11 5555 2024" style={{ ...input, borderColor: socio.tel && !telOk ? '#c14d7a' : '#e6e3f0' }} />)}</div>
-              <div style={{ flex: 1 }}>{field('Email', <input type="email" autoComplete="email" value={socio.email} onChange={(e) => setSocio({ ...socio, email: e.target.value })} readOnly={conGoogle} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !emailOk ? '#c14d7a' : '#e6e3f0', background: conGoogle ? '#faf9fd' : '#fff', color: conGoogle ? '#5b5670' : undefined }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Teléfono', <input autoComplete="tel" value={socio.tel} onChange={(e) => setSocio({ ...socio, tel: formatTel(e.target.value) })} placeholder="11 5555 2024" style={{ ...input, borderColor: socio.tel && !v.tel ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              <div style={{ flex: 1 }}>{field('Email', <input type="email" autoComplete="email" value={socio.email} onChange={(e) => setSocio({ ...socio, email: e.target.value })} readOnly={conGoogle} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !v.email ? '#c14d7a' : '#e6e3f0', background: conGoogle ? '#faf9fd' : '#fff', color: conGoogle ? '#5b5670' : undefined }} />)}</div>
             </div>
             {/* Con Google no se pide contraseña: la persona ya está identificada
                 y de ahí en adelante entra con el botón. Pedirle una sería
@@ -310,7 +294,7 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
               </p>
             ) : (
               <>
-                {field('Contraseña', <input type="password" autoComplete="new-password" value={socio.password} onChange={(e) => setSocio({ ...socio, password: e.target.value })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !passwordOk ? '#c14d7a' : '#e6e3f0' }} />)}
+                {field('Contraseña', <input type="password" autoComplete="new-password" value={socio.password} onChange={(e) => setSocio({ ...socio, password: e.target.value })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !v.password ? '#c14d7a' : '#e6e3f0' }} />)}
                 <p style={{ fontSize: 12.5, color: '#a29dba', margin: '-8px 0 0' }}>La vas a usar para entrar a la app cuando quieras.</p>
               </>
             )}
@@ -343,14 +327,18 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
                         </div>
                       ))}
                     </div>
-                    <label onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#5b5670', cursor: 'pointer', background: '#f7f6fa', border: '1px solid #eeecf5', borderRadius: 11, padding: '10px 12px' }}>
-                      <input type="checkbox" checked={odonto} onChange={(e) => setOdonto(e.target.checked)} style={{ width: 17, height: 17, accentColor: '#5D5491' }} />
-                      ¿Sumar cobertura odontológica? <strong>+{money(ODONTO_PRECIO)}/mes</strong>
-                    </label>
                   </div>
                 );
               })}
             </div>
+            {/* Una sola vez, y fuera de las tarjetas: la cobertura odontológica es
+                una columna del socio (`profiles.addon_odonto`), no del plan. Cuando
+                el check vivía dentro de cada tarjeta parecía ser de ese plan y
+                tildarlo en una lo tildaba en todas. */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, color: '#5b5670', cursor: 'pointer', background: '#f7f6fa', border: '1px solid #eeecf5', borderRadius: 12, padding: '14px 16px', marginTop: 16 }}>
+              <input type="checkbox" checked={odonto} onChange={(e) => setOdonto(e.target.checked)} style={{ width: 18, height: 18, accentColor: '#5D5491', flex: '0 0 auto' }} />
+              <span>¿Sumar cobertura odontológica? <strong>+{money(ODONTO_PRECIO)}/mes</strong></span>
+            </label>
           </div>
         )}
 
@@ -434,7 +422,10 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
                   <div style={{ flex: 1 }}>{field('', <input value={banco.bank} onChange={(e) => setBanco((b) => ({ ...b, bank: e.target.value }))} placeholder="Banco" style={input} />)}</div>
                   <div style={{ flex: 1 }}>{field('', <input value={banco.cuit} onChange={(e) => setBanco((b) => ({ ...b, cuit: e.target.value }))} placeholder="CUIT / CUIL" inputMode="numeric" style={input} />)}</div>
                 </div>
-                {field('', <input value={banco.holder} onChange={(e) => setBanco((b) => ({ ...b, holder: e.target.value }))} placeholder="Titular de la cuenta" style={input} />)}
+                <div style={{ display: 'flex', gap: 12 }}>
+                  <div style={{ flex: 1.4 }}>{field('', <input value={banco.holder} onChange={(e) => setBanco((b) => ({ ...b, holder: e.target.value }))} placeholder="Titular de la cuenta" style={input} />)}</div>
+                  <div style={{ flex: 1 }}>{field('', <input value={banco.holderDni} onChange={(e) => setBanco((b) => ({ ...b, holderDni: formatDni(e.target.value) }))} placeholder="DNI del titular" inputMode="numeric" style={input} />)}</div>
+                </div>
                 {banco.cbu.replace(/\D/g, '').length > 0 && !cbuValido(banco.cbu) && (
                   <p style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, margin: '0 0 10px' }}>
                     El CBU/CVU tiene 22 dígitos y pusiste {banco.cbu.replace(/\D/g, '').length}.

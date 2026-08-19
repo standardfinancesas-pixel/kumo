@@ -13,4 +13,5 @@ export * from './mascotas';
 export * from './declaracion';
 export * from './planes';
 export * from './pagos';
+export * from './alta';
 export * as data from './data';

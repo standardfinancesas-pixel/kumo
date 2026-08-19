@@ -1,23 +1,20 @@
-import { useState, createElement } from 'react';
-import { ScrollView, Text as RNText, TextProps, TextInput, TouchableOpacity, View, Image, ImageSourcePropType } from 'react-native';
+import { useState } from 'react';
+import { ScrollView, TextInput, TouchableOpacity, View, Image, type ImageSourcePropType } from 'react-native';
 import { colors } from '@kumo/shared';
 import { supabase } from '../lib/supabase';
-import { resolverFuente } from '../lib/tipografia';
-
-const FH = 'Baloo2_800ExtraBold';
-const FREG = 'DMSans_500Medium';
-/** Todo el texto de la app pasa por acá, y por eso el grosor se resuelve acá: ver
- *  `resolverFuente` en lib/tipografia — en Android, pedir un grosor de una fuente
- *  propia hace que se caiga a la del sistema en algunos teléfonos. */
-const Text = (props: TextProps) => createElement(RNText, { ...props, style: resolverFuente([{ fontFamily: FREG, color: colors.text }, props.style]) });
-const BRAND = colors.brand.primary;
-const LIME = colors.brand.lime;
-const INK = colors.text;
-const MUTED = colors.textMuted;
+import { Texto as Text, FH, FREG, BRAND, LIME, INK, MUTED } from './ui/Texto';
+import BotonGoogle from './BotonGoogle';
 
 const HERO: ImageSourcePropType = require('../assets/happy-dog.webp');
 
-export default function Login() {
+/**
+ * La pantalla de entrada de la app.
+ *
+ * Hasta acá solo sabía ingresar, y a quien no era socio le decía que el alta se
+ * hacía en la web: había que salir de la app, abrir el navegador y volver. Ahora
+ * las tres puertas están acá — mail y contraseña, Google, o darse de alta.
+ */
+export default function Login({ onAlta, onRecuperar }: { onAlta: () => void; onRecuperar: () => void }) {
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [busy, setBusy] = useState(false);
@@ -27,7 +24,9 @@ export default function Login() {
     if (!email.trim() || !pass) { setErr('Completá tu email y contraseña.'); return; }
     setBusy(true); setErr('');
     const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
-    if (error) setErr('No pudimos ingresar. Revisá tus datos.');
+    // Nombra las dos causas posibles a propósito: quien se asoció con Google no
+    // tiene contraseña, y Supabase devuelve el mismo error que con una equivocada.
+    if (error) setErr('No pudimos ingresar. Revisá el mail y la contraseña, o entrá con Google si te asociaste así.');
     setBusy(false);
   };
 
@@ -37,7 +36,7 @@ export default function Login() {
   } as const;
 
   return (
-    <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, flexGrow: 1, justifyContent: 'center' }}>
+    <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, flexGrow: 1, justifyContent: 'center' }} keyboardShouldPersistTaps="handled">
       <View style={{ alignItems: 'center', marginBottom: 26 }}>
         <Image source={HERO} style={{ width: 92, height: 92, borderRadius: 26, marginBottom: 16 }} />
         {/* Sin fontWeight: el peso ya está en el nombre de la familia
@@ -49,8 +48,8 @@ export default function Login() {
         <Text style={{ fontSize: 14, color: MUTED, marginTop: 2 }}>El club de tu mascota</Text>
       </View>
 
-      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 4 }}>Ingresá a tu cuenta</Text>
-      <Text style={{ fontSize: 13.5, color: MUTED, marginBottom: 20 }}>Usá el mismo mail y contraseña que en la web.</Text>
+      <Text style={{ fontFamily: FH, fontSize: 22, color: INK, marginBottom: 4 }}>Ingresá a tu cuenta</Text>
+      <Text style={{ fontSize: 13.5, color: MUTED, marginBottom: 20 }}>El mismo mail y contraseña que en la web.</Text>
 
       <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 7 }}>EMAIL</Text>
       <TextInput
@@ -63,14 +62,26 @@ export default function Login() {
         secureTextEntry autoComplete="current-password" style={input}
       />
 
-      {err ? <Text style={{ color: colors.danger.fg, fontSize: 13, marginTop: 12 }}>{err}</Text> : null}
+      <TouchableOpacity onPress={onRecuperar} style={{ alignSelf: 'flex-end', paddingVertical: 10 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>¿Olvidaste tu contraseña?</Text>
+      </TouchableOpacity>
+
+      {err ? <Text style={{ color: colors.danger.fg, fontSize: 13, marginTop: 4, lineHeight: 19 }}>{err}</Text> : null}
 
       <TouchableOpacity
         onPress={submit} disabled={busy}
-        style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 22, opacity: busy ? 0.6 : 1 }}
+        style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 12, opacity: busy ? 0.6 : 1 }}
       >
         <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>{busy ? 'Ingresando…' : 'Ingresar'}</Text>
       </TouchableOpacity>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 }}>
+        <View style={{ flex: 1, height: 1, backgroundColor: colors.violet[100] }} />
+        <Text style={{ fontSize: 12.5, color: MUTED }}>o</Text>
+        <View style={{ flex: 1, height: 1, backgroundColor: colors.violet[100] }} />
+      </View>
+
+      <BotonGoogle onError={setErr} />
 
       <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 16, marginTop: 24 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -79,9 +90,15 @@ export default function Login() {
           </View>
           <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>¿Todavía no sos socio?</Text>
         </View>
-        <Text style={{ fontSize: 13, color: MUTED, lineHeight: 19 }}>
-          El alta se hace desde la web de Kumo. Una vez que tengas tu cuenta, ingresás acá con el mismo mail.
+        <Text style={{ fontSize: 13, color: MUTED, lineHeight: 19, marginBottom: 12 }}>
+          Sumá a tu mascota al club desde acá: son cinco pasos y te queda el carnet digital listo.
         </Text>
+        <TouchableOpacity
+          onPress={onAlta}
+          style={{ backgroundColor: '#fff', borderWidth: 1.5, borderColor: BRAND, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
+        >
+          <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Crear mi cuenta</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );

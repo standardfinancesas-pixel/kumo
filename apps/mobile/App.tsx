@@ -21,7 +21,10 @@ import { avisar } from './lib/avisos';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
-import Login from './components/Login';
+import Entrada from './components/Entrada';
+import Alta from './components/alta/Alta';
+import NuevaClave from './components/NuevaClave';
+import { resolverURL } from './lib/deepLink';
 
 /* Familias (Baloo 2 títulos, DM Sans cuerpo) — igual que la web. */
 const FH = 'Baloo2_800ExtraBold';   // títulos
@@ -3272,6 +3275,22 @@ export default function App() {
   const [masOpen, setMasOpen] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  /**
+   * Hay sesión, pero ¿hay socio?
+   *
+   * Con Google la sesión se abre ANTES de que exista el perfil, así que mirar solo
+   * `userId` no alcanza: sin esto, quien entra con Google por primera vez cae en la
+   * app del socio contra datos vacíos y lee "todavía no cargaste mascotas".
+   * `null` = todavía no sabemos.
+   */
+  const [perfilExiste, setPerfilExiste] = useState<boolean | null>(null);
+  /** Lo que Google sabe de la persona, para no volver a pedírselo en el alta. */
+  const [identidad, setIdentidad] = useState<{ nombre: string; email: string }>({ nombre: '', email: '' });
+  /** El link del mail para elegir una clave nueva. Se atiende ANTES del gate de
+   *  sesión: al poner la sesión, `userId` pasa a tener valor y una pantalla que
+   *  viva debajo del gate se desmontaría en el acto. */
+  const [recuperando, setRecuperando] = useState(false);
+  const [linkFallado, setLinkFallado] = useState<string | null>(null);
   const [visto, setVisto] = useState<string | null>(null);
   /** null = todavía no se tocó nada, vale lo que trajo la base. */
   const [optimistaGuardados, setOptimistaGuardados] = useState<string[] | null>(null);
@@ -3279,15 +3298,49 @@ export default function App() {
   const { data, loading, error: errorDatos, reload } = useKumoData(userId);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: s }) => { setUserId(s.session?.user.id ?? null); setAuthReady(true); });
+    /** Google devuelve el nombre en los metadatos del usuario, con una clave u
+     *  otra según el proveedor. Si no viene, el alta lo pide como siempre. */
+    const identidadDe = (u: { email?: string | null; user_metadata?: Record<string, unknown> } | undefined) => ({
+      nombre: String(u?.user_metadata?.full_name ?? u?.user_metadata?.name ?? ''),
+      email: u?.email ?? '',
+    });
+    supabase.auth.getSession().then(({ data: s }) => {
+      setUserId(s.session?.user.id ?? null);
+      setIdentidad(identidadDe(s.session?.user));
+      setAuthReady(true);
+    });
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setUserId(session?.user.id ?? null);
+      setIdentidad(identidadDe(session?.user));
       setScreen('inicio'); setPetIdx(0); setMasOpen(false);
     });
     return () => sub.subscription.unsubscribe();
   }, []);
 
   useEffect(() => { AsyncStorage.getItem(VISTO_KEY).then(setVisto); }, []);
+
+  /*
+   * Los links que abren la app: la vuelta de Google y el mail de contraseña nueva.
+   *
+   * Hacen falta los dos caminos, no uno: `getInitialURL` cubre el arranque en frío
+   * (la app estaba cerrada y el link la abrió) y el listener, cuando ya estaba
+   * abierta en segundo plano. Con uno solo, la mitad de los casos no anda.
+   */
+  useEffect(() => {
+    let vivo = true;
+    const atender = async (url: string | null) => {
+      if (!url || !vivo) return;
+      const r = await resolverURL(url);
+      if (!r || !vivo) return;
+      if (r.tipo === 'error') { setLinkFallado(r.motivo); setRecuperando(true); return; }
+      if (r.tipo === 'recuperar') { setLinkFallado(null); setRecuperando(true); }
+      // Google no necesita nada más: la sesión ya quedó puesta y
+      // `onAuthStateChange` se encarga del resto.
+    };
+    Linking.getInitialURL().then(atender);
+    const sub = Linking.addEventListener('url', (e) => atender(e.url));
+    return () => { vivo = false; sub.remove(); };
+  }, []);
 
   /** Tocar un push abre la pantalla del aviso, no el inicio. Se filtra contra la
    *  lista de destinos posibles: el `data` de una notificación es texto que entra
@@ -3343,11 +3396,16 @@ export default function App() {
    * perfectamente válido, lo que cambió es que el club le cortó el acceso.
    */
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) { setPerfilExiste(null); return; }
     let vivo = true;
     (async () => {
-      const { data } = await supabase.from('profiles').select('status, role').eq('id', userId).single();
-      if (!vivo || !data) return;
+      // `maybeSingle` y no `single`: con Google la sesión existe antes que el
+      // perfil, y `single` trata esa fila ausente como un error, así que ni se
+      // sabía que faltaba el alta ni corría el aviso de cuenta suspendida.
+      const { data } = await supabase.from('profiles').select('status, role').eq('id', userId).maybeSingle();
+      if (!vivo) return;
+      setPerfilExiste(!!data);
+      if (!data) return;
       // El admin no es socio: su estado no lo bloquea.
       // Solo 'activo' entra. La cuota vencida NO cierra la sesión: para eso está
       // el muro de la cuota, que le ofrece pagar en lugar de echarlo del club.
@@ -3425,8 +3483,27 @@ export default function App() {
             <Text style={{ fontSize: 11.5, color: '#9c3b32', lineHeight: 16 }}>{errorDatos}</Text>
           </View>
         ) : null}
-        {!userId ? (
-          <Login />
+        {/* El orden importa. La clave nueva va PRIMERO porque al ponerse la sesión
+            `userId` deja de estar vacío, y si esta pantalla viviera más abajo se
+            desmontaría justo cuando la persona está por escribir la contraseña. */}
+        {recuperando ? (
+          <NuevaClave
+            motivoSinSesion={linkFallado}
+            onPedirOtro={() => { setRecuperando(false); setLinkFallado(null); }}
+            onListo={() => { setRecuperando(false); setLinkFallado(null); }}
+          />
+        ) : !userId ? (
+          <Entrada />
+        ) : perfilExiste === false ? (
+          /* Sesión sin socio: entró con Google y todavía no completó el alta. Va al
+             mismo formulario, con la identidad resuelta y sin pedir contraseña.
+             Salir cierra la sesión: si no, esta misma pantalla lo volvería a
+             recibir en un bucle. */
+          <Alta
+            identidad={identidad}
+            onSalir={() => { supabase.auth.signOut(); }}
+            onListo={() => setPerfilExiste(null)}
+          />
         ) : loading || !data ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={BRAND} />

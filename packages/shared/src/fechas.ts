@@ -54,3 +54,17 @@ export function diasHasta(fechaIso: string): number {
   const dias = (iso: string) => Math.floor(Date.parse(iso + 'T00:00:00Z') / 86400000);
   return dias(fechaIso) - dias(hoyISO());
 }
+
+/**
+ * "dd/mm/aaaa" → "YYYY-MM-DD", o null si no es una fecha.
+ *
+ * Está en shared y no en el servidor porque es el par del `formatFecha` del
+ * formulario: si el cliente arma la fecha de una forma y el servidor la parsea de
+ * otra, `birth_date` se guarda en null sin que nadie se entere.
+ */
+export function fnacToIso(fnac: string): string | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fnac.trim());
+  if (!m) return null;
+  const [, d, mo, y] = m;
+  return `${y}-${mo}-${d}`;
+}

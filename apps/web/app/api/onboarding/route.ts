@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
-import { createClient } from '@/lib/supabase-server';
+import { quienPide } from '@/lib/quien-pide';
 import { FOTO_TIPOS, FOTO_MAX, armarDeclaracion, cuotaMensual } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
@@ -14,10 +14,11 @@ import { sendBienvenida } from '@/lib/mail';
  *     del mail de verificación) y el cliente hace login después con ese mail y
  *     esa contraseña.
  *   - **Con Google**: el usuario de auth YA existe —lo creó Google— y llega con
- *     la sesión puesta desde /auth/callback. Acá no se crea nada de auth: se le
- *     cuelga el perfil a esa identidad. El id y el mail se leen de la sesión del
- *     servidor, nunca de lo que manda el navegador, así que nadie puede pedir un
- *     alta a nombre de otro.
+ *     la sesión puesta. Acá no se crea nada de auth: se le cuelga el perfil a esa
+ *     identidad. El id y el mail se leen de la sesión, nunca de lo que manda el
+ *     cliente, así que nadie puede pedir un alta a nombre de otro. La sesión la
+ *     resuelve `quienPide`, que entiende las dos formas: cookies (el navegador) y
+ *     `Authorization: Bearer` (la app del celular, que no tiene cookies).
  *
  * De la tarjeta llega solo el medio elegido: el CVV no se puede almacenar y el
  * número obliga a certificar PCI DSS. Cuando entre Mercado Pago se guardan el
@@ -57,9 +58,23 @@ function leadingNumber(s: string): number | null {
 }
 
 export async function POST(req: Request) {
-  const form = await req.formData();
-  const { socio, pet, plan, odonto, declaracion, pago } = JSON.parse(form.get('payload') as string) as Body;
-  const photoFile = form.get('photo');
+  /*
+   * El pedido llega como multipart (el JSON en `payload` y la foto aparte). Si
+   * viene mal armado esto tiraba un 500 sin mensaje, que es lo peor para
+   * diagnosticar desde un teléfono: la app arma el multipart distinto que el
+   * navegador y un campo mal puesto no se ve por ningún lado.
+   */
+  let cuerpo: Body;
+  let photoFile: FormDataEntryValue | null;
+  try {
+    const form = await req.formData();
+    cuerpo = JSON.parse(form.get('payload') as string) as Body;
+    photoFile = form.get('photo');
+  } catch (e) {
+    console.error('[onboarding] pedido mal armado:', e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: 'No pudimos leer los datos del alta. Probá de nuevo.' }, { status: 400 });
+  }
+  const { socio, pet, plan, odonto, declaracion, pago } = cuerpo;
 
   // Sin contraseña en el payload = alta con Google. No hace falta un flag del
   // cliente: en ese modo la identidad sale de la sesión, así que no hay nada que
@@ -132,14 +147,13 @@ export async function POST(req: Request) {
 
   if (conGoogle) {
     // El id y el mail salen de la SESIÓN, no del payload: si vinieran del
-    // navegador, cualquiera podría pedir un alta a nombre de otra persona.
-    const sesion = await createClient();
-    const { data: auth } = await sesion.auth.getUser();
-    if (!auth.user?.email) {
+    // cliente, cualquiera podría pedir un alta a nombre de otra persona.
+    const quien = await quienPide(req);
+    if (!quien?.email) {
       return NextResponse.json({ error: 'Se cerró la sesión de Google. Volvé a entrar con Google y seguí desde ahí.' }, { status: 401 });
     }
-    userId = auth.user.id;
-    email = auth.user.email;
+    userId = quien.id;
+    email = quien.email;
 
     // Que no se dé de alta dos veces. La restricción real es la clave primaria
     // de `profiles`, pero así el mensaje es entendible en vez de un error de
