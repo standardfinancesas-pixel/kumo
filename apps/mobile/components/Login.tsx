@@ -2,10 +2,14 @@ import { useState, createElement } from 'react';
 import { ScrollView, Text as RNText, TextProps, TextInput, TouchableOpacity, View, Image, ImageSourcePropType } from 'react-native';
 import { colors } from '@kumo/shared';
 import { supabase } from '../lib/supabase';
+import { resolverFuente } from '../lib/tipografia';
 
 const FH = 'Baloo2_800ExtraBold';
 const FREG = 'DMSans_500Medium';
-const Text = (props: TextProps) => createElement(RNText, { ...props, style: [{ fontFamily: FREG, color: colors.text }, props.style] });
+/** Todo el texto de la app pasa por acá, y por eso el grosor se resuelve acá: ver
+ *  `resolverFuente` en lib/tipografia — en Android, pedir un grosor de una fuente
+ *  propia hace que se caiga a la del sistema en algunos teléfonos. */
+const Text = (props: TextProps) => createElement(RNText, { ...props, style: resolverFuente([{ fontFamily: FREG, color: colors.text }, props.style]) });
 const BRAND = colors.brand.primary;
 const LIME = colors.brand.lime;
 const INK = colors.text;

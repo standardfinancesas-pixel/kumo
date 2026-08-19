@@ -15,6 +15,7 @@ import {
   type CalCell, type VaccineKind, type Review,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
+import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
 import * as Notifications from 'expo-notifications';
@@ -27,7 +28,10 @@ const FH = 'Baloo2_800ExtraBold';   // títulos
 const FREG = 'DMSans_500Medium';    // cuerpo
 
 /* Text base: DM Sans en toda la app; los estilos propios (incl. fontFamily de títulos) pisan el default. */
-const Text = (props: TextProps) => createElement(RNText, { ...props, style: [{ fontFamily: FREG, color: colors.text }, props.style] });
+/** Todo el texto de la app pasa por acá, y por eso el grosor se resuelve acá: ver
+ *  `resolverFuente` en lib/tipografia — en Android, pedir un grosor de una fuente
+ *  propia hace que se caiga a la del sistema en algunos teléfonos. */
+const Text = (props: TextProps) => createElement(RNText, { ...props, style: resolverFuente([{ fontFamily: FREG, color: colors.text }, props.style]) });
 
 /*
  * App del socio Kumo — Expo / React Native.
@@ -1843,7 +1847,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
             Escribí tu nombre completo tal cual figura en tu DNI. Equivale a tu firma según la Ley 25.506.
           </Text>
           <TextInput value={firma} onChangeText={(t) => { setFirma(t); setAddError(''); }} placeholder="Tu nombre y apellido" placeholderTextColor={colors.violet[400]}
-            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, fontFamily: FH, fontWeight: '700', textAlign: 'center', color: INK, backgroundColor: '#fff' }} />
+            style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16, fontFamily: 'Baloo2_700Bold', textAlign: 'center', color: INK, backgroundColor: '#fff' }} />
 
           </>)}
           {addError ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700' }}>{addError}</Text> : null}
