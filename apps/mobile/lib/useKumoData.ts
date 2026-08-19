@@ -266,7 +266,11 @@ export function useKumoData(userId: string | null) {
       banco: { holder: p.bank_holder, cuit: p.bank_cuit, cbu: p.bank_cbu, alias: p.bank_alias },
       tarjeta: tarjetaLabel(p.card_brand, p.card_last4),
       cuotaHasta: p.paid_until ?? null,
-      debePagar: !p.paid_until || p.paid_until < hoyISO(),
+      // Con el débito automático autorizado no hay muro, aunque MP todavía no haya
+      // cobrado: agenda el primer débito para el mes siguiente. Misma regla que la
+      // webapp, y el porqué está explicado en `apps/web/app/app/page.tsx`.
+      debePagar: p.mp_subscription_status !== 'authorized'
+        && (!p.paid_until || p.paid_until < hoyISO()),
       suscripcion: p.mp_subscription_status ?? null,
     } : null;
 
