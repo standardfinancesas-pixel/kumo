@@ -156,13 +156,28 @@ function mapVac(v: VacRow): Vac {
 }
 
 /* ── Hook ──────────────────────────────────────────────────────── */
+/**
+ * ¿El error es del token y no de la consulta?
+ *
+ * Supabase devuelve estos casos como un error común de la consulta, y sin
+ * distinguirlos la app mostraba el mensaje crudo —"JWT issued at future", que le
+ * pasó a Flor el 19/08— y se quedaba ahí. Un socio que ve eso no cierra sesión ni
+ * borra los datos de la app: cierra la app y no vuelve.
+ *
+ * Se mira el texto porque no hay un código estable para esto. Es frágil, pero
+ * falla del lado seguro: si no reconoce el mensaje, se comporta como antes.
+ */
+function esProblemaDeSesion(mensaje: string): boolean {
+  return /jwt|token|expired|issued|session|not authenticated|invalid claim/i.test(mensaje);
+}
+
 export function useKumoData(userId: string | null) {
   const [data, setData] = useState<KumoData | null>(null);
   const [loading, setLoading] = useState(true);
   /** Mensaje de las consultas que fallaron, para que no quede en silencio. */
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (esReintento = false) => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes] = await Promise.all([
@@ -202,7 +217,41 @@ export function useKumoData(userId: string | null) {
       .map(([que, res]) => `${que}: ${res.error!.message}`);
 
     if (fallas.length) console.warn('[kumo] consultas con error →', fallas.join(' · '));
-    setError(fallas.length ? fallas.join('\n') : null);
+
+    /*
+     * Si lo que falló es la sesión, la app se recupera sola.
+     *
+     * Primero renueva el token y reintenta UNA vez (el `esReintento` corta la
+     * recursión: sin eso, un token que no se puede renovar dispara un bucle de
+     * consultas). Si el reintento tampoco anda, cierra la sesión: el socio termina
+     * en el login, que es una pantalla donde SE PUEDE hacer algo, en lugar de una
+     * pantalla trabada con un mensaje que no significa nada para él.
+     *
+     * Antes esto no existía y el error crudo de la base se mostraba tal cual.
+     */
+    const problemaDeSesion = fallas.some((f) => esProblemaDeSesion(f));
+    if (problemaDeSesion && !esReintento) {
+      console.warn('[kumo] parece un problema de sesión: renuevo el token y reintento');
+      const { data: nueva, error: errRefresh } = await supabase.auth.refreshSession();
+      if (nueva.session && !errRefresh) {
+        await load(true);
+        return;
+      }
+      // No se pudo renovar: la sesión no sirve más. `onAuthStateChange` lleva al
+      // login solo, así que no hace falta mostrar nada.
+      console.warn('[kumo] no se pudo renovar la sesión, cierro sesión');
+      await supabase.auth.signOut();
+      return;
+    }
+
+    /*
+     * Lo que se muestra NO es el mensaje de la base. "JWT issued at future" o
+     * "column x does not exist" no le sirven a nadie que no esté programando; lo
+     * técnico va al log, y en pantalla va qué no se pudo traer.
+     */
+    setError(fallas.length
+      ? `No pudimos traer: ${fallas.map((f) => f.split(':')[0]).join(', ')}. Probá de nuevo en un rato.`
+      : null);
 
     const p = profileRes.data;
     const plan = p ? (Array.isArray(p.plans) ? p.plans[0] : p.plans) : null;
@@ -341,5 +390,12 @@ export function useKumoData(userId: string | null) {
 
   useEffect(() => { setLoading(true); load(); }, [load]);
 
-  return { data, loading, error, reload: load };
+  /*
+   * Lo que se expone NO acepta argumentos, a propósito: `onPress={reload}` en
+   * React Native pasa el evento del toque como primer argumento, y con `load`
+   * expuesto directo ese evento llegaba como `esReintento` y desactivaba la
+   * recuperación de sesión. Un envoltorio sin parámetros lo hace imposible.
+   */
+  const reload = useCallback(() => load(), [load]);
+  return { data, loading, error, reload };
 }

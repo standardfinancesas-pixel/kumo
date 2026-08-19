@@ -2173,7 +2173,7 @@ function MuroCuota({ profile, planes, recargar }: { profile: Profile; planes: Pl
         {confirmando ? (
           // Nada de "suscribirme" acá: ya lo hizo. Solo volver a chequear, que es
           // lo único que le puede faltar.
-          <TouchableOpacity onPress={recargar} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
+          <TouchableOpacity onPress={() => recargar()} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
             <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Volver a chequear</Text>
           </TouchableOpacity>
         ) : (
