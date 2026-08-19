@@ -134,9 +134,21 @@ export async function POST(req: Request) {
        * portada y quedaba mirando la landing sin saber si el pago salió. Va a una
        * página que le dice que vuelva a la app, con un botón que la abre.
        */
+      /*
+       * OJO: sin query propia.
+       *
+       * Mercado Pago le agrega SUS parámetros a esta URL, y los agrega con `?`
+       * aunque ya haya uno. Con `?suscripcion=ok` la vuelta terminaba en
+       * `...?suscripcion=ok?preapproval_id=xxx`, que para el navegador es un solo
+       * parámetro llamado `suscripcion` con valor `ok?preapproval_id=xxx`: se pierde
+       * lo que MP quiso decir y tampoco se puede leer lo nuestro.
+       *
+       * La webapp reconoce la vuelta por el `preapproval_id` que agrega MP, así que
+       * no hace falta marcarla nosotros.
+       */
       volverA: quien.desdeLaApp
         ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/suscripcion/listo`
-        : `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}?suscripcion=ok`,
+        : `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}`,
     });
 
     // El estado y el id los escribe el servidor con la service-role key, y el

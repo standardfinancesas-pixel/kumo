@@ -153,14 +153,23 @@ function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; 
   }, []);
 
   /*
-   * Vuelta de Mercado Pago. `?pago=ok` es sólo un cartel —lo puede tipear
-   * cualquiera— así que no da acceso: lo único que hace es esperar al aviso de MP,
-   * que es quien acredita. Se refresca la página cada 3 segundos hasta que el
-   * servidor diga que la cuota está paga.
+   * Vuelta de Mercado Pago. Nada de esto da acceso —son parámetros de una URL, los
+   * puede tipear cualquiera—: lo único que hacen es poner la pantalla a esperar el
+   * aviso de MP, que es quien acredita de verdad.
+   *
+   * Se reconocen dos vueltas distintas:
+   *  · `pago` — la del pago único, que lo pone nuestro `back_urls`.
+   *  · `preapproval_id` — la de la suscripción, que lo pone MERCADO PAGO. Antes acá
+   *    se esperaba un `suscripcion=ok` nuestro, pero nunca llegaba entero: MP suma
+   *    sus parámetros con `?` aunque la URL ya tenga uno, así que la vuelta quedaba
+   *    con dos `?` y el valor mezclado. El resultado era que quien se suscribía
+   *    desde la web volvía y veía el muro con el botón de pagar otra vez, como si no
+   *    hubiera hecho nada — que es justo lo que empuja a pagar dos veces.
    */
   useEffect(() => {
-    const p = new URLSearchParams(window.location.search).get('pago');
-    if (p === 'ok' || p === 'pendiente') setConfirmando(true);
+    const q = new URLSearchParams(window.location.search);
+    const p = q.get('pago');
+    if (p === 'ok' || p === 'pendiente' || q.has('preapproval_id')) setConfirmando(true);
     if (p === 'error') setError('El pago no se pudo hacer. Probá de nuevo o con otra tarjeta.');
   }, []);
 
