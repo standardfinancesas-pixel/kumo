@@ -13,6 +13,8 @@ import {
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
   type CalCell, type VaccineKind, type Review,
+  FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, etiquetaPlan,
+  type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { resolverFuente } from './lib/tipografia';
@@ -202,7 +204,7 @@ const BackLink = ({ label, onPress }: { label: string; onPress: () => void }) =>
 );
 
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
-function Inicio({ pets, petIdx, setPetIdx, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void }) {
+function Inicio({ pets, petIdx, setPetIdx, go, pago, onPlan }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void; pago: boolean; onPlan: () => void }) {
   const pet = pets[petIdx];
   const [promoIdx, setPromoIdx] = useState(0);
   useEffect(() => {
@@ -210,9 +212,12 @@ function Inicio({ pets, petIdx, setPetIdx, go }: { pets: Pet[]; petIdx: number; 
     return () => clearInterval(t);
   }, []);
   const promo = PROMOS[promoIdx] ?? PROMOS[0]!;
+  // El atajo al reintegro solo existe si puede pedirlo: un botón que lleva a una
+  // pantalla que no está es peor que no tener el botón.
   const quick: { label: string; icon: IconName; fill?: boolean; to: Screen }[] = [
     { label: 'Carnet', icon: 'idcard', to: 'carnet' }, { label: 'Foros', icon: 'chat', to: 'foros' },
-    { label: 'Reintegro', icon: 'wallet', to: 'reintegros' }, { label: 'Servicios', icon: 'paw', fill: true, to: 'servicios' },
+    ...(pago ? [{ label: 'Reintegro', icon: 'wallet' as IconName, to: 'reintegros' as Screen }] : []),
+    { label: 'Servicios', icon: 'paw', fill: true, to: 'servicios' },
   ];
   return (
     <ScrollView contentContainerStyle={styles.screen}>
@@ -242,11 +247,13 @@ function Inicio({ pets, petIdx, setPetIdx, go }: { pets: Pet[]; petIdx: number; 
           <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="calendar" size={17} color={INK} /></View>
           <View><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Próximas vacunas</Text><Text style={{ fontSize: 11, color: BRAND, fontWeight: '600', marginTop: 4 }}>Ver más →</Text></View>
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => go('beneficios')} style={{ width: '47%', flexGrow: 1, height: 130, borderRadius: 14, overflow: 'hidden' }}>
+        {/* La tarjeta no se pierde para el socio gratuito: cambia de destino y de
+            texto. Que se vea lindo lo que todavía no tiene es su trabajo. */}
+        <TouchableOpacity onPress={pago ? () => go('beneficios') : onPlan} style={{ width: '47%', flexGrow: 1, height: 130, borderRadius: 14, overflow: 'hidden' }}>
           <ImageBackground source={IMG['benef.webp']} resizeMode="cover" style={{ width: '100%', height: '100%', justifyContent: 'flex-end' }} imageStyle={{ borderRadius: 14 }}>
             <View style={{ backgroundColor: 'rgba(33,30,51,0.55)', padding: 14 }}>
-              <Text style={{ fontWeight: '700', fontSize: 14, color: '#fff' }}>Beneficios</Text>
-              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.9)' }}>Descuentos exclusivos</Text>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: '#fff' }}>{pago ? 'Beneficios' : INVITACION_PLAN.titulo}</Text>
+              <Text style={{ fontSize: 11, color: 'rgba(255,255,255,0.9)' }}>{pago ? 'Descuentos exclusivos' : INVITACION_PLAN.bajada}</Text>
             </View>
           </ImageBackground>
         </TouchableOpacity>
@@ -1231,13 +1238,18 @@ function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (t: Screen) =
 }
 
 /* ── Hoja "Más" ────────────────────────────────────────────────── */
-function MasSheet({ onClose, onGo }: { onClose: () => void; onGo: (t: Screen) => void }) {
-  const rows: { t: string; s: string; icon: IconName; fill?: boolean; to: Screen }[] = [
+function MasSheet({ onClose, onGo, pago, onPlan }: { onClose: () => void; onGo: (t: Screen) => void; pago: boolean; onPlan: () => void }) {
+  const rows: { t: string; s: string; icon: IconName; fill?: boolean; to?: Screen; accion?: () => void }[] = [
     { t: 'Mi perfil', s: 'Datos, plan y facturación', icon: 'person', to: 'perfil' },
     { t: 'Mis mascotas', s: 'Datos y carnet de tus peludos', icon: 'paw', fill: true, to: 'mismascotas' },
     { t: 'Mis guardados', s: 'Prestadores que guardaste', icon: 'heart', fill: true, to: 'guardados' },
     { t: 'Mi negocio', s: 'Publicá y gestioná tus servicios', icon: 'house', to: 'minegocio' },
-    { t: 'Mis reintegros', s: 'Pedidos y estado de cada uno', icon: 'wallet', to: 'reintegros' },
+    // Los reintegros son del que paga. Para el gratuito, en su lugar va la
+    // invitación: es un menú al que se entra a propósito, no una pestaña que
+    // insiste sola.
+    ...(pago
+      ? [{ t: 'Mis reintegros', s: 'Pedidos y estado de cada uno', icon: 'wallet' as IconName, to: 'reintegros' as Screen }]
+      : [{ t: 'Sumate a un plan', s: INVITACION_PLAN.bajada, icon: 'tag' as IconName, accion: onPlan }]),
   ];
   return (
     <View style={StyleSheet.absoluteFill}>
@@ -1247,7 +1259,7 @@ function MasSheet({ onClose, onGo }: { onClose: () => void; onGo: (t: Screen) =>
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 14 }}>Más</Text>
         <View style={{ gap: 12 }}>
           {rows.map((r) => (
-            <TouchableOpacity key={r.t} onPress={() => onGo(r.to)} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14 }}>
+            <TouchableOpacity key={r.t} onPress={r.accion ?? (() => r.to && onGo(r.to))} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14 }}>
               <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
                 <Ic d={r.icon} size={20} color={BRAND} fill={r.fill} />
               </View>
@@ -1274,7 +1286,7 @@ function MasSheet({ onClose, onGo }: { onClose: () => void; onGo: (t: Screen) =>
  * cosas simplemente no existían. No era que "decía guardado y no guardaba":
  * faltaban.
  */
-function Perfil({ profile, planes, go, reload }: { profile: Profile | null; planes: PlanVM[]; go: (t: Screen) => void; reload: () => void }) {
+function Perfil({ profile, planes, go, reload, pago, onPlan }: { profile: Profile | null; planes: PlanVM[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
   const [editando, setEditando] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1381,20 +1393,41 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
           {/* `memberNo` ya viene con el "#" o con un guion si la cuenta no es de
               socio, así que no se prefija "Socio" sobre un guion. */}
           <Text style={{ fontSize: 13, color: MUTED }}>
-            {profile.memberNo === '—' ? '' : `Socio ${profile.memberNo} · `}Plan {profile.planName}
+            {profile.memberNo === '—' ? '' : `Socio ${profile.memberNo} · `}{etiquetaPlan(profile.planName, profile.debePagar)}
           </Text>
         </View>
       </View>
       <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Membresía</Text>
-      <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 15, marginBottom: 12 }}>
-        <Text style={{ fontWeight: '700', fontSize: 14 }}>Plan {profile.planName}{profile.addonOdonto ? ' + odontológica' : ''} · {money(profile.planPrice)}/mes</Text>
-        <Text style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>Cuota mensual al día</Text>
-      </View>
-      <TouchableOpacity onPress={() => go('reintegros')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 15, marginBottom: 18 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
-        <View style={{ flex: 1 }}><Text style={{ fontWeight: '700', fontSize: 14 }}>Reintegros</Text><Text style={{ fontSize: 12.5, color: MUTED }}>Seguí tus pedidos</Text></View>
-        <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
-      </TouchableOpacity>
+      {/* Ojo con la segunda línea: decía "Cuota mensual al día" escrito a mano, sin
+          mirar ningún dato. Era falso para el socio gratuito y para el que tiene la
+          cuota vencida — con el muro puesto no se notaba, y sin muro queda una
+          mentira en pantalla. Ahora sale de `debePagar`. */}
+      {pago ? (
+        <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 15, marginBottom: 12 }}>
+          <Text style={{ fontWeight: '700', fontSize: 14 }}>Plan {profile.planName}{profile.addonOdonto ? ' + odontológica' : ''} · {money(profile.planPrice)}/mes</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>Cuota al día{profile.cuotaHasta ? ` hasta el ${fmtFechaCorta(profile.cuotaHasta)}` : ''}</Text>
+        </View>
+      ) : (
+        <TouchableOpacity
+          onPress={onPlan}
+          style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 15, marginBottom: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', fontSize: 14 }}>Plan gratuito</Text>
+            <Text style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>{INVITACION_PLAN.titulo}: {INVITACION_PLAN.bajada.toLowerCase()}</Text>
+          </View>
+          <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>Ver planes</Text>
+        </TouchableOpacity>
+      )}
+      {/* Los reintegros son del que paga: sin eso la fila promete una pantalla que
+          no existe. */}
+      {pago ? (
+        <TouchableOpacity onPress={() => go('reintegros')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 15, marginBottom: 18 }}>
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
+          <View style={{ flex: 1 }}><Text style={{ fontWeight: '700', fontSize: 14 }}>Reintegros</Text><Text style={{ fontSize: 12.5, color: MUTED }}>Seguí tus pedidos</Text></View>
+          <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
+        </TouchableOpacity>
+      ) : <View style={{ height: 6 }} />}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
         <Text style={{ fontWeight: '700', fontSize: 15 }}>Datos personales</Text>
         <TouchableOpacity onPress={() => (editando ? setEditando(false) : abrirEdicion())}>
@@ -1458,7 +1491,9 @@ function Perfil({ profile, planes, go, reload }: { profile: Profile | null; plan
             ? `Débito automático activo · ${money(profile.planPrice)}/mes`
             : profile.cuotaHasta && !profile.debePagar
               ? `Paga hasta el ${fmtFechaCorta(profile.cuotaHasta)} · sin débito automático`
-              : 'Sin suscripción activa'}
+              : profile.cuotaHasta
+                ? `Se te venció el ${fmtFechaCorta(profile.cuotaHasta)}`
+                : 'Estás en el plan gratuito'}
         </Text>
         {profile.suscripcion === 'authorized' && (
           <TouchableOpacity
@@ -2030,44 +2065,48 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   );
 }
 
-/* ── El muro de la cuota ───────────────────────────────────────── */
+/* ── La hoja del plan ──────────────────────────────────────────── */
 /**
- * Sin la cuota paga, el socio no usa la app.
+ * Elegir un plan y activar el débito. Antes era un muro; ahora es una hoja.
  *
- * Es un muro y no un aviso: se dibuja encima de todo, tapa la navegación y no
- * tiene forma de cerrarse. Lo que sí tiene es salida —cerrar sesión y el WhatsApp
- * del club—: un modal sin ninguna salida no es un paywall, es una persona
- * encerrada que no puede ni preguntar qué pasó.
+ * El cambio no es de estilo: entrar a Kumo es gratis y lo que se paga son los
+ * reintegros y los beneficios, así que dejar de mostrar la app a quien no pagó
+ * pasó a ser mentira sobre lo que ofrece el club. Se conservan las tripas —el
+ * selector de plan, el add-on y el cobro con su reintento de token—, y se va la
+ * jaula: se puede cerrar, no tapa la navegación, y ya no ofrece cerrar sesión
+ * (esa salida existía porque la persona estaba encerrada).
  *
- * El pago no se hace acá adentro: se abre el navegador en Mercado Pago. Los datos
- * de la tarjeta no pasan por Kumo, y de paso el socio puede usar su cuenta de MP
- * ya logueada en el teléfono.
- *
- * Al volver del navegador la app se refresca sola (ver el efecto de `AppState`):
- * el acceso lo da el aviso de MP a nuestro servidor, que puede tardar unos
- * segundos, así que la pantalla vuelve a preguntar en lugar de dejarlo trabado.
+ * Los textos salen de `copyCuota` de `@kumo/shared`, los mismos que la webapp: un
+ * socio que lee una cosa en el navegador y otra en el celular no piensa "qué
+ * raro", piensa que el club no sabe lo que cobra.
  */
-function MuroCuota({ profile, planes, recargar }: { profile: Profile; planes: PlanVM[]; recargar: () => void }) {
+function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profile: Profile; planes: PlanVM[]; recargar: () => void; onClose: () => void; irABeneficios: () => void }) {
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
+  /** Se prende al volver del navegador: recién ahí tiene sentido esperar el aviso. */
+  const [volviendoDeMP, setVolviendoDeMP] = useState(false);
   /*
-   * Mismo criterio que en la webapp: el plan del alta viene preseleccionado pero
-   * se puede cambiar acá, con la cobertura odontológica aparte. Al servidor va el
-   * NOMBRE del plan y el sí/no del add-on; el precio lo pone el servidor.
+   * El plan arranca en el que ya tenía, si tenía alguno. Ojo con el gratuito: su
+   * `planName` llega '—', y preseleccionarlo hacía que el servidor contestara "ese
+   * plan no existe". Con el alta vieja no pasaba porque el plan era obligatorio.
    */
-  const [planSel, setPlanSel] = useState(profile.planName);
+  const conPlanPrevio = profile.planName && profile.planName !== '—';
+  const [planSel, setPlanSel] = useState(conPlanPrevio ? profile.planName : '');
   const [odonto, setOdonto] = useState(profile.addonOdonto);
   const elegido = planes.find((p) => p.name === planSel);
-  const total = (elegido?.basePrice ?? profile.planPrice) + (odonto ? ODONTO_PRECIO : 0);
-  /*
-   * Autorizar el débito NO es que Mercado Pago ya haya cobrado: entre una cosa y
-   * la otra pasan segundos o minutos, y el acceso lo da el aviso del cobro. Sin
-   * este estado el socio volvía del checkout y veía el mismo muro que antes, como
-   * si no hubiera hecho nada — y el próximo paso natural es pagar de nuevo.
-   */
-  const confirmando = profile.suscripcion === 'authorized';
+  const total = (elegido?.basePrice ?? 0) + (odonto ? ODONTO_PRECIO : 0);
+
+  const estado = estadoCuota({
+    hasta: profile.cuotaHasta,
+    debePagar: profile.debePagar,
+    suscripcion: profile.suscripcion,
+    volviendoDeMP,
+  });
+  const copy = copyCuota(estado, profile.firstName, profile.cuotaHasta ? fmtFechaCorta(profile.cuotaHasta) : null);
+  const esperando = estado === 'confirmando';
 
   const suscribirme = async () => {
+    if (!planSel) { setError('Elegí un plan para activar tu cuota.'); return; }
     setYendo(true); setError('');
     try {
       /*
@@ -2105,8 +2144,11 @@ function MuroCuota({ profile, planes, recargar }: { profile: Profile; planes: Pl
         ({ res, data } = await pedir(token));
       }
 
-      if (data.yaAutorizada) { setError('Tu suscripción ya está autorizada: estamos esperando el primer débito.'); setYendo(false); recargar(); return; }
+      if (data.yaAutorizada) { setVolviendoDeMP(true); setYendo(false); recargar(); return; }
       if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir la suscripción.'); setYendo(false); return; }
+      // Al volver del navegador la app recarga sola (AppState), y con esto la hoja
+      // ya está en modo espera cuando el socio vuelve.
+      setVolviendoDeMP(true);
       await Linking.openURL(data.initPoint);
     } catch {
       setError('No pudimos abrir la suscripción. Revisá la conexión.');
@@ -2115,99 +2157,95 @@ function MuroCuota({ profile, planes, recargar }: { profile: Profile; planes: Pl
   };
 
   return (
-    <View style={{ position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 99, backgroundColor: 'rgba(33,30,51,0.78)', justifyContent: 'center', paddingHorizontal: 18 }}>
-      <View style={{ backgroundColor: '#fff', borderRadius: 22, padding: 22 }}>
-        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: BRAND, marginBottom: 2 }}>Kumo</Text>
-        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>
-          {confirmando
-            ? 'Estamos confirmando tu pago'
-            : profile.cuotaHasta ? `${profile.firstName}, se te venció la cuota` : `¡Bienvenido, ${profile.firstName}!`}
-        </Text>
-        <Text style={{ fontSize: 14, color: '#5b5670', lineHeight: 20, marginBottom: 16 }}>
-          {confirmando
-            ? 'Ya autorizaste el débito. Mercado Pago nos tiene que confirmar el primer cobro, y a veces tarda unos minutos: no hace falta pagar de nuevo.'
-            : profile.cuotaHasta
-              ? 'Para volver a usar tus beneficios, el carnet y los reintegros, activá tu suscripción.'
-              : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
-        </Text>
-        {!confirmando && (
-          <>
-            <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5, marginBottom: 8 }}>TU PLAN</Text>
-            <View style={{ gap: 8, marginBottom: 12 }}>
-              {planes.map((p) => {
-                const sel = p.name === planSel;
-                return (
-                  <TouchableOpacity
-                    key={p.id}
-                    onPress={() => setPlanSel(p.name)}
-                    activeOpacity={0.85}
-                    style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: sel ? BRAND : '#e6e3f0', backgroundColor: sel ? '#f0edf9' : '#fff', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11 }}
-                  >
-                    <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 16, color: INK }}>{p.name}</Text>
-                    <Text style={{ fontWeight: '700', fontSize: 14.5, color: sel ? BRAND : '#5b5670' }}>${p.basePrice.toLocaleString('es-AR')}</Text>
-                  </TouchableOpacity>
-                );
-              })}
+    <Sheet onClose={onClose}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: BRAND }}>Kumo</Text>
+        <TouchableOpacity onPress={onClose} hitSlop={10}>
+          <Text style={{ fontSize: 22, color: '#a29dba' }}>×</Text>
+        </TouchableOpacity>
+      </View>
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>{copy.titulo}</Text>
+      <Text style={{ fontSize: 14, color: '#5b5670', lineHeight: 20, marginBottom: 16 }}>{copy.cuerpo}</Text>
+
+      {estado === 'listo' ? (
+        <TouchableOpacity onPress={irABeneficios} activeOpacity={0.85} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{copy.cta} →</Text>
+        </TouchableOpacity>
+      ) : esperando ? (
+        <TouchableOpacity onPress={() => recargar()} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>{copy.cta}</Text>
+        </TouchableOpacity>
+      ) : (
+        <>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5, marginBottom: 8 }}>ELEGÍ TU PLAN</Text>
+          <View style={{ gap: 8, marginBottom: 12 }}>
+            {planes.map((p) => {
+              const sel = p.name === planSel;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => setPlanSel(p.name)}
+                  activeOpacity={0.85}
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: sel ? BRAND : '#e6e3f0', backgroundColor: sel ? '#f0edf9' : '#fff', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11 }}
+                >
+                  <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 16, color: INK }}>{p.name}</Text>
+                  <Text style={{ fontWeight: '700', fontSize: 14.5, color: sel ? BRAND : '#5b5670' }}>${p.basePrice.toLocaleString('es-AR')}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* La cobertura odontológica es un add-on con precio propio: se suma
+              acá y el total se recalcula a la vista. */}
+          <TouchableOpacity
+            onPress={() => setOdonto((v) => !v)}
+            activeOpacity={0.85}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: odonto ? BRAND : '#e6e3f0', backgroundColor: odonto ? '#f0edf9' : '#fff', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11, marginBottom: 12 }}
+          >
+            <View style={{ flex: 1, paddingRight: 10 }}>
+              <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Cobertura odontológica</Text>
+              <Text style={{ fontSize: 12, color: '#8781a0' }}>Limpieza y extracciones · +${ODONTO_PRECIO.toLocaleString('es-AR')}</Text>
             </View>
+            <View style={{ width: 42, height: 25, borderRadius: 100, backgroundColor: odonto ? BRAND : '#d5d0e3', justifyContent: 'center', alignItems: odonto ? 'flex-end' : 'flex-start', paddingHorizontal: 3 }}>
+              <View style={{ width: 19, height: 19, borderRadius: 10, backgroundColor: '#fff' }} />
+            </View>
+          </TouchableOpacity>
 
-            {/* La cobertura odontológica es un add-on con precio propio: se suma
-                acá y el total se recalcula a la vista. */}
-            <TouchableOpacity
-              onPress={() => setOdonto((v) => !v)}
-              activeOpacity={0.85}
-              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1.5, borderColor: odonto ? BRAND : '#e6e3f0', backgroundColor: odonto ? '#f0edf9' : '#fff', borderRadius: 13, paddingHorizontal: 14, paddingVertical: 11, marginBottom: 12 }}
-            >
-              <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Cobertura odontológica</Text>
-                <Text style={{ fontSize: 12, color: '#8781a0' }}>Limpieza y extracciones · +${ODONTO_PRECIO.toLocaleString('es-AR')}</Text>
-              </View>
-              <View style={{ width: 42, height: 25, borderRadius: 100, backgroundColor: odonto ? BRAND : '#d5d0e3', justifyContent: 'center', alignItems: odonto ? 'flex-end' : 'flex-start', paddingHorizontal: 3 }}>
-                <View style={{ width: 19, height: 19, borderRadius: 10, backgroundColor: '#fff' }} />
-              </View>
-            </TouchableOpacity>
-
+          {planSel ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 12, marginBottom: 14 }}>
               <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#5b5670' }}>Tu cuota por mes</Text>
               <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>${total.toLocaleString('es-AR')}</Text>
             </View>
-          </>
-        )}
-        {!!error && (
-          <View style={{ backgroundColor: '#fdf2f2', borderWidth: 1, borderColor: '#f5d6d6', borderRadius: 12, padding: 11, marginBottom: 12 }}>
-            <Text style={{ fontSize: 13, color: '#b03a3a' }}>{error}</Text>
-          </View>
-        )}
-        {confirmando ? (
-          // Nada de "suscribirme" acá: ya lo hizo. Solo volver a chequear, que es
-          // lo único que le puede faltar.
-          <TouchableOpacity onPress={() => recargar()} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
-            <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Volver a chequear</Text>
-          </TouchableOpacity>
-        ) : (
-          <>
-            <TouchableOpacity
-              onPress={suscribirme}
-              disabled={yendo}
-              activeOpacity={0.85}
-              style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo ? 0.65 : 1, marginBottom: 8 }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{yendo ? 'Abriendo Mercado Pago…' : 'Suscribirme con Mercado Pago'}</Text>
-            </TouchableOpacity>
-            <Text style={{ fontSize: 11.5, color: '#a29dba', textAlign: 'center', lineHeight: 16, marginBottom: 14 }}>
-              Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras.
+          ) : null}
+
+          {!!error && (
+            <View style={{ backgroundColor: '#fdf2f2', borderWidth: 1, borderColor: '#f5d6d6', borderRadius: 12, padding: 11, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: '#b03a3a' }}>{error}</Text>
+            </View>
+          )}
+
+          <TouchableOpacity
+            onPress={suscribirme}
+            disabled={yendo || !planSel}
+            activeOpacity={0.85}
+            style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo || !planSel ? 0.5 : 1, marginBottom: 8 }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
+              {yendo ? 'Abriendo Mercado Pago…' : planSel ? copy.cta : 'Elegí un plan'}
             </Text>
-          </>
-        )}
-        <View style={{ borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => openWa(WA_CLUB)}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: BRAND }}>¿Algún problema? Escribinos</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => supabase.auth.signOut()}>
-            <Text style={{ fontSize: 13, fontWeight: '600', color: '#8781a0' }}>Cerrar sesión</Text>
-          </TouchableOpacity>
-        </View>
+          <Text style={{ fontSize: 11.5, color: '#a29dba', textAlign: 'center', lineHeight: 16, marginBottom: 14 }}>
+            Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras.
+          </Text>
+        </>
+      )}
+
+      <View style={{ borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 12 }}>
+        <TouchableOpacity onPress={() => openWa(WA_CLUB)}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: BRAND }}>¿Alguna duda? Escribinos</Text>
+        </TouchableOpacity>
       </View>
-    </View>
+    </Sheet>
   );
 }
 
@@ -3258,13 +3296,27 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
 }
 
 /* ── Barra inferior + shell ────────────────────────────────────── */
-const TABS: { k: Tab; label: string; icon: IconName }[] = [
+const TABS_TODO: { k: Tab; label: string; icon: IconName }[] = [
   { k: 'inicio', label: 'Inicio', icon: 'house' },
   { k: 'carnet', label: 'Carnet', icon: 'idcard' },
   { k: 'servicios', label: 'Servicios', icon: 'paw' },
   { k: 'beneficios', label: 'Beneficios', icon: 'tag' },
   { k: 'foros', label: 'Foros', icon: 'chat' },
 ];
+
+/**
+ * La barra del socio gratuito no tiene Beneficios.
+ *
+ * Y no se reemplaza por una pestaña de "Pagá": una pestaña permanente que empuja a
+ * pagar es acoso. La invitación vive en Inicio, en Mi perfil y en el menú "Más",
+ * donde se entra a propósito. La barra usa `flex: 1` por ítem, así que con cuatro
+ * se reacomoda sola.
+ *
+ * Se filtra contra `FEATURES_PAGAS` de `@kumo/shared`, la misma lista que usa la
+ * webapp para su menú.
+ */
+const tabsDe = (pago: boolean) =>
+  pago ? TABS_TODO : TABS_TODO.filter((t) => !FEATURES_PAGAS.includes(t.k as FeaturePaga));
 
 /** Última vez que el socio miró las notificaciones. No hace falta tabla: alcanza con el dispositivo. */
 const VISTO_KEY = 'kumo:notif-visto';
@@ -3273,6 +3325,9 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [masOpen, setMasOpen] = useState(false);
+  /** La hoja para elegir plan y pagar. Antes era un muro que tapaba todo, tabbar
+   *  incluida; ahora se abre a pedido, porque el socio ya está adentro del club. */
+  const [planAbierto, setPlanAbierto] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   /**
@@ -3434,6 +3489,21 @@ export default function App() {
   if (!fontsLoaded || !authReady) return <View style={{ flex: 1, backgroundColor: '#fff' }} />;
 
   const go = (t: Screen) => { setMasOpen(false); setScreen(t); };
+
+  /** ¿Tiene la cuota paga? Es la misma verdad que mira la RLS en la base. */
+  const pago = tieneFeaturesPagas(data?.profile?.debePagar ?? false);
+  const TABS = tabsDe(pago);
+  /*
+   * La pantalla se DERIVA, no se corrige con un efecto.
+   *
+   * Si a alguien se le vence la cuota estando en Beneficios, `screen` sobrevive al
+   * recargar y la lista le vuelve vacía por RLS: leería "todavía no hay beneficios
+   * activos", o sea una mentira sobre el club.
+   *
+   * Y de paso tapa un agujero que ya existía: hay dos listeners de push que navegan,
+   * y uno de ellos hace `setScreen` con lo que venga en el aviso sin validar nada.
+   */
+  const pantalla: Screen = !pago && FEATURES_PAGAS.includes(screen as FeaturePaga) ? 'inicio' : screen;
   const pets = data?.pets ?? [];
   const safeIdx = Math.min(petIdx, Math.max(pets.length - 1, 0));
 
@@ -3536,22 +3606,22 @@ export default function App() {
           </View>
         </View>
         <View style={{ flex: 1 }}>
-          {screen === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} />}
-          {screen === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
-          {screen === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
-          {screen === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
-          {screen === 'beneficios' && <Beneficios benefits={data.benefits} go={go} />}
-          {screen === 'reintegros' && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
-          {screen === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
-          {screen === 'perfil' && <Perfil profile={data.profile} planes={data.planes} go={go} reload={reload} />}
-          {screen === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
-          {screen === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
-          {screen === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
-          {screen === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} />}
+          {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
+          {pantalla === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
+          {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
+          {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} />}
+          {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
+          {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
+          {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
+          {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
+          {pantalla === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
+          {pantalla === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} />}
         </View>
         <View style={styles.tabbar}>
           {TABS.map((t) => {
-            const active = screen === t.k && !masOpen;
+            const active = pantalla === t.k && !masOpen;
             return (
               <Pressable key={t.k} onPress={() => go(t.k as Screen)} style={styles.tabitem}>
                 <View style={{ backgroundColor: active ? LIME : 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 4 }}>
@@ -3563,12 +3633,21 @@ export default function App() {
           })}
         </View>
 
-        {masOpen && <MasSheet onClose={() => setMasOpen(false)} onGo={go} />}
+        {masOpen && <MasSheet onClose={() => setMasOpen(false)} onGo={go} pago={pago} onPlan={() => { setMasOpen(false); setPlanAbierto(true); }} />}
           </>
         )}
-        {/* Último y encima de todo, tabbar incluida: mientras la cuota esté
-            vencida no se puede usar nada de lo que hay atrás. */}
-        {data?.profile?.debePagar && <MuroCuota profile={data.profile} planes={data.planes} recargar={reload} />}
+        {/* La hoja del plan, a pedido. Ya no tapa nada: entrar es gratis y lo que se
+            paga son los reintegros y los beneficios. Se abre desde Inicio, el menú
+            "Más" y Mi perfil. */}
+        {planAbierto && data?.profile && (
+          <HojaPlan
+            profile={data.profile}
+            planes={data.planes}
+            recargar={reload}
+            onClose={() => setPlanAbierto(false)}
+            irABeneficios={() => { setPlanAbierto(false); go('beneficios'); }}
+          />
+        )}
       </View>
     </SafeAreaView>
   );

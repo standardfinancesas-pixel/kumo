@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -28,7 +28,9 @@ export type Profile = {
    */
   cuotaHasta: string | null;
   debePagar: boolean;
-  suscripcion: string | null;
+  /** El tipo cerrado y no : la hoja del plan decide qué mostrar según el
+   *  estado, y con un string suelto un valor inesperado pasaba sin que nadie avise. */
+  suscripcion: EstadoSuscripcion;
 };
 export type ProviderVM = {
   id: string; name: string; category: string; zone: string; km: number; badge?: string;
@@ -267,7 +269,7 @@ export function useKumoData(userId: string | null) {
       tarjeta: tarjetaLabel(p.card_brand, p.card_last4),
       cuotaHasta: p.paid_until ?? null,
       debePagar: !p.paid_until || p.paid_until < hoyISO(),
-      suscripcion: p.mp_subscription_status ?? null,
+      suscripcion: (p.mp_subscription_status ?? null) as EstadoSuscripcion,
     } : null;
 
     const pets: Pet[] = (petsRes.data ?? []).map((row, i) => {
