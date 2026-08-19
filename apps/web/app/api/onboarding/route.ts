@@ -247,7 +247,10 @@ export async function POST(req: Request) {
     neutered: pet.castrado === 'Sí',
     sex: PET_SEX[pet.sexo] ?? null,
     vet_name: pet.vet || null,
-    photo_url: uploadedPhotoUrl ?? (pet.foto?.startsWith('/img/') ? pet.foto : null),
+    // Solo la foto que subió. Antes se aceptaba una ruta de /img/ porque el alta
+    // ofrecía fotos de ejemplo; se sacaron (un carnet con la mascota de otro es peor
+    // que uno sin foto), así que esa rama ya no puede pasar.
+    photo_url: uploadedPhotoUrl,
   })
     .select('id')
     .single();

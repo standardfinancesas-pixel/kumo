@@ -110,12 +110,7 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
     setPetPhotoFile(f);
   };
 
-  const usarEjemplo = (src: string) => {
-    if (petPhotoFile && !confirm('Si elegís una foto de ejemplo se descarta la que subiste. ¿Seguro?')) return;
-    setFotoError('');
-    setPet((p) => ({ ...p, foto: src }));
-    setPetPhotoFile(null);
-  };
+
   // paso 2
   const [socio, setSocio] = useState({
     nombre: identidad?.nombre ?? '',
@@ -223,32 +218,23 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
           <div>
             <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, margin: '0 0 4px' }}>Tu mascota</h2>
             <p style={{ color: '#8781a0', fontSize: 15, margin: '0 0 22px' }}>Contanos sobre quién vas a cuidar.</p>
-            {/* Foto: la propia o una de ejemplo. Antes elegir un ejemplo
-                descartaba la foto subida en silencio y el socio se enteraba
-                recién al ver su carnet sin su mascota. Ahora siempre se dice
-                cuál de las dos está en uso, y se avisa al reemplazarla. */}
+            {/* Solo la foto propia. Antes había tres de ejemplo (un perro, un gato,
+                un dálmata) para que el carnet no quedara vacío, pero un carnet con la
+                mascota de otro es peor que uno sin foto: la foto es lo que hace que
+                el carnet sea de alguien. Si no la tiene a mano, la carga después. */}
             <div style={{ marginBottom: 16 }}>
               <label style={label}>Foto</label>
-              <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-                <label style={{ width: 84, height: 84, borderRadius: 16, border: petPhotoFile ? '2.5px solid #5D5491' : '1.5px dashed #c9c3e3', background: '#faf9fd', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden', flex: '0 0 auto' }}>
-                  {pet.foto
-                    ? <img src={pet.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : <><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5" /><circle cx="12" cy="12" r="3.2" /><path d="M8 5l1.5-2h5L16 5" /></svg><span style={{ fontSize: 10.5, color: '#8781a0', marginTop: 6 }}>Subí una foto</span></>}
-                  <input type="file" accept={FOTO_TIPOS.join(',')} style={{ display: 'none' }} onChange={(e) => elegirFoto(e.target.files?.[0])} />
-                </label>
-                {['/img/happy-dog.webp', '/img/plan-cat.webp', '/img/plan-dalmata-cut.webp'].map((src) => (
-                  <button key={src} type="button" onClick={() => usarEjemplo(src)} style={{ width: 62, height: 62, borderRadius: 14, overflow: 'hidden', border: !petPhotoFile && pet.foto === src ? '2.5px solid #5D5491' : '2px solid #e6e3f0', padding: 0, cursor: 'pointer', background: '#fff', flex: '0 0 auto' }}>
-                    <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </button>
-                ))}
-              </div>
+              <label style={{ width: 84, height: 84, borderRadius: 16, border: petPhotoFile ? '2.5px solid #5D5491' : '1.5px dashed #c9c3e3', background: '#faf9fd', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', overflow: 'hidden' }}>
+                {pet.foto
+                  ? <img src={pet.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  : <><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8781a0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="15" rx="2.5" /><circle cx="12" cy="12" r="3.2" /><path d="M8 5l1.5-2h5L16 5" /></svg><span style={{ fontSize: 10.5, color: '#8781a0', marginTop: 6 }}>Subí una foto</span></>}
+                <input type="file" accept={FOTO_TIPOS.join(',')} style={{ display: 'none' }} onChange={(e) => elegirFoto(e.target.files?.[0])} />
+              </label>
               {fotoError
                 ? <p style={{ fontSize: 12.5, color: '#b0483f', fontWeight: 600, margin: '8px 0 0' }}>{fotoError}</p>
                 : petPhotoFile
                 ? <p style={{ fontSize: 12.5, color: '#2f8f5b', fontWeight: 600, margin: '8px 0 0' }}>Vas a usar tu foto: {petPhotoFile.name}</p>
-                : pet.foto
-                ? <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Estás usando una foto de ejemplo. Tocá el recuadro para subir la de tu mascota.</p>
-                : <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Subí una foto de tu mascota, o elegí una de ejemplo por ahora.</p>}
+                : <p style={{ fontSize: 12.5, color: '#8781a0', margin: '8px 0 0' }}>Si no tenés una a mano, la podés cargar después desde el carnet.</p>}
             </div>
             {field('Nombre', <input value={pet.nombre} onChange={(e) => setPet({ ...pet, nombre: e.target.value })} placeholder="Ej. Manchas" style={input} />)}
             {field('Especie', <Segmented options={['Perro', 'Gato', 'Otro']} value={pet.especie} onChange={(v) => setPet({ ...pet, especie: v })} />)}
