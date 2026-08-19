@@ -366,6 +366,33 @@ export async function sendCuotaAcreditada(opts: {
 }
 
 /**
+ * 15 · El plan cambió de precio.
+ *
+ * Se manda cuando el club actualiza el precio y alcanza a un socio que ya venía
+ * pagando. No es opcional: un débito que cambia sin aviso es la receta del
+ * contracargo y de la baja enojada. El asunto dice el monto directo — para esta
+ * noticia, el rodeo es peor que la noticia.
+ */
+export async function sendCuotaActualizada(opts: {
+  to: string; firstName: string; planName: string; cuota: number; conOdonto: boolean; debitoAutomatico: boolean;
+}) {
+  const { to, firstName, planName, cuota, conOdonto, debitoAutomatico } = opts;
+  const wa = await whatsappDelClub();
+  const detalle = `Plan ${planName}${conOdonto ? ' + cobertura odontológica' : ''}`;
+  const cierre = debitoAutomatico
+    ? 'No tenés que hacer nada: el débito automático se actualiza solo.'
+    : 'Es el monto que vale desde el próximo mes que abones.';
+  const cuerpo = `
+    ${h1('Tu cuota cambia de precio')}
+    ${par(`${firstName}, el club actualizó el precio del plan ${planName}. Tu cuota queda así:`)}
+    ${caja(`${filaChica('CUOTA MENSUAL · DESDE EL PRÓXIMO COBRO')}${filaGrande(money(cuota))}${filaMedia(detalle)}`)}
+    ${par(cierre, true)}
+    ${par(`Si querés revisar tu plan o tenés dudas, escribinos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
+  const text = `${firstName}, el club actualizó el precio del plan ${planName}.\n\nTu cuota mensual pasa a ${money(cuota)} (${detalle}) desde el próximo cobro.\n\n${cierre}\n\nTu cuenta: ${SITE}${urls.webapp}`;
+  return enviar(to, `Tu cuota pasa a ${money(cuota)}`, layout('Cambio de cuota', cuerpo, wa, verCuenta), text);
+}
+
+/**
  * 14 · Recuperar la contraseña.
  *
  * Va por acá y no por el mail que manda Supabase solo, por dos razones: el de

@@ -147,6 +147,20 @@ export async function traerSuscripcion(id: string): Promise<SuscripcionMP> {
   return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`);
 }
 
+/**
+ * Cambia la cuota de una suscripción viva. Rige desde el próximo débito y no le
+ * pide nada al socio: la autorización de la tarjeta sigue siendo la misma.
+ *
+ * Lo usa el panel cuando el club cambia el precio de un plan: sin esto, los ya
+ * suscriptos seguirían debitando el monto con el que firmaron para siempre.
+ */
+export async function actualizarMontoSuscripcion(id: string, monto: number): Promise<SuscripcionMP> {
+  return mp<SuscripcionMP>(`/preapproval/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ auto_recurring: { transaction_amount: monto, currency_id: 'ARS' } }),
+  });
+}
+
 /** Dar de baja. El socio tiene que poder hacerlo desde la app: con débito
  *  automático, la baja tiene que ser tan fácil como el alta. */
 export async function cancelarSuscripcion(id: string): Promise<SuscripcionMP> {

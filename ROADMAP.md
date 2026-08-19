@@ -105,6 +105,16 @@ de cada pantalla.
       aparte), logo del negocio (columna), horarios de atención (hoy solo hay
       días y un rango de texto) y tarifas múltiples (hoy es un único
       `price` + `price_unit`).
+- [x] **Un cambio de precio alcanza a los ya suscriptos.** Antes el precio nuevo
+      regía solo para los que se sumaban después: la suscripción de Mercado Pago
+      debita para siempre el monto con el que se creó. Ahora el precio pasa por
+      `/api/planes/precio` (el modal del panel ya no lo escribe directo), que
+      actualiza `plans.base_price`, la cuota acordada de cada socio del plan
+      (con su add-on) y el débito de las suscripciones vivas — y avisa por mail
+      a cada socio activo cuya cuota cambió (mail 15). Si algún PUT a Mercado
+      Pago falla, el perfil de ese socio no se toca y el panel ofrece reintentar
+      guardando de nuevo; el mail no se duplica. **Falta la prueba con datos
+      reales**: guardar un precio con un socio suscripto y ver débito + mail.
 - [ ] **Cambio de plan: hoy es gratis.** El socio cambia de plan desde Mi perfil
       y la escritura es real (`profiles.plan_id`), pero como no hay cobro, nada
       impide pasarse solo de AMIGO a VIP y quedarse con los topes del plan más

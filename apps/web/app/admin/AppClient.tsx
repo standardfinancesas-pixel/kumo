@@ -1081,13 +1081,32 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
     if (!n) { setError('El precio tiene que ser un número.'); return; }
     setBusy(true); setError('');
     const lista = perks.split('\n').map((l) => l.trim()).filter(Boolean);
+    // El precio NO va acá: pasa por la API, que además de guardarlo actualiza el
+    // débito de los ya suscriptos y les avisa por mail. Un update directo dejaría
+    // el precio nuevo en la web con todo el mundo debitando el viejo.
     const { error: e } = await supabase.from('plans')
-      .update({ base_price: n, tagline: tagline.trim(), perks: lista, featured })
+      .update({ tagline: tagline.trim(), perks: lista, featured })
       .eq('id', plan.id);
     if (e) { setError('No pudimos guardar los cambios.'); setBusy(false); return; }
+    if (n !== plan.basePrice) {
+      const res = await fetch('/api/planes/precio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ planId: plan.id, precio: n }),
+      });
+      const r = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(r.error ?? 'No pudimos guardar el precio.'); setBusy(false); return; }
+      if (r.debitosFallidos > 0) {
+        setError(`El precio se guardó, pero ${r.debitosFallidos} ${r.debitosFallidos === 1 ? 'débito no se pudo actualizar' : 'débitos no se pudieron actualizar'} en Mercado Pago. Guardá de nuevo para reintentar.`);
+        setBusy(false);
+        return;
+      }
+    }
     onSaved();
     onClose();
   };
+
+  const cambiaElPrecio = Number(price.replace(/\D/g, '')) !== plan.basePrice;
 
   return (
     <Modal title={`Plan ${plan.name}`} sub="Los cambios se ven en la web y en la app enseguida." onClose={onClose}>
@@ -1096,6 +1115,11 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
           <div>
             <label style={fieldLabel}>PRECIO POR MES (ARS)</label>
             <input value={price} onChange={(e) => { setPrice(e.target.value); setError(''); }} style={inp} inputMode="numeric" />
+            {cambiaElPrecio && (
+              <p style={{ fontSize: 12, color: '#8781a0', margin: '6px 0 0', lineHeight: 1.5 }}>
+                También actualiza el débito de los socios ya suscriptos a este plan, y les avisamos por mail.
+              </p>
+            )}
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13.5, color: '#5b5670', cursor: 'pointer', paddingBottom: 11 }}>
