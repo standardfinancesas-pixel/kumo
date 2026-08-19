@@ -10,6 +10,8 @@ import {
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
+  FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN,
+  type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 
@@ -65,7 +67,7 @@ const bellPath = <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><pat
 /** `notif` no va en el sidebar: se llega por la campanita, como en el prototipo. */
 type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif' | 'prestar' | 'mismascotas';
 
-const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
+const NAV_TODO: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'inicio', label: 'Inicio', icon: ic(house) },
   { key: 'carnet', label: 'Carnet', icon: ic(plusCircle) },
   { key: 'servicios', label: 'Servicios', icon: ic(paw, true) },
@@ -75,6 +77,17 @@ const NAV: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'negocio', label: 'Mi negocio', icon: ic(house) },
   { key: 'perfil', label: 'Mi perfil', icon: ic(person) },
 ];
+
+/**
+ * El menú del socio gratuito no tiene Reintegros ni Beneficios.
+ *
+ * No es un candado: la sección no está. Un candado invita a golpearlo y además
+ * obliga a mantener una pantalla que no se puede usar; esto es lo que decidió el
+ * club. Lo que se paga está en `FEATURES_PAGAS` de `@kumo/shared`, así que la app
+ * del celular filtra su barra contra la misma lista.
+ */
+const navDe = (pago: boolean) =>
+  pago ? NAV_TODO : NAV_TODO.filter((n) => !FEATURES_PAGAS.includes(n.key as FeaturePaga));
 
 /* ── Datos (mock del prototipo) ────────────────────────────────── */
 /** `appliedOn`/`dueOn` van crudas además de formateadas en `sub`: el calendario las necesita para ubicar el día. */
@@ -110,100 +123,91 @@ export type Profile = { id: string; firstName: string; fullName: string; memberN
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
 export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; odonto: boolean; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
 
-/* ── El muro de la cuota ───────────────────────────────────────── */
+/* ── La hoja del plan ──────────────────────────────────────────── */
 /**
- * Sin la cuota paga, el socio no ve la app.
+ * Elegir un plan y activar el débito. Antes era un muro; ahora es una hoja.
  *
- * Es un muro y no un aviso: no tiene botón de cerrar, no se cierra con Escape ni
- * clickeando afuera, y bloquea el scroll de lo que hay atrás. Lo que sí tiene es
- * salida: cerrar sesión y el WhatsApp del club. Un modal sin ninguna salida no es
- * un paywall, es una persona encerrada que no puede ni preguntar qué pasó.
+ * El cambio no es de estilo: entrar a Kumo es gratis y lo que se paga son los
+ * reintegros y los beneficios, así que dejar de mostrar la app a quien no pagó
+ * pasó a ser mentira sobre lo que ofrece el club. Se conservan las tripas —el
+ * selector de plan, el add-on, el pago y la espera del aviso de Mercado Pago—,
+ * y se va la jaula: tiene cerrar, no bloquea el scroll de atrás y ya no ofrece
+ * cerrar sesión (esa salida existía porque la persona estaba encerrada).
  *
- * El plan y el monto NO se eligen acá: son los que el socio eligió en el paso 3
- * del alta y quedaron en su perfil. El servidor los vuelve a leer al crear el
- * pago, así que ni el monto ni el plan pueden falsificarse desde el navegador.
+ * Lo que se manda al servidor es el NOMBRE del plan y el sí/no del add-on. El
+ * precio lo pone el servidor: si el monto saliera de acá, cualquiera se
+ * suscribiría por $1. Y el acceso lo da el aviso de Mercado Pago, nunca esta
+ * pantalla ni la URL de vuelta.
  */
-function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; planes: PlanVM[] }) {
+function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: CuotaVM; nombre: string; planes: PlanVM[]; onClose: () => void; irABeneficios: () => void }) {
   const router = useRouter();
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
-  const [confirmando, setConfirmando] = useState(cuota.enCurso);
+  const [volviendoDeMP, setVolviendoDeMP] = useState(false);
   const [intentos, setIntentos] = useState(0);
   /*
-   * El plan viene preseleccionado con el del alta, pero se puede cambiar acá y
-   * sumar la cobertura odontológica: es el momento en que el socio está mirando
-   * cuánto va a pagar, y mandarlo a otra pantalla para cambiarlo —cuando además
-   * tiene el muro puesto y no puede navegar— sería absurdo.
+   * El plan arranca en el que el socio ya tenía, si tenía alguno.
    *
-   * Lo que se manda al servidor es el NOMBRE del plan y el sí/no del add-on. El
-   * precio lo pone el servidor: si el monto saliera de acá, cualquiera se
-   * suscribiría por $1.
+   * Ojo con el socio gratuito: su `planName` llega como '—', y preseleccionarlo
+   * hacía que el botón mandara `{plan:'—'}` y el servidor respondiera "ese plan no
+   * existe". Con el alta vieja no pasaba nunca porque el plan era obligatorio; con
+   * el alta gratuita es el caso normal.
    */
-  const [planSel, setPlanSel] = useState(cuota.planName);
+  const conPlanPrevio = cuota.planName && cuota.planName !== '—';
+  const [planSel, setPlanSel] = useState(conPlanPrevio ? cuota.planName : '');
   const [odonto, setOdonto] = useState(cuota.odonto);
   const elegido = planes.find((p) => p.name === planSel);
-  const total = (elegido?.price ?? cuota.monto) + (odonto ? ODONTO_PRECIO : 0);
-
-  // El scroll del fondo se bloquea mientras el muro está puesto: si no, se puede
-  // pasear por la app con la rueda del mouse.
-  useEffect(() => {
-    const antes = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = antes; };
-  }, []);
+  const total = (elegido?.price ?? 0) + (odonto ? ODONTO_PRECIO : 0);
 
   /*
    * Vuelta de Mercado Pago. Nada de esto da acceso —son parámetros de una URL, los
    * puede tipear cualquiera—: lo único que hacen es poner la pantalla a esperar el
    * aviso de MP, que es quien acredita de verdad.
    *
-   * Se reconocen dos vueltas distintas:
-   *  · `pago` — la del pago único, que lo pone nuestro `back_urls`.
-   *  · `preapproval_id` — la de la suscripción, que lo pone MERCADO PAGO. Antes acá
-   *    se esperaba un `suscripcion=ok` nuestro, pero nunca llegaba entero: MP suma
-   *    sus parámetros con `?` aunque la URL ya tenga uno, así que la vuelta quedaba
-   *    con dos `?` y el valor mezclado. El resultado era que quien se suscribía
-   *    desde la web volvía y veía el muro con el botón de pagar otra vez, como si no
-   *    hubiera hecho nada — que es justo lo que empuja a pagar dos veces.
+   * Se reconocen dos vueltas distintas: `pago` lo pone nuestro `back_urls` del pago
+   * único, y `preapproval_id` lo pone MERCADO PAGO al volver de la suscripción.
    */
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const p = q.get('pago');
-    if (p === 'ok' || p === 'pendiente' || q.has('preapproval_id')) setConfirmando(true);
+    if (p === 'ok' || p === 'pendiente' || q.has('preapproval_id')) setVolviendoDeMP(true);
     if (p === 'error') setError('El pago no se pudo hacer. Probá de nuevo o con otra tarjeta.');
   }, []);
 
+  const estado = estadoCuota({
+    hasta: cuota.hasta,
+    debePagar: cuota.debePagar,
+    suscripcion: cuota.suscripcion,
+    pagoPendiente: cuota.enCurso,
+    volviendoDeMP,
+  });
+  const copy = copyCuota(estado, nombre, cuota.hasta);
+  const esperando = estado === 'confirmando';
+
   /*
-   * Mientras esperamos el aviso de Mercado Pago, se vuelve a preguntar al
-   * servidor. Tres decisiones que NO son opcionales:
+   * Mientras esperamos el aviso, se vuelve a preguntar al servidor. Tres decisiones
+   * que NO son opcionales:
    *
-   * · La ventana es de 3 minutos. Eran 30 segundos y no alcanzaban: medido el
-   *   19/08 con una suscripción real, del checkout al mes acreditado pasaron 2
-   *   minutos (MP debita a los segundos, pero su aviso tardó 1:41). Con el corte a
-   *   los 30 segundos el socio pagaba bien y se quedaba mirando el cartel de "está
-   *   tardando", que es justo lo que empuja a pagar dos veces.
-   * · Los primeros 30 segundos pregunta cada 3, después cada 6. La espera pareja
-   *   de 3 segundos durante 3 minutos son 60 recargas, y `/app` hace una docena de
-   *   consultas en cada una: castigar a la base por algo que no depende de ella.
-   *   Escalonado son 35 y el caso normal —el aviso llega enseguida— no pierde
-   *   nada de reacción.
-   * · Hay límite, y eso es lo importante: la primera versión hacía
-   *   `location.reload()` en un `setInterval` sin fin, así que si el aviso no
-   *   llegaba —MP mal configurado, un débito que quedó pendiente en Rapipago,
-   *   cualquier cosa— el socio quedaba en una pantalla recargándose para siempre,
-   *   sin poder leer ni el mensaje. Al llegar al límite se le dice que está
-   *   tardando y se le deja un botón para reintentar.
+   * · La ventana es de 3 minutos (`ESPERA_PAGO`). Eran 30 segundos y no alcanzaban:
+   *   medido el 19/08 con una suscripción real, del checkout al mes acreditado
+   *   pasaron 2 minutos. Con el corte a los 30 segundos el socio pagaba bien y leía
+   *   "está tardando", que es justo lo que empuja a pagar dos veces.
+   * · Escalonado: los primeros 30 segundos cada 3, después cada 6. Pareja a 3
+   *   segundos son 60 recargas, y `/app` hace una docena de consultas en cada una.
+   * · Hay límite. La primera versión recargaba sin fin y dejaba al socio en una
+   *   pantalla que no se podía ni leer.
+   *
+   * A diferencia del muro, esperar no bloquea nada: el socio ya está adentro.
    */
-  const RAPIDOS = 10;
-  const LIMITE = 35; // 10 × 3s + 25 × 6s = 3 minutos
   useEffect(() => {
-    if (!confirmando || intentos >= LIMITE) return;
-    const espera = intentos < RAPIDOS ? 3000 : 6000;
+    if (!esperando || intentos >= ESPERA_PAGO.limite) return;
+    const espera = intentos < ESPERA_PAGO.rapidos ? ESPERA_PAGO.msRapido : ESPERA_PAGO.msLento;
     const t = setTimeout(() => { setIntentos((n) => n + 1); router.refresh(); }, espera);
     return () => clearTimeout(t);
-  }, [confirmando, intentos, router]);
+  }, [esperando, intentos, router]);
 
   const pagar = async () => {
+    if (!planSel) { setError('Elegí un plan para activar tu cuota.'); return; }
     setYendo(true); setError('');
     try {
       const res = await fetch('/api/pagos/crear', {
@@ -220,25 +224,30 @@ function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; 
     }
   };
 
-  const salir = async () => { await supabase.auth.signOut(); window.location.href = urls.landing; };
-
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-labelledby="muro-titulo"
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(33,30,51,0.72)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}
+      aria-labelledby="plan-titulo"
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(33,30,51,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, overflowY: 'auto' }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ background: '#fff', borderRadius: 22, maxWidth: 440, width: '100%', padding: '28px 26px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)' }}>
-        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: 'rgb(93,84,145)', marginBottom: 4 }}>Kumo</div>
-        {confirmando ? (
+      <div style={{ background: '#fff', borderRadius: 22, maxWidth: 440, width: '100%', padding: '24px 26px 22px', boxShadow: '0 24px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 6 }}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: 'rgb(93,84,145)' }}>Kumo</div>
+          <button onClick={onClose} aria-label="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#a29dba', fontSize: 22, lineHeight: 1, padding: 0 }}>×</button>
+        </div>
+
+        <h2 id="plan-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>{copy.titulo}</h2>
+        <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>{copy.cuerpo}</p>
+
+        {estado === 'listo' ? (
+          <button onClick={irABeneficios} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: 'pointer' }}>
+            {copy.cta} →
+          </button>
+        ) : esperando ? (
           <>
-            <h2 id="muro-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>Estamos confirmando tu pago</h2>
-            <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
-              Mercado Pago nos tiene que avisar del primer débito, y suele tardar un par de minutos. Esta pantalla se actualiza sola.
-              {' '}Si pagaste con transferencia o en efectivo puede demorar más: te avisamos por mail cuando se acredite.
-            </p>
-            {intentos < LIMITE ? (
+            {intentos < ESPERA_PAGO.limite ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600 }}>
                 <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgb(93,84,145)', borderTopColor: 'transparent', animation: 'kspin 0.9s linear infinite', flex: '0 0 auto' }} />
                 Esperando la confirmación…
@@ -249,25 +258,17 @@ function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; 
                     nuevo. Un socio que ve una pantalla trabada después de pagar
                     vuelve a pagar, y ahí el problema pasa a ser plata. */}
                 <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, lineHeight: 1.5, marginBottom: 12 }}>
-                  Está tardando más de lo normal. Si ya autorizaste el pago, tu acceso se activa solo cuando Mercado Pago nos confirme: <strong>no hace falta pagar de nuevo</strong>.
+                  Está tardando más de lo normal. Si ya autorizaste el pago, se activa solo cuando Mercado Pago nos confirme: <strong>no hace falta pagar de nuevo</strong>.
                 </div>
                 <button onClick={() => setIntentos(0)} style={{ width: '100%', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 14.5, padding: '13px 18px', borderRadius: 13, cursor: 'pointer' }}>
-                  Volver a chequear
+                  {copy.cta}
                 </button>
               </>
             )}
           </>
         ) : (
           <>
-            <h2 id="muro-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>
-              {cuota.hasta ? `${nombre}, se te venció la cuota` : `¡Bienvenido, ${nombre}!`}
-            </h2>
-            <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
-              {cuota.hasta
-                ? 'Para volver a usar tus beneficios, carnet y reintegros, activá tu suscripción.'
-                : 'Falta un paso: activá el débito automático de tu cuota y ya tenés todo el club disponible.'}
-            </p>
-            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>TU PLAN</div>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>ELEGÍ TU PLAN</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
               {planes.map((p) => {
                 const sel = p.name === planSel;
@@ -302,27 +303,28 @@ function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; 
               </span>
             </button>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgb(238,236,245)', paddingTop: 12, marginBottom: 16 }}>
-              <span style={{ fontSize: 13.5, fontWeight: 600, color: '#5b5670' }}>Tu cuota por mes</span>
-              <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: 'rgb(33,30,51)' }}>${total.toLocaleString('es-AR')}</span>
-            </div>
+            {planSel ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid rgb(238,236,245)', paddingTop: 12, marginBottom: 16 }}>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: '#5b5670' }}>Tu cuota por mes</span>
+                <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: 'rgb(33,30,51)' }}>${total.toLocaleString('es-AR')}</span>
+              </div>
+            ) : null}
             {error && <div style={{ background: 'rgb(253,242,242)', color: 'rgb(176,58,58)', border: '1px solid rgb(245,214,214)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, marginBottom: 14 }}>{error}</div>}
             <button
               onClick={pagar}
-              disabled={yendo}
-              style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: yendo ? 'default' : 'pointer', opacity: yendo ? 0.65 : 1, marginBottom: 10 }}
+              disabled={yendo || !planSel}
+              style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: yendo || !planSel ? 'default' : 'pointer', opacity: yendo || !planSel ? 0.5 : 1, marginBottom: 10 }}
             >
-              {yendo ? 'Abriendo Mercado Pago…' : 'Suscribirme con Mercado Pago →'}
+              {yendo ? 'Abriendo Mercado Pago…' : planSel ? `${copy.cta} →` : 'Elegí un plan'}
             </button>
-            <p style={{ fontSize: 12, color: '#a29dba', textAlign: 'center', margin: '0 0 16px', lineHeight: 1.5 }}>
-              Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés dar de baja el débito cuando quieras desde Mi perfil.
+            <p style={{ fontSize: 12, color: '#a29dba', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5 }}>
+              Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras desde Mi perfil.
             </p>
           </>
         )}
-        {/* La salida. Un muro sin salida deja a la persona sin poder ni preguntar. */}
-        <div style={{ borderTop: '1px solid rgb(238,236,245)', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(93,84,145)' }}>¿Algún problema? Escribinos</a>
-          <button onClick={salir} style={{ background: 'none', border: 'none', fontFamily: '"DM Sans"', fontSize: 13.5, fontWeight: 600, color: '#8781a0', cursor: 'pointer', padding: 0 }}>Cerrar sesión</button>
+
+        <div style={{ borderTop: '1px solid rgb(238,236,245)', paddingTop: 14 }}>
+          <a href={`https://wa.me/${WHATSAPP}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(93,84,145)' }}>¿Alguna duda? Escribinos</a>
         </div>
       </div>
     </div>
@@ -351,7 +353,7 @@ function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => v
 }
 
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
-function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; noLeidas: number }) {
+function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, onPlan }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; noLeidas: number; pago: boolean; onPlan: () => void }) {
   const [promoIdx, setPromoIdx] = useState(0);
   const pet = pets[petIdx] ?? pets[0];
   const promo = promos[promoIdx] ?? promos[0]!;
@@ -360,10 +362,12 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Sc
     return () => clearInterval(t);
   }, []);
 
+  // El atajo al reintegro solo existe si puede pedirlo: un botón que lleva a una
+  // pantalla que no está es peor que no tener el botón.
   const quick: { label: string; icon: ReactNode; to: Screen }[] = [
     { label: 'Carnet', icon: ic(idCard, false, 22), to: 'carnet' },
     { label: 'Foros', icon: ic(chat, false, 22), to: 'foros' },
-    { label: 'Reintegro', icon: ic(wallet, false, 22), to: 'reintegros' },
+    ...(pago ? [{ label: 'Reintegro', icon: ic(wallet, false, 22), to: 'reintegros' as Screen }] : []),
     { label: 'Servicios', icon: ic(paw, true, 22), to: 'servicios' },
   ];
 
@@ -444,9 +448,12 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas }: { go: (s: Sc
               <div style={{ fontSize: 11, color: 'rgb(93,84,145)', fontWeight: 600, marginTop: 6 }}>Ver más →</div>
             </div>
           </button>
-          <button onClick={() => go('beneficios')} style={{ textAlign: 'left', borderRadius: 12, padding: 14, color: '#fff', cursor: 'pointer', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 120, background: 'linear-gradient(rgba(33,30,51,0) 30%, rgba(33,30,51,0.75) 100%), url(/img/home-beneficios.webp) center/cover', position: 'relative', overflow: 'hidden' }}>
-            <div style={{ fontWeight: 700, fontSize: 14 }}>Beneficios</div>
-            <div style={{ fontSize: 11, opacity: 0.9 }}>Descuentos exclusivos</div>
+          {/* La tarjeta no se pierde para el socio gratuito: cambia de destino y de
+              texto. Que se vea lindo lo que todavía no tiene es exactamente su
+              trabajo — es el lugar donde se descubre que hay algo más. */}
+          <button onClick={pago ? () => go('beneficios') : onPlan} style={{ textAlign: 'left', borderRadius: 12, padding: 14, color: '#fff', cursor: 'pointer', border: 'none', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', minHeight: 120, background: 'linear-gradient(rgba(33,30,51,0) 30%, rgba(33,30,51,0.75) 100%), url(/img/home-beneficios.webp) center/cover', position: 'relative', overflow: 'hidden' }}>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>{pago ? 'Beneficios' : INVITACION_PLAN.titulo}</div>
+            <div style={{ fontSize: 11, opacity: 0.9 }}>{pago ? 'Descuentos exclusivos' : INVITACION_PLAN.bajada}</div>
           </button>
         </div>
         <div className="wa-cards" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -2425,15 +2432,13 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
  *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
  *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
  *  "Cambiar" plan te sacaba a la landing. */
-function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null; cuota: CuotaVM }) {
+function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota, pago, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null; cuota: CuotaVM; pago: boolean; onPlan: () => void }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(false);
   const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email });
-  const [planOpen, setPlanOpen] = useState(false);
-  const [planSel, setPlanSel] = useState(profile.planName);
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaHecha, setBajaHecha] = useState(false);
 
@@ -2454,16 +2459,6 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }:
     setBusy(false);
   };
 
-  /** El cambio de plan es real: mueve `profiles.plan_id`. */
-  const confirmarPlan = async () => {
-    const p = planes.find((x) => x.name === planSel);
-    if (!p || p.name === profile.planName) { setPlanOpen(false); return; }
-    setBusy(true);
-    await supabase.from('profiles').update({ plan_id: p.id }).eq('id', profile.id);
-    setPlanOpen(false);
-    router.refresh();
-    setBusy(false);
-  };
 
   const confirmarBaja = async () => {
     setBusy(true);
@@ -2543,8 +2538,17 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }:
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Mi cuenta</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {row(ic(storeIcon, false, 19), 'Mi negocio', negocioHint, chevron, () => go('negocio'))}
-        {row(ic(wallet, false, 19), 'Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros'))}
-        {row(ic(tagIcon, false, 19), 'Membresía', `Plan ${profile.planName}${profile.addonOdonto ? ' + odontológica' : ''} · ${m$(profile.planPrice)}/mes`, accion('Cambiar'), () => { setPlanSel(profile.planName); setPlanOpen(true); })}
+        {/* Los reintegros son del socio con la cuota paga: sin eso la fila promete
+            una pantalla que no existe. */}
+        {pago ? row(ic(wallet, false, 19), 'Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros')) : null}
+        {/* La membresía. Para el gratuito no dice "Plan —": dice qué tiene, y el
+            camino para cambiarlo es la misma hoja que cobra — nunca una escritura
+            de plan desde el navegador, que movía el plan sin recalcular la cuota. */}
+        {pago
+          ? row(ic(tagIcon, false, 19), 'Membresía', `Plan ${profile.planName}${profile.addonOdonto ? ' + odontológica' : ''} · ${m$(profile.planPrice)}/mes`, accion('Cambiar'), onPlan)
+          : row(ic(tagIcon, false, 19), 'Membresía', 'Plan gratuito · carnet, foros y prestadores', accion('Ver planes'), onPlan)}
+        {/* El único upsell del perfil. Dos serían insistencia. */}
+        {pago ? null : row(ic(idCard, false, 19), INVITACION_PLAN.titulo, INVITACION_PLAN.bajada, accion('Activar'), onPlan)}
         {/* La cuota: el débito automático de Mercado Pago. La baja tiene que estar
             acá y ser un botón, no un mail al club: con débito automático, cortar
             tiene que ser tan fácil como suscribirse. Se corta el débito futuro y no
@@ -2554,7 +2558,9 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }:
             ? `Débito automático activo · ${m$(cuota.monto)}/mes${cuota.hasta ? ` · paga hasta el ${fmtFechaCorta(cuota.hasta)}` : ''}`
             : cuota.hasta && !cuota.debePagar
               ? `Paga hasta el ${fmtFechaCorta(cuota.hasta)} · sin débito automático`
-              : 'Sin suscripción activa',
+              : cuota.hasta
+                ? `Se te venció el ${fmtFechaCorta(cuota.hasta)}`
+                : 'Estás en el plan gratuito',
           cuota.suscripcion === 'authorized'
             ? <button
                 onClick={async (e) => {
@@ -2571,15 +2577,23 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }:
               >
                 Dar de baja
               </button>
-            : <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{cuota.debePagar ? 'Pendiente' : '—'}</span>)}
+            /* Sin débito no dice "Pendiente": al que nunca eligió plan no le falta
+               hacer nada, y esa palabra suena a deuda. Es el mismo criterio que la
+               fila de abajo ya usa con "Todavía no hace falta". Va una acción. */
+            : cuota.debePagar
+              ? accion(cuota.hasta ? 'Reactivar' : 'Elegir plan')
+              : <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>—</span>,
+          cuota.debePagar ? onPlan : undefined)}
         {/* Dónde cobra los reintegros: es plata que le entra, así que verlo acá
             evita que descubra un CBU mal cargado cuando ya esperaba el dinero.
             Sin cargar NO dice "Pendiente": no le falta hacer nada, y esa palabra
             suena a deuda. La cuenta se pide cuando pide el primer reintegro, que
             es cuando la persona está esperando plata y la completa sin quejarse. */}
-        {row(ic(wallet, false, 19), 'Cuenta para reintegros',
+        {/* La cuenta bancaria solo tiene sentido si puede pedir reintegros: para el
+            socio gratuito es ruido sobre algo que no puede hacer. */}
+        {pago ? row(ic(wallet, false, 19), 'Cuenta para reintegros',
           profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Te la pedimos cuando cargues tu primer reintegro',
-          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.banco.cbu || profile.banco.alias ? 'Cargada' : 'Todavía no hace falta'}</span>)}
+          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.banco.cbu || profile.banco.alias ? 'Cargada' : 'Todavía no hace falta'}</span>) : null}
       </div>
 
       {/* Datos personales */}
@@ -2632,38 +2646,12 @@ function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota }:
       </div>
 
       {/* Cambiar plan */}
-      {planOpen && (
-        <Sheet onClose={() => setPlanOpen(false)}>
-          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 2 }}>Cambiar plan</div>
-          <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 16 }}>Elegí tu nueva membresía. El cambio queda registrado y se factura cuando el cobro esté conectado.</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
-            {planes.map((p) => {
-              const sel = planSel === p.name;
-              const actual = profile.planName === p.name;
-              return (
-                <button key={p.id} onClick={() => setPlanSel(p.name)} style={{ display: 'flex', alignItems: 'center', gap: 12, background: sel ? 'rgb(240,237,249)' : '#fff', border: `1.5px solid ${sel ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`, borderRadius: 14, padding: 14, cursor: 'pointer', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
-                  <div style={{ width: 20, height: 20, borderRadius: '50%', border: `2px solid ${sel ? 'rgb(93,84,145)' : 'rgb(210,205,228)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none' }}>
-                    {sel && <span style={{ width: 10, height: 10, borderRadius: '50%', background: 'rgb(93,84,145)' }} />}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
-                      {actual && <span style={{ fontSize: 10, fontWeight: 700, color: 'rgb(93,84,145)', background: 'rgb(240,237,249)', padding: '2px 7px', borderRadius: 100 }}>Tu plan</span>}
-                    </div>
-                    <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>{p.tagline}</div>
-                  </div>
-                  <div style={{ textAlign: 'right', flex: 'none' }}>
-                    <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17 }}>{m$(p.price)}</div>
-                    <div style={{ fontSize: 11, color: 'rgb(162,157,186)' }}>/mes</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <button onClick={confirmarPlan} disabled={busy} style={{ ...sheetBtn(true), width: '100%', marginBottom: 8, opacity: busy ? 0.6 : 1 }}>{planSel === profile.planName ? 'Ya es tu plan' : `Cambiar a ${planSel}`}</button>
-          <button onClick={() => setPlanOpen(false)} style={{ ...sheetBtn(false), width: '100%' }}>Cancelar</button>
-        </Sheet>
-      )}
+      {/* Acá vivía "Cambiar plan", que escribía profiles.plan_id desde el navegador:
+          movía el plan sin recalcular la cuota, sin tocar la suscripción de Mercado
+          Pago y sin cobrar la diferencia, así que cualquiera pasaba de AMIGO a VIP y
+          se quedaba con los topes del plan caro. Ahora el cambio de plan es la MISMA
+          hoja que cobra (HojaPlan → /api/pagos/crear), que recalcula el monto en el
+          servidor y cancela la suscripción vieja si cambió. */}
 
       {/* Darme de baja */}
       {bajaOpen && (
@@ -3277,9 +3265,25 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
+  /** La hoja para elegir plan y pagar. Antes era un muro que tapaba todo; ahora se
+   *  abre a pedido, porque el socio ya está adentro del club. */
+  const [planAbierto, setPlanAbierto] = useState(false);
   const go = (s: Screen) => { setScreen(s); setNavOpen(false); };
   const reintegradoTotal = reintegros.filter((r) => r.status === 'Acreditado').reduce((a, r) => a + r.refund, 0);
-  const current = NAV.find((n) => n.key === screen);
+
+  /** ¿Tiene la cuota paga? Es la misma verdad que mira la RLS en la base. */
+  const pago = tieneFeaturesPagas(cuota.debePagar);
+  const NAV = navDe(pago);
+  /*
+   * La pantalla se DERIVA, no se corrige con un efecto.
+   *
+   * Si a alguien se le vence la cuota estando en Beneficios, `screen` sobrevive al
+   * refresco del servidor y la lista le vuelve vacía por RLS: leería "todavía no hay
+   * beneficios activos, el club los va cargando", o sea una mentira sobre el club. Un
+   * `useEffect` que redirija pinta ese frame igual antes de corregirlo.
+   */
+  const pantalla: Screen = !pago && FEATURES_PAGAS.includes(screen as FeaturePaga) ? 'inicio' : screen;
+  const current = NAV.find((n) => n.key === pantalla);
 
   const notifGroups = useMemo(() => buildNotifs(notifInput), [notifInput]);
   // El "visto" vive en localStorage, así que solo se conoce después de montar:
@@ -3292,22 +3296,23 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#fff' }}>
-      {/* El muro de la cuota va primero y por encima de todo: mientras esté, lo de
-          atrás se renderiza pero no se puede usar ni scrollear. */}
-      {cuota.debePagar && <MuroCuota cuota={cuota} nombre={profile.firstName} planes={planes} />}
+      {/* La hoja del plan, a pedido. Ya no tapa nada: entrar es gratis, y lo que se
+          paga son los reintegros y los beneficios. Se abre desde Inicio, Mi perfil y
+          la tarjeta de beneficios. */}
+      {planAbierto && <HojaPlan cuota={cuota} nombre={profile.firstName} planes={planes} onClose={() => setPlanAbierto(false)} irABeneficios={() => { setPlanAbierto(false); go('beneficios'); }} />}
       {/* Barra superior (solo abajo de 1024px) */}
       <div className="wa-topbar">
         <button onClick={() => setNavOpen(true)} aria-label="Abrir menú" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', color: 'rgb(93,84,145)' }}>
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" style={{ display: 'block' }}><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></svg>
         </button>
         <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, color: 'rgb(93,84,145)' }}>Kumo</span>
-        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{screen === 'notif' ? 'Notificaciones' : screen === 'prestar' ? 'Prestar servicio' : screen === 'mismascotas' ? 'Mis mascotas' : current?.label}</span>
+        <span style={{ fontSize: 13.5, color: 'rgb(91,86,112)', fontWeight: 600, marginLeft: 'auto' }}>{pantalla === 'notif' ? 'Notificaciones' : pantalla === 'prestar' ? 'Prestar servicio' : pantalla === 'mismascotas' ? 'Mis mascotas' : current?.label}</span>
       </div>
       {navOpen && <button className="wa-scrim" aria-label="Cerrar menú" onClick={() => setNavOpen(false)} />}
       <div className={navOpen ? 'wa-side wa-side-open' : 'wa-side'} style={{ width: 220, flex: '0 0 auto', borderRight: '1px solid rgb(238,236,245)', padding: '20px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
         <button onClick={() => go('inicio')} style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(93,84,145)', padding: '4px 14px 16px', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}>Kumo</button>
         {NAV.map((n) => {
-          const active = screen === n.key;
+          const active = pantalla === n.key;
           return (
             <button key={n.key} onClick={() => go(n.key)} className={active ? undefined : 'wa-navitem'} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '11px 14px', borderRadius: 12, border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, width: '100%', textAlign: 'left', transition: 'background 0.15s', background: active ? 'rgb(93,84,145)' : 'none', color: active ? '#fff' : 'rgb(91,86,112)' }}>
               {n.icon}
@@ -3318,17 +3323,17 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
       </div>
       <div className="wa-content" style={{ flex: '1 1 0%', overflowY: 'auto', maxHeight: '100vh' }}>
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
-          {screen === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} />}
-          {screen === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
-          {screen === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
-          {screen === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
-          {screen === 'reintegros' && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
-          {screen === 'beneficios' && <Beneficios benefits={benefits} go={go} />}
-          {screen === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
-          {screen === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
-          {screen === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
-          {screen === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio}  cuota={cuota} />}
-          {screen === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
+          {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
+          {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
+          {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
+          {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
+          {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} />}
+          {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
+          {pantalla === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
+          {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
+          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} cuota={cuota} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>
     </div>

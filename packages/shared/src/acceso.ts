@@ -1,0 +1,130 @@
+/**
+ * Quién puede usar qué, y qué se le dice.
+ *
+ * Entrar a Kumo es gratis: el carnet, las vacunas, los prestadores, los foros y las
+ * mascotas son de cualquier socio. Los **reintegros** y los **beneficios** son de
+ * quien tiene la cuota paga. Antes el corte era uno solo y total (un muro tapaba la
+ * app entera hasta pagar), y por eso este archivo no existía.
+ *
+ * Los textos viven acá y no en las pantallas por un motivo concreto: la nota de los
+ * reintegros ya está escrita palabra por palabra en la webapp y en la app, y es
+ * cuestión de tiempo que se separen. Un socio que lee una cosa en el navegador y
+ * otra en el celular no piensa "qué raro": piensa que el club no sabe lo que cobra.
+ *
+ * El corte de verdad NO está acá: está en la base, en `tiene_plan_pago()`. Esto es
+ * lo que decide qué se muestra; la RLS es lo que decide qué se puede pedir. Si
+ * alguna vez discrepan, gana la base y la pantalla queda vacía — a propósito.
+ */
+
+/** Las dos cosas que se pagan. En un solo lugar para que las dos superficies
+ *  filtren el menú contra la misma lista. */
+export const FEATURES_PAGAS = ['reintegros', 'beneficios'] as const;
+export type FeaturePaga = (typeof FEATURES_PAGAS)[number];
+
+export type EstadoSuscripcion = 'pending' | 'authorized' | 'paused' | 'cancelled' | null;
+
+/**
+ * En qué situación está la cuota del socio.
+ *
+ * `rebotado` es el que faltaba y arregla un bug real: cuando a un socio le rebota
+ * el débito, Mercado Pago reintenta y la suscripción sigue en `authorized`, así que
+ * la pantalla le decía "estamos confirmando tu pago" para siempre sobre un cobro
+ * que ya falló. Son dos cosas distintas y ahora se dicen distinto.
+ */
+export type EstadoCuota = 'gratuito' | 'vencido' | 'rebotado' | 'confirmando' | 'listo';
+
+export function estadoCuota(opts: {
+  /** `paid_until`, o null si nunca pagó. */
+  hasta: string | null;
+  /** ¿La cuota está impaga hoy? */
+  debePagar: boolean;
+  suscripcion: EstadoSuscripcion;
+  /** Un pago abierto: una transferencia que tarda, un Rapipago sin acreditar. */
+  pagoPendiente?: boolean;
+  /** Acaba de volver del checkout de Mercado Pago. */
+  volviendoDeMP?: boolean;
+}): EstadoCuota {
+  if (!opts.debePagar) return 'listo';
+  // Volver del checkout o tener un pago abierto es esperar; que el débito esté vivo
+  // y el mes sin acreditar, no: eso es un cobro que no salió.
+  if (opts.volviendoDeMP || opts.pagoPendiente) return 'confirmando';
+  if (opts.suscripcion === 'authorized') return 'rebotado';
+  return opts.hasta ? 'vencido' : 'gratuito';
+}
+
+/** ¿Ve reintegros y beneficios? Una sola pregunta, derivada de la misma verdad que
+ *  usa la RLS: la cuota paga. */
+export const tieneFeaturesPagas = (debePagar: boolean) => !debePagar;
+
+export type CopyCuota = { titulo: string; cuerpo: string; cta: string };
+
+/**
+ * Lo que se le dice en cada situación.
+ *
+ * El texto anterior mentía en dos frentes y los dos importan: decía "para volver a
+ * usar tus beneficios, carnet y reintegros" —el carnet ahora es gratis, así que
+ * nombraba como rehén algo que la persona ya tiene— y le decía "se te venció la
+ * cuota" a alguien que nunca tuvo ninguna.
+ */
+export function copyCuota(estado: EstadoCuota, nombre: string, hasta?: string | null): CopyCuota {
+  switch (estado) {
+    case 'gratuito':
+      return {
+        titulo: `Sumate a un plan, ${nombre}`,
+        cuerpo: 'El carnet de tus mascotas, los foros y los prestadores son tuyos, gratis. Con un plan sumás los reintegros de veterinaria y los beneficios en la red de comercios.',
+        cta: 'Elegir plan y activar el débito',
+      };
+    case 'vencido':
+      return {
+        titulo: `${nombre}, se te venció la cuota`,
+        cuerpo: `Tu carnet, los foros y los prestadores siguen andando igual${hasta ? ` (la cuota venció el ${hasta})` : ''}. Para volver a usar los reintegros y los beneficios, reactivá tu cuota.`,
+        cta: 'Reactivar mi cuota',
+      };
+    case 'rebotado':
+      return {
+        titulo: 'No pudimos cobrarte la cuota',
+        cuerpo: 'Tu débito automático sigue activo y Mercado Pago va a volver a intentarlo. Si cambiaste de tarjeta o no tenía saldo, actualizala desde Mercado Pago. Mientras tanto, los reintegros y los beneficios quedan en pausa.',
+        cta: 'Ver mi suscripción',
+      };
+    case 'confirmando':
+      return {
+        titulo: 'Estamos confirmando tu pago',
+        cuerpo: 'Mercado Pago nos tiene que avisar del débito y suele tardar un par de minutos. Podés seguir usando la app mientras esperamos.',
+        cta: 'Volver a chequear',
+      };
+    case 'listo':
+      return {
+        titulo: '¡Listo! Ya tenés todo el club',
+        cuerpo: 'Los reintegros y los beneficios ya están en tu menú.',
+        cta: 'Ver mis beneficios',
+      };
+  }
+}
+
+/** El cartel de la tarjeta que invita a pagar, desde Inicio. Dice qué es y qué
+ *  falta, sin "premium" ni "desbloqueá". */
+export const INVITACION_PLAN = {
+  titulo: 'Reintegros y beneficios',
+  bajada: 'Se activan con cualquier plan',
+} as const;
+
+/**
+ * Cuánto se espera el aviso de Mercado Pago antes de decir que está tardando.
+ *
+ * Medido el 19/08 con una suscripción real: el socio autorizó 13:16:34, MP debitó
+ * 13:16:52 (18 segundos) y su aviso llegó 13:18:33. Dos minutos de punta a punta.
+ * Con los 30 segundos que había antes, el socio pagaba bien y leía "está tardando",
+ * que es justo lo que empuja a pagar dos veces.
+ *
+ * Escalonado para no dispararle 60 recargas a la base: `/app` hace una docena de
+ * consultas en cada una.
+ */
+export const ESPERA_PAGO = { rapidos: 10, limite: 35, msRapido: 3000, msLento: 6000 } as const;
+
+/** Cómo se nombra el plan del socio en pantalla. `planName` llega '—' cuando no
+ *  tiene ninguno, y "Plan —" no le dice nada a nadie. */
+export function etiquetaPlan(planName: string | null | undefined, debePagar: boolean): string {
+  const limpio = planName && planName !== '—' ? planName : null;
+  if (!limpio) return 'Plan gratuito';
+  return debePagar ? `Plan ${limpio} · cuota pendiente` : `Plan ${limpio}`;
+}

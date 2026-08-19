@@ -448,7 +448,7 @@ $$;
 -- contesta igual. Las políticas mandan más que cualquier pantalla, así que el
 -- estado se chequea también acá (ver las políticas más abajo).
 create or replace function tiene_acceso()
-returns boolean language sql stable security definer set search_path = public as $$
+returns boolean language sql stable security definer set search_path = public as $
   -- Lista blanca y no negra: si mañana aparece un estado nuevo, lo seguro es
   -- que no dé acceso hasta que alguien lo decida.
   -- Al prestador y al admin no los toca: su acceso no depende de la cuota.
@@ -456,7 +456,30 @@ returns boolean language sql stable security definer set search_path = public as
     (select p.role <> 'socio' or p.status in ('activo', 'moroso')
        from profiles p where p.id = auth.uid()),
     false);
-$$;
+$;
+
+/**
+ * ¿Tiene la cuota paga?
+ *
+ * Es la OTRA pregunta, y por eso es otra función: `tiene_acceso()` dice cómo está
+ * la relación con el club (activo, suspendido, baja) y esta dice si pagó. Entrar a
+ * Kumo es gratis; los reintegros y los beneficios no, y esas dos políticas piden
+ * las dos funciones.
+ *
+ * Mira `paid_until` y NO `plan_id`: quien elige un plan, va a Mercado Pago y no
+ * paga queda con el plan escrito y sin haber pagado nada, así que con el plan como
+ * criterio se llevaría todo gratis. El día es el argentino porque la base corre en
+ * UTC y de noche `current_date` ya es mañana.
+ */
+create or replace function tiene_plan_pago()
+returns boolean language sql stable security definer set search_path = public as $
+  select coalesce(
+    (select p.role <> 'socio'
+              or (p.paid_until is not null
+                  and p.paid_until >= (now() at time zone 'America/Argentina/Buenos_Aires')::date)
+       from profiles p where p.id = auth.uid()),
+    false);
+$;
 
 -- ============================================================
 --  Alta de mascota + su declaración jurada, en una transacción
@@ -566,7 +589,10 @@ create policy "versiones visibles" on declaracion_versions for select using (tru
 create policy "planes visibles"    on plans      for select using (true);
 create policy "faqs visibles"      on faqs       for select using (true);
 create policy "ajustes visibles"   on club_settings for select using (true);
-create policy "beneficios visibles" on benefits  for select using (status = 'activo' or is_admin());
+-- Los beneficios son del socio con la cuota paga. Antes se leían SIN sesión, con
+-- la anon key: el catálogo que el club negoció con los comercios estaba abierto.
+create policy "beneficios del socio con plan" on benefits for select
+  using ((status = 'activo' and tiene_acceso() and tiene_plan_pago()) or is_admin());
 create policy "prestadores visibles" on providers for select using (status = 'verificado' or is_admin() or owner_id = auth.uid());
 
 -- Perfiles: cada quien ve/edita el suyo; admin ve todo
@@ -622,10 +648,12 @@ create policy "el socio firma su declaración" on health_declarations for insert
 -- Reintegros: el socio ve/crea los suyos; solo admin cambia estado. El chequeo de
 -- acceso es el que más importa de todos: sin él, una cuenta suspendida podía
 -- seguir pidiendo plata.
+-- Las dos preguntas encadenadas: el suspendido no pide plata (tiene_acceso) y el
+-- socio gratuito tampoco (tiene_plan_pago).
 create policy "reintegros del socio - select" on reimbursements for select
-  using ((member_id = auth.uid() and tiene_acceso()) or is_admin());
+  using ((member_id = auth.uid() and tiene_acceso() and tiene_plan_pago()) or is_admin());
 create policy "reintegros del socio - insert" on reimbursements for insert
-  with check (member_id = auth.uid() and tiene_acceso());
+  with check (member_id = auth.uid() and tiene_acceso() and tiene_plan_pago());
 create policy "reintegros - admin update" on reimbursements for update using (is_admin());
 
 -- Comunidad: lectura pública (el foro se ve sin cuenta), escritura solo del que
