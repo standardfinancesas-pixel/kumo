@@ -223,6 +223,16 @@ de cada pantalla.
       que la empezó. Las dos cosas se arreglan con una fila en Mi perfil que use la
       misma ruta `/api/pagos/crear`. Salió al mirar por qué no aparecía el botón de
       baja — correcto que no aparezca: solo existe con la suscripción autorizada.
+- [x] **El email de una cuenta de prueba se DEDUCE del nombre de usuario**, y eso
+      es lo que destrabó el sandbox después de varios días (19/08). El panel de MP
+      no lo muestra en ningún lado; se saca de los dígitos del usuario:
+      `TESTUSER328791889392025651` → `test_user_328791889392025651@testuser.com`.
+      Verificado contra la API: con ese email la suscripción se crea (201, con su
+      `init_point`); dos variantes inventadas dieron 500, así que sirve exactamente
+      el derivado del usuario comprador. Va en `MP_PAYER_EMAIL_PRUEBA`, que ya lee
+      `api/pagos/crear/route.ts`: si está, es el pagador; si no está, va el email
+      real del socio. **El día que se cobre de verdad se BORRA esa variable y no se
+      toca código.**
 - [ ] **Las credenciales de MP que hacen falta son DOS, y ninguna es la que
       probamos el 18/08.** Con el token de **prueba de la cuenta real** del club
       (`TEST-…`) las suscripciones no funcionan de ninguna forma, y MP lo dice
