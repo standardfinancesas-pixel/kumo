@@ -166,22 +166,31 @@ function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; 
 
   /*
    * Mientras esperamos el aviso de Mercado Pago, se vuelve a preguntar al
-   * servidor cada 3 segundos. Con dos límites que NO son opcionales:
+   * servidor. Tres decisiones que NO son opcionales:
    *
-   * · Se corta a los 10 intentos (30 segundos). La primera versión hacía
-   *   `location.reload()` en un `setInterval` sin fin: si el aviso no llegaba
-   *   —MP mal configurado, un débito que quedó pendiente en Rapipago, cualquier
-   *   cosa— el socio quedaba en una pantalla recargándose para siempre, sin
-   *   poder leer ni el mensaje. Al llegar al límite se le dice que está tardando
-   *   y se le deja un botón para reintentar.
-   * · Es `router.refresh()` y no recargar la página entera: `/app` hace una
-   *   docena de consultas en cada carga, y multiplicarlas por 10 para esperar un
-   *   webhook es castigar a la base por algo que no depende de ella.
+   * · La ventana es de 3 minutos. Eran 30 segundos y no alcanzaban: medido el
+   *   19/08 con una suscripción real, del checkout al mes acreditado pasaron 2
+   *   minutos (MP debita a los segundos, pero su aviso tardó 1:41). Con el corte a
+   *   los 30 segundos el socio pagaba bien y se quedaba mirando el cartel de "está
+   *   tardando", que es justo lo que empuja a pagar dos veces.
+   * · Los primeros 30 segundos pregunta cada 3, después cada 6. La espera pareja
+   *   de 3 segundos durante 3 minutos son 60 recargas, y `/app` hace una docena de
+   *   consultas en cada una: castigar a la base por algo que no depende de ella.
+   *   Escalonado son 35 y el caso normal —el aviso llega enseguida— no pierde
+   *   nada de reacción.
+   * · Hay límite, y eso es lo importante: la primera versión hacía
+   *   `location.reload()` en un `setInterval` sin fin, así que si el aviso no
+   *   llegaba —MP mal configurado, un débito que quedó pendiente en Rapipago,
+   *   cualquier cosa— el socio quedaba en una pantalla recargándose para siempre,
+   *   sin poder leer ni el mensaje. Al llegar al límite se le dice que está
+   *   tardando y se le deja un botón para reintentar.
    */
-  const LIMITE = 10;
+  const RAPIDOS = 10;
+  const LIMITE = 35; // 10 × 3s + 25 × 6s = 3 minutos
   useEffect(() => {
     if (!confirmando || intentos >= LIMITE) return;
-    const t = setTimeout(() => { setIntentos((n) => n + 1); router.refresh(); }, 3000);
+    const espera = intentos < RAPIDOS ? 3000 : 6000;
+    const t = setTimeout(() => { setIntentos((n) => n + 1); router.refresh(); }, espera);
     return () => clearTimeout(t);
   }, [confirmando, intentos, router]);
 
@@ -217,7 +226,7 @@ function MuroCuota({ cuota, nombre, planes }: { cuota: CuotaVM; nombre: string; 
           <>
             <h2 id="muro-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>Estamos confirmando tu pago</h2>
             <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>
-              Mercado Pago nos tiene que avisar del primer débito, y a veces tarda unos segundos. Esta pantalla se actualiza sola.
+              Mercado Pago nos tiene que avisar del primer débito, y suele tardar un par de minutos. Esta pantalla se actualiza sola.
               {' '}Si pagaste con transferencia o en efectivo puede demorar más: te avisamos por mail cuando se acredite.
             </p>
             {intentos < LIMITE ? (

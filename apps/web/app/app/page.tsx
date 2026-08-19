@@ -279,23 +279,13 @@ export default async function Page() {
    */
   const plan = Array.isArray(profileRow.plans) ? profileRow.plans[0] : profileRow.plans;
   /*
-   * El débito automático autorizado YA es haber pagado, aunque todavía no haya
-   * entrado un peso.
-   *
-   * Medido contra Mercado Pago el 19/08, con una suscripción de prueba real:
-   * autorizar la deja en `authorized` y agenda el primer débito para el mes
-   * siguiente (`next_payment_date` a 30 días, sin ningún cobro hecho). O sea que
-   * entre autorizar y cobrar no pasan minutos, como suponía el comentario de más
-   * abajo: pasa un mes entero. Sin esta línea el socio autorizaba el débito, MP le
-   * confirmaba la suscripción, y el muro le quedaba encima 30 días — se le iba a
-   * cobrar el mes que viene un club al que nunca pudo entrar.
-   *
-   * Si los débitos empiezan a rebotar, MP pausa o cancela la suscripción y el
-   * estado deja de ser `authorized`: el muro vuelve solo, sin cron que lo apague.
+   * La fecha paga sigue siendo la única que decide, y NO la suscripción
+   * autorizada: si un débito rebota, MP reintenta y la suscripción se queda en
+   * `authorized` mientras lo hace. Dejar entrar por estar autorizado le daría
+   * acceso indefinido a alguien que nunca pagó.
    */
-  const conDebitoAutomatico = profileRow.mp_subscription_status === 'authorized';
   const cuota: CuotaVM = {
-    debePagar: !conDebitoAutomatico && (!profileRow.paid_until || profileRow.paid_until < hoyISO()),
+    debePagar: !profileRow.paid_until || profileRow.paid_until < hoyISO(),
     hasta: profileRow.paid_until ?? null,
     monto: profileRow.monthly_fee_agreed ?? plan?.base_price ?? 0,
     planName: plan?.name ?? '—',
@@ -305,9 +295,12 @@ export default async function Page() {
     // botón que parece no haber hecho nada.
     suscripcion: (profileRow.mp_subscription_status ?? null) as CuotaVM['suscripcion'],
     /*
-     * "Está en curso" cubre el rato entre volver del checkout y que llegue el aviso
-     * de MP, cuando todavía no sabemos si autorizó. Una vez que sabemos que sí,
-     * entra directo (ver `conDebitoAutomatico` arriba).
+     * "Está en curso" incluye la suscripción ya autorizada, y esa parte importa:
+     * autorizar el débito NO es que el mes ya esté acreditado. Medido el 19/08 con
+     * una suscripción real: autorizó 13:16:34, MP debitó 13:16:52, y el aviso lo
+     * acreditó 13:18:33 — dos minutos de punta a punta. Sin esto el socio volvía
+     * del checkout y veía el muro igual que antes, como si no hubiera hecho nada
+     * — y volvía a pagar.
      */
     enCurso: profileRow.mp_subscription_status === 'authorized'
       || (pagoRows ?? []).some((p) => p.status === 'pendiente' && p.method === 'mercadopago'),
