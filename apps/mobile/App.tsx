@@ -22,7 +22,7 @@ import { useEsperarPago } from './lib/esperarPago';
 import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
-import { recalcularUbicacion } from './lib/api';
+import { recalcularUbicacion, ubicarNegocio } from './lib/api';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
@@ -2030,6 +2030,8 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   const [rubro, setRubro] = useState(RUBROS[0]!);
   const [nombre, setNombre] = useState('');
   const [zona, setZona] = useState('');
+  /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
+  const [direccion, setDireccion] = useState('');
   const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [about, setAbout] = useState('');
   const [busy, setBusy] = useState(false);
@@ -2071,10 +2073,13 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
     setBusy(true); setError('');
     const { data: alta, error: e } = await supabase.from('providers').insert({
       owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      address: direccion.trim() || null,
       phone: tel.trim() || null, about: about.trim(), status: 'pendiente',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id) void avisar('negocio-recibido', alta.id);
+    // El pin en el mapa: lo resuelve el servidor y no se espera.
+    if (alta?.id && direccion.trim()) void ubicarNegocio(alta.id);
     setBusy(false);
     setEnviado(true);
     await reload();
@@ -2116,6 +2121,10 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
           <TextInput value={tel} onChangeText={setTel} placeholder="+54 11 ..." placeholderTextColor={colors.violet[400]} style={input} />
         </View>
       </View>
+
+      <SheetLabel>Dirección (opcional)</SheetLabel>
+      <TextInput value={direccion} onChangeText={setDireccion} placeholder="Av. Santa Fe 3200" placeholderTextColor={colors.violet[400]} style={input} />
+      <Text style={{ fontSize: 12, color: MUTED, marginTop: 6, marginBottom: 12, lineHeight: 17 }}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</Text>
 
       <SheetLabel>Contanos sobre tu servicio</SheetLabel>
       <TextInput value={about} onChangeText={setAbout} multiline numberOfLines={3} placeholder="Experiencia, disponibilidad, precios de referencia…" placeholderTextColor={colors.violet[400]} style={{ ...input, height: 90, textAlignVertical: 'top', marginBottom: 16 }} />
@@ -2474,6 +2483,8 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState(RUBROS[0]!);
   const [zona, setZona] = useState('');
+  /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
+  const [direccion, setDireccion] = useState('');
   const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -2488,7 +2499,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
    * base que lo impide igual.
    */
   const [editOpen, setEditOpen] = useState(false);
-  const [ed, setEd] = useState({ name: '', category: RUBROS[0]!, zone: '', phone: '', about: '', price: '', priceUnit: '', instagram: '', website: '' });
+  const [ed, setEd] = useState({ name: '', category: RUBROS[0]!, zone: '', address: '', phone: '', about: '', price: '', priceUnit: '', instagram: '', website: '' });
 
   const abrirEdicion = async () => {
     if (!negocio) return;
@@ -2496,13 +2507,14 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
     // Los valores crudos de la base: la tarjeta no trae `about` ni las tarifas.
     const { data } = await supabase
       .from('providers')
-      .select('name, category, zone, phone, about, price, price_unit, instagram, website')
+      .select('name, category, zone, address, phone, about, price, price_unit, instagram, website')
       .eq('id', negocio.id)
       .single();
     setEd({
       name: data?.name ?? negocio.name,
       category: data?.category ?? negocio.category,
       zone: data?.zone ?? negocio.zone,
+      address: data?.address ?? negocio.address ?? '',
       phone: data?.phone ?? '',
       about: data?.about ?? '',
       price: data?.price != null ? String(data.price) : '',
@@ -2519,11 +2531,16 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
     setBusy(true); setError('');
     const { error: e, data } = await supabase.from('providers').update({
       name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),
+      address: ed.address.trim() || null,
       phone: ed.phone.trim() || null, about: ed.about.trim(),
       price: Number(ed.price.replace(/\D/g, '')) || null, price_unit: ed.priceUnit.trim() || null,
       instagram: ed.instagram.trim() || null, website: ed.website.trim() || null,
     }).eq('id', negocio.id).select('id');
     if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    /* Si se mudó el local, el pin se muda con él. También cuando la dirección se
+       borra: ahí quedan coordenadas nulas y el negocio sale del mapa, que es lo
+       correcto — no puede quedar un pin de un local que ya no está. */
+    if (ed.address.trim() !== (negocio.address ?? '')) void ubicarNegocio(negocio.id);
     setEditOpen(false);
     await reload();
     setBusy(false);
@@ -2537,11 +2554,13 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
     if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
     if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
     setBusy(true); setError('');
-    const { error: e } = await supabase.from('providers').insert({
+    const { data: alta, error: e } = await supabase.from('providers').insert({
       owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      address: direccion.trim() || null,
       phone: tel.trim() || null, status: 'pendiente',
-    });
+    }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    if (alta?.id && direccion.trim()) void ubicarNegocio(alta.id);
     setShowAlta(false);
     await reload();
     setBusy(false);
@@ -2578,7 +2597,11 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
                 ))}
               </View>
               <TextInput value={zona} onChangeText={(t) => { setZona(t); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" placeholderTextColor={colors.violet[400]} style={field} />
+              <TextInput value={direccion} onChangeText={setDireccion} placeholder="Dirección del local (opcional)" placeholderTextColor={colors.violet[400]} style={field} />
               <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
+              {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
+                  aparece en la lista pero sin distancia ni pin. */}
+              <Text style={{ fontSize: 11.5, color: MUTED, lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía.</Text>
               {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
@@ -2633,6 +2656,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
           {[
             ['Nombre del negocio', ed.name, (v: string) => setEd({ ...ed, name: v }), {}],
             ['Zona', ed.zone, (v: string) => setEd({ ...ed, zone: v }), {}],
+            ['Dirección (opcional, te ubica en el mapa)', ed.address, (v: string) => setEd({ ...ed, address: v }), {}],
             ['Teléfono', ed.phone, (v: string) => setEd({ ...ed, phone: v }), { keyboardType: 'phone-pad' as const }],
             ['Instagram', ed.instagram, (v: string) => setEd({ ...ed, instagram: v }), { autoCapitalize: 'none' as const }],
             ['Sitio web', ed.website, (v: string) => setEd({ ...ed, website: v }), { autoCapitalize: 'none' as const }],

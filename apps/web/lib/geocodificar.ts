@@ -63,19 +63,18 @@ const CABA = 'Ciudad Autónoma de Buenos Aires';
  *    con "mendoza, Mendoza" contestaba un pueblo a 40 km del centro; con "Ciudad de
  *    Mendoza" cae en el centro.
  */
-export function consultasDeDomicilio(partes: {
-  address?: string | null;
-  city?: string | null;
-  province?: string | null;
-}): { q: string; origen: Ubicacion['origen'] }[] {
-  // Del domicilio, solo la calle y la altura: lo que sigue a la primera coma es el
-  // piso, el departamento o una aclaración para el cartero.
-  const calle = ((partes.address ?? '').split(',')[0] ?? '')
+/** Del domicilio, solo la calle y la altura: lo que sigue a la primera coma es el
+ *  piso, el departamento o una aclaración para el cartero. */
+function limpiarCalle(address?: string | null): string {
+  return ((address ?? '').split(',')[0] ?? '')
     .replace(/\b(piso|p\.?b\.?|dto|dpto|depto|departamento|of|oficina|torre|timbre|casa)\b.*$/i, '')
     .trim();
-  let localidad = (partes.city ?? '').trim();
-  let provincia = (partes.province ?? '').trim();
+}
 
+/** La localidad y la provincia, escritas como las entiende Nominatim. */
+function normalizarLugar(city?: string | null, province?: string | null): { localidad: string; provincia: string } {
+  let localidad = (city ?? '').trim();
+  let provincia = (province ?? '').trim();
   if (ES_CABA.test(sinTildes(localidad)) || (!localidad && ES_CABA.test(sinTildes(provincia)))) {
     localidad = CABA;
     provincia = '';
@@ -84,11 +83,58 @@ export function consultasDeDomicilio(partes: {
   } else if (localidad && provincia && sinTildes(localidad) === sinTildes(provincia)) {
     localidad = `Ciudad de ${localidad}`;
   }
+  return { localidad, provincia };
+}
 
-  const armar = (...t: string[]) => [...t.filter(Boolean), 'Argentina'].join(', ');
+const armarConsulta = (...t: string[]) => [...t.filter(Boolean), 'Argentina'].join(', ');
+
+export function consultasDeDomicilio(partes: {
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+}): { q: string; origen: Ubicacion['origen'] }[] {
+  const calle = limpiarCalle(partes.address);
+  const { localidad, provincia } = normalizarLugar(partes.city, partes.province);
+
   const consultas: { q: string; origen: Ubicacion['origen'] }[] = [];
-  if (calle && (localidad || provincia)) consultas.push({ q: armar(calle, localidad, provincia), origen: 'domicilio' });
-  if (localidad || provincia) consultas.push({ q: armar(localidad, provincia), origen: 'localidad' });
+  if (calle && (localidad || provincia)) consultas.push({ q: armarConsulta(calle, localidad, provincia), origen: 'domicilio' });
+  if (localidad || provincia) consultas.push({ q: armarConsulta(localidad, provincia), origen: 'localidad' });
+  return consultas;
+}
+
+/**
+ * Lo que se pregunta por un prestador.
+ *
+ * Dos diferencias con el domicilio de un socio:
+ *
+ *  · **Sin dirección no hay consulta.** Un prestador tiene `zone` ("Palermo") pero
+ *    no siempre dirección, y resolver la zona pondría a todos los de Palermo
+ *    exactamente en el mismo punto: tres pines apilados, dos invisibles debajo del
+ *    de arriba. Un pin es una afirmación sobre un lugar; sin dirección no la hay, y
+ *    el prestador aparece igual en la lista, sin distancia (así lo trata la
+ *    pantalla). La zona ya se muestra escrita en su tarjeta.
+ *  · **La ciudad la aporta el dueño.** La tabla de prestadores no tiene localidad ni
+ *    provincia, así que el contexto sale del perfil del socio que lo dio de alta.
+ *    Sin eso, "Rivadavia 5100" tiene candidatos en veinte ciudades del país.
+ */
+export function consultasDePrestador(partes: {
+  address?: string | null;
+  zone?: string | null;
+  city?: string | null;
+  province?: string | null;
+}): { q: string; origen: Ubicacion['origen'] }[] {
+  const calle = limpiarCalle(partes.address);
+  if (!calle) return [];
+  const zona = (partes.zone ?? '').trim();
+  const { localidad, provincia } = normalizarLugar(partes.city, partes.province);
+  if (!zona && !localidad && !provincia) return [];
+
+  const consultas: { q: string; origen: Ubicacion['origen'] }[] = [];
+  // La zona primero porque es más precisa que la ciudad ("Av. Santa Fe 3200,
+  // Palermo"), y después sin ella porque a veces viene escrita de una forma que no
+  // existe en el mapa ("zona norte", "todo CABA").
+  if (zona) consultas.push({ q: armarConsulta(calle, zona, localidad, provincia), origen: 'domicilio' });
+  if (localidad || provincia) consultas.push({ q: armarConsulta(calle, localidad, provincia), origen: 'domicilio' });
   return consultas;
 }
 
@@ -136,8 +182,28 @@ export async function geocodificarDomicilio(partes: {
   city?: string | null;
   province?: string | null;
 }): Promise<Ubicacion | null> {
+  return correr(consultasDeDomicilio(partes));
+}
+
+/**
+ * El local de un prestador. Null si no cargó dirección: ver `consultasDePrestador`.
+ *
+ * `city`/`province` son del socio dueño del negocio, no del prestador — son el
+ * contexto que le falta a la tabla para saber en qué ciudad buscar la calle.
+ */
+export async function geocodificarPrestador(partes: {
+  address?: string | null;
+  zone?: string | null;
+  city?: string | null;
+  province?: string | null;
+}): Promise<Ubicacion | null> {
+  return correr(consultasDePrestador(partes));
+}
+
+/** Prueba las consultas en orden y devuelve la primera que contesta. */
+async function correr(consultas: { q: string; origen: Ubicacion['origen'] }[]): Promise<Ubicacion | null> {
   let primera = true;
-  for (const consulta of consultasDeDomicilio(partes)) {
+  for (const consulta of consultas) {
     // La pausa entre dos consultas seguidas es la cortesía que pide Nominatim.
     if (!primera) await new Promise((listo) => setTimeout(listo, 1100));
     primera = false;

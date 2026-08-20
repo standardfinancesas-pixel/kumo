@@ -118,7 +118,7 @@ export type BenefitVM = {
   description: string; zone: string; days: string[]; hours: string; validUntil: string | null; planRequirement: string;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
-export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
 export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
@@ -1218,6 +1218,9 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
   const [rubro, setRubro] = useState<string>(RUBROS[0]!);
   const [nombre, setNombre] = useState('');
   const [zona, setZona] = useState('');
+  /** La dirección es opcional y es lo único que lo pone en el mapa: ver el aviso
+   *  debajo del campo y  en lib/geocodificar. */
+  const [direccion, setDireccion] = useState('');
   const [tel, setTel] = useState(profile.phone ?? '');
   const [about, setAbout] = useState('');
   const [foto, setFoto] = useState<File | null>(null);
@@ -1261,11 +1264,15 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       photoUrl = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
     }
 
-    const { error: insErr } = await supabase.from('providers').insert({
+    const { data: alta, error: insErr } = await supabase.from('providers').insert({
       owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      address: direccion.trim() || null,
       phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, status: 'pendiente',
-    });
+    }).select('id').single();
     if (insErr) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    // El pin en el mapa: se resuelve en el servidor y no se espera. Si no sale, el
+    // negocio queda igual en la lista, sin distancia.
+    if (alta?.id && direccion.trim()) void fetch('/api/prestadores/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: alta.id }) });
     setBusy(false);
     setEnviado(true);
     router.refresh();
@@ -1317,6 +1324,10 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
           <input id="pr-tel" value={tel} onChange={(e) => setTel(e.target.value)} placeholder="+54 11 ..." style={sheetInput} />
         </div>
       </div>
+
+      <label style={sheetLabel} htmlFor="pr-dir">Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+      <input id="pr-dir" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Av. Santa Fe 3200" style={sheetInput} />
+      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</p>
 
       <label style={sheetLabel} htmlFor="pr-about">Contanos sobre tu servicio</label>
       <textarea id="pr-about" value={about} onChange={(e) => setAbout(e.target.value)} rows={3} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...sheetInput, marginBottom: 16, resize: 'none' }} />
@@ -2290,6 +2301,9 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState(RUBROS[0]!);
   const [zona, setZona] = useState('');
+  /** La dirección es opcional y es lo único que lo pone en el mapa: ver el aviso
+   *  debajo del campo y  en lib/geocodificar. */
+  const [direccion, setDireccion] = useState('');
   const [tel, setTel] = useState(profile.phone ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -2298,6 +2312,7 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
   // Datos editables del negocio publicado.
   const [ed, setEd] = useState({
     name: negocio?.name ?? '', category: negocio?.category ?? RUBROS[0]!, zone: negocio?.zone ?? '',
+    address: negocio?.address ?? '',
     phone: negocio?.phone ?? '', about: negocio?.about ?? '',
     price: negocio?.price ? String(negocio.price) : '', priceUnit: negocio?.priceUnit ?? '',
     instagram: negocio?.instagram ?? '', website: negocio?.website ?? '',
@@ -2309,11 +2324,18 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     setBusy(true); setError('');
     const { error: e } = await supabase.from('providers').update({
       name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),
+      address: ed.address.trim() || null,
       phone: ed.phone.trim() || null, about: ed.about.trim(),
       price: Number(ed.price.replace(/\D/g, '')) || null, price_unit: ed.priceUnit.trim() || null,
       instagram: ed.instagram.trim() || null, website: ed.website.trim() || null,
     }).eq('id', negocio.id);
     if (e) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    /* Si se mudó el local, el pin se muda con él. También cuando la dirección se
+       borra: ahí la ruta guarda coordenadas nulas y el negocio sale del mapa, que es
+       lo correcto — no puede quedar un pin de un local que ya no está. */
+    if (ed.address.trim() !== (negocio.address ?? '')) {
+      void fetch('/api/prestadores/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: negocio.id }) });
+    }
     setEditOpen(false);
     router.refresh();
     setBusy(false);
@@ -2331,10 +2353,12 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     setBusy(true); setError('');
     const { data: alta, error: e2 } = await supabase.from('providers').insert({
       owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
+      address: direccion.trim() || null,
       phone: tel.trim() || null, status: 'pendiente',
     }).select('id').single();
     if (e2) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id) void avisar('negocio-recibido', alta.id);
+    if (alta?.id && direccion.trim()) void fetch('/api/prestadores/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: alta.id }) });
     setShowAlta(false);
     router.refresh();
     setBusy(false);
@@ -2389,7 +2413,11 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
                   {RUBROS.map((r) => <option key={r}>{r}</option>)}
                 </select>
                 <input value={zona} onChange={(e) => { setZona(e.target.value); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
                 <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                {/* La dirección es lo único que lo pone en el mapa; sin ella el
+                    negocio aparece en la lista pero sin distancia ni pin. */}
+                <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía.</p>
                 {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
                 <button type="submit" disabled={busy} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
               </form>
@@ -2505,6 +2533,9 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
           <textarea value={ed.about} onChange={(e) => setEd({ ...ed, about: e.target.value })} rows={3} placeholder="Qué ofrecés, experiencia, disponibilidad…" style={{ ...sheetInput, resize: 'none', marginBottom: 12 }} />
           <label style={sheetLabel}>Zona de cobertura</label>
           <input value={ed.zone} onChange={(e) => { setEd({ ...ed, zone: e.target.value }); setError(''); }} style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel}>Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+          <input value={ed.address} onChange={(e) => setEd({ ...ed, address: e.target.value })} placeholder="Av. Santa Fe 3200" style={sheetInput} />
+          <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona.</p>
           <label style={sheetLabel}>Tarifa</label>
           <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
             <input value={ed.price} onChange={(e) => setEd({ ...ed, price: e.target.value })} inputMode="numeric" placeholder="4500" style={{ ...sheetInput, flex: '1 1 110px', width: 'auto' }} />

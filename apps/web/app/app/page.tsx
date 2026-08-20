@@ -235,7 +235,7 @@ export default async function Page() {
     // esté pendiente o lo hayan rechazado.
     supabase
       .from('providers')
-      .select('id, name, category, zone, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
+      .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
       .eq('owner_id', auth.user.id)
       .maybeSingle(),
     supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
@@ -372,6 +372,7 @@ export default async function Page() {
   const negocio: MiNegocio | null = negocioRow
     ? {
         id: negocioRow.id, name: negocioRow.name, category: negocioRow.category, zone: negocioRow.zone,
+        address: negocioRow.address,
         phone: negocioRow.phone, about: negocioRow.about, status: negocioRow.status,
         rating: negocioRow.rating, reviews: negocioRow.reviews,
         price: negocioRow.price, priceUnit: negocioRow.price_unit, instagram: negocioRow.instagram, website: negocioRow.website,

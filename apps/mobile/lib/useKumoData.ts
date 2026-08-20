@@ -104,7 +104,7 @@ export type EmergencyContact = { id: string; name: string; phone: string; type: 
 /** Los planes, para el cambio de plan de Mi perfil. */
 export type PlanVM = { id: string; name: string; basePrice: number };
 
-export type MiNegocio = { id: string; name: string; category: string; zone: string; phone: string | null; status: string; rating: number; reviews: number };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; status: string; rating: number; reviews: number };
 
 /* ── Helpers de formato ────────────────────────────────────────── */
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -192,7 +192,7 @@ export function useKumoData(userId: string | null) {
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
-      supabase.from('providers').select('id, name, category, zone, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
+      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
       supabase.from('post_likes').select('post_id').eq('member_id', userId),
@@ -364,7 +364,7 @@ export function useKumoData(userId: string | null) {
 
     const n = negocioRes.data;
     const negocio: MiNegocio | null = n
-      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews }
+      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews }
       : null;
 
     const notifInput: NotifInput = {

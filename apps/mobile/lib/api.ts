@@ -184,3 +184,24 @@ export async function recalcularUbicacion(): Promise<void> {
     // sin ubicación nueva: el mapa sigue centrado donde estaba
   }
 }
+/**
+ * El pin del negocio en el mapa, después de darlo de alta o de mudar el local.
+ *
+ * La ruta solo recibe el id: la dirección la lee de la fila y chequea que el
+ * negocio sea de quien pide. Si falla no se avisa — queda en la lista sin
+ * distancia, que es como aparecen los que no cargaron dirección.
+ */
+export async function ubicarNegocio(id: string): Promise<void> {
+  try {
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses.session?.access_token;
+    if (!token) return;
+    await fetch(`${apiKumo}/api/prestadores/ubicacion`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+  } catch {
+    // sin pin: el negocio sigue en la lista, sin distancia
+  }
+}
