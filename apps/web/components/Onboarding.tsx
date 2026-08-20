@@ -1,12 +1,12 @@
 'use client';
 import type { CSSProperties, ReactNode } from 'react';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, pasoOk, payloadAlta,
-  borradorVacio, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
+  borradorVacio, conIdentidad, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
   MAX_MASCOTAS_ALTA, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -200,6 +200,15 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
    *  un índice dejaría la foto pegada a otra mascota. */
   const [fotos, setFotos] = useState<Record<string, File>>({});
   const [abierta, setAbierta] = useState<string | null>(null);
+
+  /*
+   * La identidad de Google puede llegar DESPUÉS de que este formulario se montó, y
+   * de hecho es lo que pasa siempre: vive permanentemente en el árbol de la landing
+   * (se muestra u oculta con `open`), así que su estado inicial se armó cuando la
+   * identidad todavía era null y el inicializador de `useState` no vuelve a correr.
+   * Sin esto, quien entra con Google llega al paso 2 con el nombre y el mail vacíos.
+   */
+  useEffect(() => { setB((prev) => conIdentidad(prev, identidad)); }, [identidad]);
 
   if (!open) return null;
 

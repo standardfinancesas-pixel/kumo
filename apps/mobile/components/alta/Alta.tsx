@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
 import {
-  borradorVacio, mascotaVacia, cuotaMensual, data, pasoOk, pasosDelAlta, payloadAlta,
+  borradorVacio, conIdentidad, mascotaVacia, cuotaMensual, data, pasoOk, pasosDelAlta, payloadAlta,
   esGratis, planElegido, colors, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '../../lib/supabase';
@@ -39,6 +39,10 @@ export default function Alta({
   const conGoogle = !!identidad;
   const [paso, setPaso] = useState(1);
   const [b, setB] = useState<BorradorAlta>(() => borradorVacio({ nombre: identidad?.nombre, email: identidad?.email }));
+  /* Igual que en la web: la identidad de Google puede llegar después del montaje,
+     y el inicializador de `useState` corre una sola vez. Acá el orden hoy ayuda (la
+     sesión se resuelve antes que el perfil), pero depender de ese orden es frágil. */
+  useEffect(() => { setB((prev) => conIdentidad(prev, identidad)); }, [identidad]);
   const [fotos, setFotos] = useState<Record<string, FotoElegida>>({});
   const [abierta, setAbierta] = useState<string | null>(null);
   const [planes, setPlanes] = useState<PlanAlta[]>([]);

@@ -321,3 +321,25 @@ export function leerBodyAlta(raw: unknown): { body: BodyAlta; banco?: Partial<Ba
 
   return null;
 }
+
+/**
+ * Mete la identidad de Google en el borrador, si todavía no está.
+ *
+ * Hace falta porque el formulario se monta ANTES de saber quién entró: en la web
+ * vive siempre en el árbol de la landing (se muestra u oculta con una prop), así que
+ * su estado inicial se arma cuando la identidad de Google todavía es null, y el
+ * inicializador de `useState` no vuelve a correr nunca. Resultado: la persona
+ * llegaba a los pasos con el nombre y el mail vacíos, justo los dos datos que
+ * Google ya había dado.
+ *
+ * Solo completa lo que está vacío: si la persona ya tipeó algo, gana lo tipeado.
+ * Y devuelve el mismo objeto cuando no hay nada que cambiar, para que un efecto que
+ * la llame no se dispare a sí mismo en un bucle.
+ */
+export function conIdentidad(b: BorradorAlta, identidad?: { nombre: string; email: string } | null): BorradorAlta {
+  if (!identidad) return b;
+  const nombre = b.socio.nombre.trim() ? b.socio.nombre : (identidad.nombre ?? '');
+  const email = b.socio.email.trim() ? b.socio.email : (identidad.email ?? '');
+  if (nombre === b.socio.nombre && email === b.socio.email) return b;
+  return { ...b, socio: { ...b.socio, nombre, email } };
+}
