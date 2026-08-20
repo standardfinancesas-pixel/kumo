@@ -169,7 +169,7 @@ function PetCard({ pet, detailed }: { pet: Pet; detailed?: boolean }) {
         <Image source={petImg(pet.photo)} style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)' }} />
         <View style={{ flex: 1 }}>
           <Text style={{ color: '#fff', fontWeight: '800', fontFamily: FH, fontSize: 19 }}>{pet.name}</Text>
-          <Text style={{ color: colors.violet[300], fontSize: 12 }}>{detailed ? pet.breed : `Plan ${pet.plan} · Socio ${pet.socio}`}</Text>
+          <Text style={{ color: colors.violet[300], fontSize: 12 }}>{detailed ? pet.breed : `${pet.plan} · Socio ${pet.socio}`}</Text>
         </View>
         <View style={{ backgroundColor: LIME, borderRadius: 100, paddingVertical: 4, paddingHorizontal: 9 }}>
           <Text style={{ color: INK, fontWeight: '800', fontFamily: FH, fontSize: 10 }}>ACTIVO</Text>

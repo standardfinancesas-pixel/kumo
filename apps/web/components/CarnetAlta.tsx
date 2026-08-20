@@ -9,7 +9,7 @@ import Image from 'next/image';
  * existen. Acá se muestra lo que la persona acaba de cargar, y nada más.
  */
 export function CarnetAlta({
-  nombre, especie, raza, edad, peso, microchip, fotoUrl, etiqueta, memberNo,
+  nombre, especie, raza, edad, peso, microchip, fotoUrl, etiqueta, sello, memberNo,
 }: {
   nombre: string;
   especie: string;
@@ -20,6 +20,9 @@ export function CarnetAlta({
   fotoUrl: string | null;
   /** "Plan FAMILIA", "Plan gratuito"… lo decide `etiquetaPlan` de shared. */
   etiqueta: string;
+  /** El sello: lo decide `selloCarnet` de shared. Decía ACTIVO escrito a mano, y
+   *  a un socio gratuito eso es una afirmación falsa en la credencial. */
+  sello: { texto: string; tono: 'ok' | 'neutro' | 'alerta' };
   memberNo: number | null;
 }) {
   const fila = (k: string, v: string) => (
@@ -44,8 +47,13 @@ export function CarnetAlta({
             {etiqueta}{memberNo ? ` · Socio #${memberNo}` : ''}
           </div>
         </div>
-        <span style={{ marginLeft: 'auto', background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontSize: 10.5, fontWeight: 800, padding: '4px 10px', borderRadius: 100, flex: '0 0 auto' }}>
-          ACTIVO
+        <span style={{ marginLeft: 'auto', ...(sello.tono === 'ok'
+          ? { background: 'rgb(225,251,98)', color: 'rgb(33,30,51)' }
+          : sello.tono === 'alerta'
+            ? { background: 'rgb(251,232,239)', color: 'rgb(193,77,122)' }
+            : { background: 'rgba(255,255,255,0.18)', color: '#fff' }),
+          fontSize: 10.5, fontWeight: 800, padding: '4px 10px', borderRadius: 100, flex: '0 0 auto', whiteSpace: 'nowrap' }}>
+          {sello.texto}
         </span>
       </div>
       <div>

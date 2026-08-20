@@ -93,7 +93,12 @@ const navDe = (pago: boolean) =>
 /* ── Datos (mock del prototipo) ────────────────────────────────── */
 /** `appliedOn`/`dueOn` van crudas además de formateadas en `sub`: el calendario las necesita para ubicar el día. */
 export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; reminder?: string; mark?: boolean };
-export type Pet = { id: string; name: string; plan: string; socio: string; photo: string; breed: string; microchip: string; castrado: string; odonto: string; vaccines: Vac[] };
+/** El sello del carnet: lo decide `selloCarnet` de shared, no la pantalla. */
+export type SelloVM = { texto: string; tono: 'ok' | 'neutro' | 'alerta' };
+/** `plan`, `odonto` y `sello` son datos del SOCIO, no de la mascota: el carnet los
+ *  muestra porque es la credencial de la membresía. Llegan ya resueltos desde el
+ *  servidor —antes `odonto` y el sello estaban escritos fijos en la pantalla—. */
+export type Pet = { id: string; name: string; plan: string; socio: string; photo: string; breed: string; microchip: string; castrado: string; odonto: string; sello: SelloVM; vaccines: Vac[] };
 export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
 export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; verificado: boolean; badge?: string };
 /** La ficha del beneficio necesita todo lo que la tabla ya guardaba y no se usaba:
@@ -366,6 +371,22 @@ const promos = [
 ];
 
 /* ── Selector de mascota (chips) ───────────────────────────────── */
+/**
+ * El sello del carnet.
+ *
+ * Decía ACTIVO siempre, escrito a mano en las dos pantallas que lo muestran. Con el
+ * alta gratuita eso pasó de un detalle a una afirmación falsa en el documento que el
+ * socio le muestra al veterinario.
+ */
+function SelloCarnet({ sello }: { sello: SelloVM }) {
+  const tonos = {
+    ok: { background: 'rgb(225,251,98)', color: 'rgb(33,30,51)' },
+    neutro: { background: 'rgba(255,255,255,0.18)', color: '#fff' },
+    alerta: { background: 'rgb(251,232,239)', color: 'rgb(193,77,122)' },
+  } as const;
+  return <span style={{ ...tonos[sello.tono], fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100, whiteSpace: 'nowrap' }}>{sello.texto}</span>;
+}
+
 function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => void; pets: Pet[] }) {
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -425,9 +446,9 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, onPlan }
             <div style={{ width: 56, height: 56, borderRadius: 16, overflow: 'hidden', flex: '0 0 auto', background: `url(${pet.photo}) center/cover, rgb(230,227,240)` }} />
             <div style={{ flex: '1 1 0%' }}>
               <div style={{ color: '#fff', fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 19 }}>{pet.name}</div>
-              <div style={{ color: 'rgb(201,195,227)', fontSize: 12 }}>Plan {pet.plan} · Socio {pet.socio}</div>
+              <div style={{ color: 'rgb(201,195,227)', fontSize: 12 }}>{pet.plan} · Socio {pet.socio}</div>
             </div>
-            <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100 }}>ACTIVO</span>
+            <SelloCarnet sello={pet.sello} />
           </div>
         </div>
       ) : (
@@ -643,7 +664,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
               {fotoError && <div style={{ color: 'rgb(225,251,98)', fontSize: 11.5, fontWeight: 600, marginTop: 4, maxWidth: 220, lineHeight: 1.35 }}>{fotoError}</div>}
             </div>
           </div>
-          <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100 }}>ACTIVO</span>
+          <SelloCarnet sello={pet.sello} />
         </div>
         <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
           {[['Microchip', pet.microchip], ['Castrado', pet.castrado], ['Odontológico', pet.odonto]].map(([k, v]) => (

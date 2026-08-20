@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-import { etiquetaPlan, hoyISO, urls } from '@kumo/shared';
+import { etiquetaPlan, hoyISO, urls, selloCarnet } from '@kumo/shared';
 import { CarnetAlta } from '@/components/CarnetAlta';
 import { AltaListoClient } from './AltaListoClient';
 
@@ -74,6 +74,7 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
               microchip={m.microchip}
               fotoUrl={m.photo_url}
               etiqueta={etiqueta}
+              sello={selloCarnet(debePagar, !!plan?.name)}
               memberNo={perfil.member_no}
             />
           ))}

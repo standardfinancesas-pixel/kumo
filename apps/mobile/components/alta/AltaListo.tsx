@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Linking, ScrollView, TouchableOpacity, View } from 'react-native';
-import { colors, etiquetaPlan } from '@kumo/shared';
+import { colors, etiquetaPlan, selloCarnet } from '@kumo/shared';
 import { crearSuscripcion } from '../../lib/api';
 import { useEsperarPago } from '../../lib/esperarPago';
 import { Texto as Text, BRAND, INK, LIME, MUTED } from '../ui/Texto';
@@ -64,6 +64,8 @@ export default function AltaListo({
   useEsperarPago(fueAMP && debePagar, recargar);
 
   const etiqueta = etiquetaPlan(planName, debePagar);
+  /* El sello decía ACTIVO escrito a mano, incluso para un socio gratuito. */
+  const sello = selloCarnet(debePagar, !!planName && planName !== '—');
   const varias = mascotas.length > 1;
 
   return (
@@ -85,8 +87,8 @@ export default function AltaListo({
             <View key={m.id} style={{ backgroundColor: BRAND, borderRadius: 18, padding: 18 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={{ color: '#c9c3e3', fontSize: 12, fontWeight: '700' }}>{etiqueta.toUpperCase()}</Text>
-                <View style={{ backgroundColor: LIME, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 3 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: INK }}>ACTIVO</Text>
+                <View style={{ backgroundColor: sello.tono === 'ok' ? LIME : sello.tono === 'alerta' ? '#fbe8ef' : 'rgba(255,255,255,0.18)', borderRadius: 100, paddingHorizontal: 10, paddingVertical: 3 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: sello.tono === 'ok' ? INK : sello.tono === 'alerta' ? '#c14d7a' : '#fff' }}>{sello.texto}</Text>
                 </View>
               </View>
               <Text style={{ fontFamily: 'Baloo2_800ExtraBold', fontSize: 22, color: '#fff' }}>{m.nombre}</Text>

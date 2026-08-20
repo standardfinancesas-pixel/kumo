@@ -128,3 +128,29 @@ export function etiquetaPlan(planName: string | null | undefined, debePagar: boo
   if (!limpio) return 'Plan gratuito';
   return debePagar ? `Plan ${limpio} · cuota pendiente` : `Plan ${limpio}`;
 }
+
+/**
+ * Lo que dice el carnet de la mascota: el sello y la fila de la cobertura
+ * odontológica.
+ *
+ * Está acá porque es el documento que el socio le muestra al veterinario, y hasta
+ * ahora las dos superficies lo tenían escrito a mano y fijo: el sello decía
+ * **ACTIVO** siempre —incluso a un socio gratuito o a uno con la cuota vencida— y
+ * la fila decía **"No activo"** siempre, incluso al que paga $12.000 por mes de más
+ * por la cobertura. Un carnet que afirma lo que no puede sostener es peor que uno
+ * que no dice nada: el que reclama en el mostrador queda expuesto.
+ *
+ * La cobertura sigue la misma regla que los reintegros y los beneficios: la
+ * habilita la cuota paga, no haberla contratado alguna vez. Alguien con el add-on
+ * y la cuota vencida no tiene cobertura, y el carnet no puede decir que sí.
+ */
+export function selloCarnet(debePagar: boolean, tienePlan: boolean): { texto: string; tono: 'ok' | 'neutro' | 'alerta' } {
+  if (!debePagar) return { texto: 'ACTIVO', tono: 'ok' };
+  return tienePlan
+    ? { texto: 'CUOTA VENCIDA', tono: 'alerta' }
+    : { texto: 'GRATUITO', tono: 'neutro' };
+}
+
+/** La fila "Odontológico" del carnet. */
+export const etiquetaOdonto = (addonOdonto: boolean, debePagar: boolean): string =>
+  addonOdonto && !debePagar ? 'Activo' : 'No activo';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -8,6 +8,8 @@ export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; st
 export type Pet = {
   id: string; name: string; species: string; plan: string; socio: string; photo: string;
   breed: string; age: string; microchip: string; castrado: string; odonto: string; next: string; vaccines: Vac[];
+  /** El sello del carnet, resuelto acá y no en la pantalla: ver `selloCarnet`. */
+  sello: { texto: string; tono: 'ok' | 'neutro' | 'alerta' };
 };
 export type Profile = {
   id: string; firstName: string; fullName: string; memberNo: string; planName: string;
@@ -259,6 +261,9 @@ export function useKumoData(userId: string | null) {
     const plan = p ? (Array.isArray(p.plans) ? p.plans[0] : p.plans) : null;
     const planName = plan?.name ?? '—';
     const memberNo = p?.member_no ? `#${p.member_no}` : '—';
+    // El carnet dice sólo lo que la cuota sostiene: la cobertura odontológica y el
+    // sello salen de la cuota paga, igual que los reintegros y los beneficios.
+    const debePagar = !p?.paid_until || p.paid_until < hoyISO();
 
     const profile: Profile | null = p ? {
       id: p.id, firstName: p.full_name.split(' ')[0] ?? p.full_name, fullName: p.full_name, memberNo,
@@ -284,13 +289,16 @@ export function useKumoData(userId: string | null) {
       ].filter(Boolean);
       const species = row.type === 'gato' ? 'Gato' : 'Perro';
       return {
-        id: row.id, name: row.name, species, plan: planName, socio: memberNo,
+        id: row.id, name: row.name, species, plan: etiquetaPlan(planName, debePagar), socio: memberNo,
         photo: row.photo_url ?? PET_FALLBACK[i % PET_FALLBACK.length]!,
         breed: breedParts.join(' · '),
         age: row.age_years != null ? `${species} · ${row.age_years} años` : species,
         microchip: row.microchip ?? '—',
         castrado: row.neutered ? 'Sí' : 'No',
-        odonto: 'No activo',
+        // La cobertura la habilita la cuota paga, no haberla contratado: misma regla
+        // que los reintegros y los beneficios. Estaba fija en "No activo" para todos.
+        odonto: etiquetaOdonto(p?.addon_odonto === true, debePagar),
+        sello: selloCarnet(debePagar, !!plan?.name),
         next: upcoming ? `Próxima: ${fmtShort(upcoming.due_on)}` : 'Todo al día',
         vaccines: vacs,
       };

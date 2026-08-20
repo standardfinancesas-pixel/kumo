@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
-import AppClient, { type PlanVM, type Profile, type Pet, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM } from './AppClient';
+import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM } from './AppClient';
 
 /** Landing: ahí está el login si no hay sesión. */
 const LANDING = urls.landing;
@@ -45,17 +45,20 @@ function imgSrc(photoUrl: string | null, fallback = 'default-pet.webp'): string 
 type PetRow = { id: string; name: string; breed: string | null; age_years: number | null; weight_kg: number | null; microchip: string | null; neutered: boolean; photo_url: string | null; vaccinations: VaccinationRow[] };
 /** `socio` viene armado y no como número: un perfil que no es de socio no tiene
  *  número, y "#null" en el carnet es peor que un guion. */
-function mapPet(row: PetRow, socio: string, planName: string): Pet {
+/** `plan`, `odonto` y `sello` llegan armados: son del SOCIO y los decide la cuota,
+ *  no la mascota. `odonto` estaba escrito fijo en "No activo" para todos. */
+function mapPet(row: PetRow, socio: string, plan: string, odonto: string, sello: SelloVM): Pet {
   return {
     id: row.id,
     name: row.name,
-    plan: planName,
+    plan,
     socio,
     photo: imgSrc(row.photo_url),
     breed: [row.breed ?? 'Mestizo', row.age_years != null ? `${row.age_years} años` : null, row.weight_kg != null ? `${row.weight_kg} kg` : null].filter(Boolean).join(' · '),
     microchip: row.microchip ?? 'Sin chip',
     castrado: row.neutered ? 'Sí' : 'No',
-    odonto: 'No activo',
+    odonto,
+    sello,
     vaccines: (row.vaccinations ?? []).map(mapVac),
   };
 }
@@ -331,7 +334,21 @@ export default async function Page() {
     tarjeta: tarjetaLabel(profileRow.card_brand, profileRow.card_last4),
   };
 
-  const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(r as PetRow, profile.memberNo ? `#${profile.memberNo}` : '—', profile.planName));
+  /*
+   * El carnet dice sólo lo que la cuota sostiene.
+   *
+   * La cobertura odontológica sigue la misma regla que los reintegros y los
+   * beneficios: la habilita la cuota paga, no haberla contratado alguna vez. Y el
+   * plan pasa por `etiquetaPlan` porque el gratuito tiene `planName` '—' y el carnet
+   * mostraba "Plan —".
+   */
+  const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(
+    r as PetRow,
+    profile.memberNo ? `#${profile.memberNo}` : '—',
+    etiquetaPlan(cuota.planName, cuota.debePagar),
+    etiquetaOdonto(cuota.odonto, cuota.debePagar),
+    selloCarnet(cuota.debePagar, cuota.planName !== '—'),
+  ));
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
   const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));
   const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow));
