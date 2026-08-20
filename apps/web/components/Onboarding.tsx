@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, pasoOk, payloadAlta,
-  borradorVacio, conIdentidad, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
+  borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
   MAX_MASCOTAS_ALTA, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -189,14 +189,16 @@ function DeclaracionDeMascota({
   );
 }
 
-export function Onboarding({ open, onClose, initialPet, initialType, plans = data.plans, identidad }: { open: boolean; onClose: () => void; initialPet?: string; initialType?: string; plans?: typeof data.plans; identidad?: { nombre: string; email: string } | null }) {
+/** `arranque` es lo que la persona ya eligió en la web pública (el nombre y la especie
+ *  del hero, o el plan de las tarjetas). Ver `conArranque` en shared. */
+export function Onboarding({ open, onClose, arranque, plans = data.plans, identidad }: { open: boolean; onClose: () => void; arranque?: { mascota?: string; especie?: string; plan?: string } | null; plans?: typeof data.plans; identidad?: { nombre: string; email: string } | null }) {
   const router = useRouter();
   const conGoogle = !!identidad;
   const [step, setStep] = useState(1);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
-  const [b, setB] = useState<BorradorAlta>(() => borradorVacio({ nombre: identidad?.nombre, email: identidad?.email, mascota: initialPet, especie: initialType }));
+  const [b, setB] = useState<BorradorAlta>(() => borradorVacio({ nombre: identidad?.nombre, email: identidad?.email, mascota: arranque?.mascota, especie: arranque?.especie }));
   /** Las fotos por mascota. Van por `uid` y no por posición: al quitar una del medio,
    *  un índice dejaría la foto pegada a otra mascota. */
   const [fotos, setFotos] = useState<Record<string, File>>({});
@@ -210,6 +212,11 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
    * Sin esto, quien entra con Google llega al paso 2 con el nombre y el mail vacíos.
    */
   useEffect(() => { setB((prev) => conIdentidad(prev, identidad)); }, [identidad]);
+  /* Lo mismo con lo que eligió en la web pública: el nombre de la mascota y el plan
+     llegan DESPUÉS del montaje, porque el formulario vive siempre en el árbol de la
+     landing. Sin esto, la persona tipeaba el nombre de su perro en el hero, tocaba
+     Continuar y el paso 1 aparecía vacío. */
+  useEffect(() => { setB((prev) => conArranque(prev, arranque)); }, [arranque]);
 
   if (!open) return null;
 
@@ -312,7 +319,9 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
       {/* Top bar */}
       <div style={{ position: 'sticky', top: 0, zIndex: 5, background: 'rgba(245,244,248,0.9)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #e6e3f0' }}>
         <div style={{ maxWidth: 560, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-          <button onClick={back} style={{ background: '#fff', border: '1px solid #e6e3f0', color: '#5D5491', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '9px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 4px 14px rgba(93,84,145,0.1)', whiteSpace: 'nowrap' }}>← {step === 1 ? 'Volver a la landing' : 'Atrás'}</button>
+          {/* "Volver" y no "Volver a la landing": landing es una palabra nuestra, no
+              del socio, que lo único que ve es el sitio de Kumo. */}
+          <button onClick={back} style={{ background: '#fff', border: '1px solid #e6e3f0', color: '#5D5491', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '9px 14px', borderRadius: 11, cursor: 'pointer', boxShadow: '0 4px 14px rgba(93,84,145,0.1)', whiteSpace: 'nowrap' }}>← {step === 1 ? 'Volver' : 'Atrás'}</button>
           <div style={{ flex: 1 }}>
             {/* Los pasos son 4 o 5: el del pago no existe si eligió gratis. */}
             <div style={{ fontSize: 12, color: '#8781a0', fontWeight: 600, marginBottom: 6 }}>{`Paso ${step} de ${total}`}</div>

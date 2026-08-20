@@ -361,3 +361,47 @@ export function conIdentidad(b: BorradorAlta, identidad?: { nombre: string; emai
   if (nombre === b.socio.nombre && email === b.socio.email) return b;
   return { ...b, socio: { ...b.socio, nombre, email } };
 }
+
+/**
+ * Lo que la persona ya eligió en la web pública, metido en el borrador del alta.
+ *
+ * La landing pide el nombre de la mascota y la especie en el hero, y ofrece "Elegir
+ * FAMILIA" en las tarjetas de planes. Los tres datos se perdían al abrir el
+ * formulario: la persona tipeaba el nombre de su perro, tocaba Continuar y el paso 1
+ * aparecía vacío. Preguntar dos veces lo mismo es la forma más rápida de que alguien
+ * abandone un alta de cinco pasos.
+ *
+ * Igual que `conIdentidad`, solo completa lo que está vacío —lo tipeado siempre
+ * gana— y devuelve el mismo objeto cuando no hay nada que cambiar, para que un
+ * efecto que la llame no se dispare a sí mismo. Hace falta que sea un efecto y no el
+ * estado inicial porque el formulario se monta ANTES: en la web vive siempre en el
+ * árbol de la landing y su `useState` corrió cuando el hero todavía estaba vacío.
+ */
+export function conArranque(
+  b: BorradorAlta,
+  arranque?: { mascota?: string; especie?: string; plan?: string } | null,
+): BorradorAlta {
+  if (!arranque) return b;
+  const primera = b.mascotas[0];
+  const nombre = primera && !primera.datos.nombre.trim() && arranque.mascota?.trim()
+    ? arranque.mascota.trim()
+    : null;
+  const especie = primera && arranque.especie && primera.datos.especie !== arranque.especie
+    && !primera.datos.nombre.trim()
+    ? arranque.especie
+    : null;
+  const plan = !b.eleccion && arranque.plan ? arranque.plan : null;
+  if (!nombre && !especie && !plan) return b;
+
+  return {
+    ...b,
+    mascotas: nombre || especie
+      ? b.mascotas.map((m, i) => (i === 0
+        ? { ...m, datos: { ...m.datos, ...(nombre ? { nombre } : {}), ...(especie ? { especie } : {}) } }
+        : m))
+      : b.mascotas,
+    // `aceptaCuota` en true por lo mismo que al elegir el plan adentro del alta: la
+    // aceptación es el botón del último paso, con las condiciones al lado.
+    eleccion: plan ? { modo: 'pago', plan, aceptaCuota: true } : b.eleccion,
+  };
+}

@@ -24,7 +24,10 @@ const ADMIN = urls.admin;
 /* ── Modal de auth (login/registro) — igual al prototipo (authOpen) ── */
 type AuthMode = 'login' | 'register';
 type View = AuthMode | 'prestador';
-const AuthCtx = createContext<(m: View) => void>(() => {});
+/** `arranque` viaja con la vista: es lo que la persona ya eligió antes de abrir el
+ *  formulario (el nombre y la especie del hero, el plan de una tarjeta). */
+type Arranque = { mascota?: string; especie?: string; plan?: string };
+const AuthCtx = createContext<(m: View, arranque?: Arranque) => void>(() => {});
 const useAuth = () => useContext(AuthCtx);
 
 /** Contenido editable desde el panel admin (planes, FAQ y datos de contacto). */
@@ -340,7 +343,9 @@ function Hero() {
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 <input value={name} onChange={(e) => setName(e.target.value)} placeholder="El nombre de tu mascota" style={{ flex: '1 1 0%', minWidth: 160, padding: '14px 18px', border: '1.5px solid rgb(217,208,238)', borderRadius: 100, fontSize: 15, background: 'rgb(250,249,253)', color: 'rgb(33,30,51)', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <button onClick={() => openAuth('register')} className="scpc" style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 100, display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', boxShadow: '0 8px 20px rgba(93,84,145,0.25)', transition: '0.2s', cursor: 'pointer' }}>Continuar →</button>
+                {/* Lo tipeado acá arranca el alta: antes se perdía y el paso 1 pedía de
+                    nuevo el nombre que la persona acababa de escribir. */}
+                <button onClick={() => openAuth('register', { mascota: name, especie: pet === 'gato' ? 'Gato' : 'Perro' })} className="scpc" style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 100, display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap', boxShadow: '0 8px 20px rgba(93,84,145,0.25)', transition: '0.2s', cursor: 'pointer' }}>Continuar →</button>
               </div>
             </div>
           </div>
@@ -423,7 +428,9 @@ function Plans() {
                   <input type="checkbox" checked={on} onChange={() => setOdonto((s) => ({ ...s, [p.id]: !s[p.id] }))} style={{ width: 16, height: 16, accentColor: feat ? 'rgb(225,251,98)' : 'rgb(93,84,145)', flex: '0 0 auto', cursor: 'pointer' }} />
                   <span>¿Querés sumar cobertura odontológica? <strong>+$12.000/mes</strong></span>
                 </label>
-                <button onClick={() => openAuth('register')} className="scpf" style={{ display: 'block', textAlign: 'center', width: '100%', border: 'none', background: m.btnBg, color: m.btnColor, fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 12, marginBottom: 22, boxSizing: 'border-box', transition: 'filter 0.15s', cursor: 'pointer' }}>Elegir {p.name}</button>
+                {/* El plan que toca acá queda elegido en el alta: elegirlo dos veces es
+                    hacerle repetir la decisión que ya tomó. */}
+                <button onClick={() => openAuth('register', { plan: p.name })} className="scpf" style={{ display: 'block', textAlign: 'center', width: '100%', border: 'none', background: m.btnBg, color: m.btnColor, fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 12, marginBottom: 22, boxSizing: 'border-box', transition: 'filter 0.15s', cursor: 'pointer' }}>Elegir {p.name}</button>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
                   {p.perks.filter((perk) => !/^Tope anual/i.test(perk)).map((perk) => (
                     <div key={perk} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 14, color: feat ? 'rgb(232,228,245)' : 'rgb(74,69,96)' }}>
@@ -915,6 +922,9 @@ export default function LandingClient({ content }: { content: LandingContent }) 
   // 'login' → modal de login; 'register' → onboarding de socio; 'prestador' → landing de prestadores
   const [view, setView] = useState<View | null>(null);
   const [avisoLogin, setAvisoLogin] = useState('');
+  /** Lo que eligió en la web pública antes de abrir el alta: el nombre y la especie
+   *  del hero, o el plan de la tarjeta que tocó. */
+  const [arranque, setArranque] = useState<Arranque | null>(null);
   /** Identidad de Google de alguien que entró pero todavía no es socio. */
   const [identidadGoogle, setIdentidadGoogle] = useState<{ nombre: string; email: string } | null>(null);
 
@@ -970,7 +980,7 @@ export default function LandingClient({ content }: { content: LandingContent }) 
 
   return (
     <ContentCtx.Provider value={content}>
-    <AuthCtx.Provider value={(m) => setView(m)}>
+    <AuthCtx.Provider value={(m, arr) => { setArranque(arr ?? null); setView(m); }}>
       <main style={{ minHeight: '100vh' }}>
         <Nav />
         <Hero />
@@ -988,7 +998,7 @@ export default function LandingClient({ content }: { content: LandingContent }) 
         <Footer />
       </main>
       <AuthModal mode={view === 'login' ? 'login' : null} onClose={() => { setView(null); setAvisoLogin(''); }} aviso={avisoLogin} />
-      <Onboarding open={view === 'register'} onClose={() => { setView(null); setIdentidadGoogle(null); }} plans={content.plans} identidad={identidadGoogle} />
+      <Onboarding open={view === 'register'} onClose={() => { setView(null); setIdentidadGoogle(null); setArranque(null); }} plans={content.plans} identidad={identidadGoogle} arranque={arranque} />
       <PrestadoresPage open={view === 'prestador'} onClose={() => setView(null)} />
     </AuthCtx.Provider>
     </ContentCtx.Provider>
