@@ -1,5 +1,5 @@
 import { View } from 'react-native';
-import { PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, type SocioAlta } from '@kumo/shared';
+import { PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, type SocioAlta } from '@kumo/shared';
 import { Texto as Text, INK, MUTED } from '../ui/Texto';
 import { Campo, CampoClave, Selector } from '../ui/Controles';
 
@@ -43,6 +43,7 @@ export default function Paso2Socio({
         <View style={{ flex: 1 }}>
           <Campo
             label="Fecha de nac." valor={socio.fnac} onCambio={(t) => set({ fnac: formatFecha(t) })}
+            ayuda={avisoFnac(socio.fnac, hoyISO()) ?? undefined}
             mal={socio.fnac.length > 0 && !v.fnac} placeholder="dd/mm/aaaa" keyboardType="numeric"
           />
         </View>

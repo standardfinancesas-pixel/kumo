@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
 import { quienPide } from '@/lib/quien-pide';
-import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta, claveValida, CLAVE_MINIMA } from '@kumo/shared';
+import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta, claveValida, fnacValida, fnacAISO, avisoFnac, EDAD_MINIMA, hoyISO, CLAVE_MINIMA } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
 /**
@@ -33,12 +33,9 @@ import { sendBienvenida } from '@/lib/mail';
 const PET_TYPE: Record<string, string> = { Perro: 'perro', Gato: 'gato', Otro: 'otro' };
 const PET_SEX: Record<string, string> = { Macho: 'macho', Hembra: 'hembra' };
 
-function fnacToIso(fnac: string): string | null {
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fnac.trim());
-  if (!m) return null;
-  const [, d, mo, y] = m;
-  return `${y}-${mo}-${d}`;
-}
+/* La conversión y el chequeo de la fecha viven en `@kumo/shared` (`fnacAISO`), que
+   además valida que la fecha EXISTA: la versión que estaba acá aceptaba 31/02 y
+   99/99/9999 y los guardaba como fecha de nacimiento. */
 function leadingNumber(s: string): number | null {
   const m = /(\d+([.,]\d+)?)/.exec(s ?? '');
   return m?.[1] ? Number(m[1].replace(',', '.')) : null;
@@ -92,6 +89,19 @@ export async function POST(req: Request) {
    * público y recibe lo que le manden. El mensaje dice qué falta en vez de "faltan
    * datos" porque hay APKs instalados que todavía mandan claves de 6 caracteres.
    */
+  /*
+   * El titular tiene que ser mayor de edad: firma el contrato de membresía y una
+   * declaración jurada. Se valida acá además de en la pantalla porque este endpoint
+   * es público, y con la misma función de shared para que no se separen.
+   */
+  if (!fnacValida(socio.fnac, hoyISO())) {
+    // El motivo exacto sale de la misma función que usa el formulario, así que el
+    // socio lee lo mismo venga de donde venga el pedido.
+    const porque = avisoFnac(socio.fnac, hoyISO());
+    return NextResponse.json({
+      error: porque ?? `Revisá la fecha de nacimiento: el titular tiene que ser mayor de ${EDAD_MINIMA}.`,
+    }, { status: 400 });
+  }
   if (!conGoogle && !claveValida(socio.password)) {
     return NextResponse.json({
       error: `La contraseña necesita al menos ${CLAVE_MINIMA} caracteres y una mayúscula.`,
@@ -239,7 +249,7 @@ export async function POST(req: Request) {
       city: socio.localidad || null,
       province: socio.provincia || null,
       dni: socio.dni || null,
-      birth_date: fnacToIso(socio.fnac),
+      birth_date: fnacAISO(socio.fnac),
       // Null = socio gratuito. No es un dato faltante: es un estado válido, y lo
       // que decide el acceso a reintegros y beneficios es `paid_until`, no esto.
       plan_id: planRow?.id ?? null,

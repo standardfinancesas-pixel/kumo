@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
-  PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, pasoOk, payloadAlta,
+  PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, pasoOk, payloadAlta,
   borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
   MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
@@ -223,6 +223,7 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
   const { socio, mascotas } = b;
   // Campo por campo, para el borde rojo del que falla.
   const v = validarSocio(socio, conGoogle);
+  const avisoFechaNac = avisoFnac(socio.fnac, hoyISO());
   const total = pasosDelAlta(b);
   const canNext = pasoOk(step, b, conGoogle);
   const gratis = esGratis(b.eleccion);
@@ -379,7 +380,15 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
             {field('Apellido y nombre', <input autoComplete="name" value={socio.nombre} onChange={(e) => setB({ ...b, socio: { ...socio, nombre: e.target.value } })} placeholder="Ej. Valentina Ruiz" style={input} />)}
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>{field('DNI', <input autoComplete="off" value={socio.dni} onChange={(e) => setB({ ...b, socio: { ...socio, dni: formatDni(e.target.value) } })} placeholder="00.000.000" style={{ ...input, borderColor: socio.dni && !v.dni ? '#c14d7a' : '#e6e3f0' }} />)}</div>
-              <div style={{ flex: 1 }}>{field('Fecha de nac.', <input autoComplete="bday" value={socio.fnac} onChange={(e) => setB({ ...b, socio: { ...socio, fnac: formatFecha(e.target.value) } })} placeholder="dd/mm/aaaa" style={{ ...input, borderColor: socio.fnac && !v.fnac ? '#c14d7a' : '#e6e3f0' }} />)}</div>
+              {/* El aviso de la fecha va escrito, no solo el borde rojo: "18 años" y
+                  "esa fecha no existe" son dos problemas distintos, y un campo que se
+                  pone rojo sin decir cuál deja a la persona probando formatos. */}
+              <div style={{ flex: 1 }}>{field('Fecha de nac.', (
+                <>
+                  <input autoComplete="bday" value={socio.fnac} onChange={(e) => setB({ ...b, socio: { ...socio, fnac: formatFecha(e.target.value) } })} placeholder="dd/mm/aaaa" style={{ ...input, borderColor: socio.fnac && !v.fnac ? '#c14d7a' : '#e6e3f0' }} />
+                  {avisoFechaNac && <p style={{ fontSize: 12.5, color: '#c14d7a', lineHeight: 1.4, margin: '6px 0 0' }}>{avisoFechaNac}</p>}
+                </>
+              ))}</div>
             </div>
             {field('Domicilio', <input autoComplete="street-address" value={socio.domicilio} onChange={(e) => setB({ ...b, socio: { ...socio, domicilio: e.target.value } })} placeholder="Calle y número" style={input} />)}
             <div style={{ display: 'flex', gap: 12 }}>

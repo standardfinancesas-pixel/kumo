@@ -1,4 +1,5 @@
 import { claveValida } from './clave';
+import { hoyISO } from './fechas';
 import { HEALTH_Q, SANITARIO_Q, armarDeclaracion, type RespuestaDeclarada } from './declaracion';
 
 /**
@@ -192,7 +193,9 @@ export type ValidacionSocio = {
 export function validarSocio(socio: SocioAlta, conGoogle = false): ValidacionSocio {
   const nombre = socio.nombre.trim().length > 1 && !socio.nombre.includes('@');
   const dni = /^\d{7,8}$/.test(socio.dni.replace(/\D/g, ''));
-  const fnac = /^\d{2}\/\d{2}\/\d{4}$/.test(socio.fnac);
+  // La fecha no solo tiene que tener la forma: tiene que existir y ser de alguien
+  // mayor de edad. Ver `avisoFnac`, que además explica cuál de las dos cosas falla.
+  const fnac = fnacValida(socio.fnac, hoyISO());
   const tel = socio.tel.replace(/\D/g, '').length === 10;
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(socio.email);
   // Con Google no hay contraseña que validar: la identidad ya está resuelta.
@@ -429,3 +432,72 @@ export const PLAN_GRATUITO = {
   ],
   falta: 'Sin reintegros ni beneficios (se activan con un plan, cuando quieras)',
 } as const;
+
+/* ── La fecha de nacimiento del titular ────────────────────────────── */
+
+/**
+ * Cuántos años hay que tener para asociarse.
+ *
+ * No es una preferencia de producto: el titular firma el contrato de membresía y una
+ * declaración jurada, y en Argentina la capacidad civil plena se alcanza a los 18
+ * (Código Civil y Comercial, art. 25). Un alta firmada por un menor es un contrato
+ * que el club no puede sostener.
+ */
+export const EDAD_MINIMA = 18;
+/** Tope de cordura: más que esto es un año tipeado mal, no una persona. */
+const EDAD_MAXIMA = 110;
+
+/**
+ * `dd/mm/aaaa` → `aaaa-mm-dd`, o null si esa fecha no existe.
+ *
+ * Verifica que la fecha exista de verdad y no solo que tenga la forma: `31/02/2000`
+ * pasa cualquier regex y `new Date` la convierte calladita en el 3 de marzo. Antes
+ * `99/99/9999` entraba sin problema y quedaba guardado como fecha de nacimiento.
+ */
+export function fnacAISO(fnac: string): string | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fnac.trim());
+  if (!m) return null;
+  const [, d, mes, anio] = m;
+  const dia = Number(d), mm = Number(mes), aa = Number(anio);
+  if (mm < 1 || mm > 12 || dia < 1) return null;
+  // El día 0 del mes siguiente es el último del mes: sirve para febrero y bisiestos.
+  const ultimo = new Date(Date.UTC(aa, mm, 0)).getUTCDate();
+  if (dia > ultimo) return null;
+  return `${anio}-${mes}-${d}`;
+}
+
+/** Los años CUMPLIDOS al día de hoy en Argentina. Cumplir el 20 de agosto es tener
+ *  la edad nueva ese mismo día, no al día siguiente. */
+export function edadCumplida(fnacISO: string, hoy: string): number {
+  const [a, m, d] = fnacISO.split('-').map(Number);
+  const [ha, hm, hd] = hoy.split('-').map(Number);
+  const años = (ha ?? 0) - (a ?? 0);
+  const todavíaNo = (hm ?? 0) < (m ?? 0) || ((hm ?? 0) === (m ?? 0) && (hd ?? 0) < (d ?? 0));
+  return todavíaNo ? años - 1 : años;
+}
+
+/**
+ * Por qué esa fecha de nacimiento no sirve, o null si está bien.
+ *
+ * Devuelve el motivo y no un booleano porque el formulario tiene que poder decirlo:
+ * un campo que se pone rojo sin explicar por qué, en una fecha, deja a la persona
+ * probando formatos.
+ */
+export function avisoFnac(fnac: string, hoy: string): string | null {
+  if (!fnac.trim()) return null;
+  const iso = fnacAISO(fnac);
+  if (!iso) return fnac.trim().length >= 10 ? 'Esa fecha no existe. Escribila como dd/mm/aaaa.' : null;
+  const edad = edadCumplida(iso, hoy);
+  if (edad < 0) return 'Esa fecha es del futuro.';
+  if (edad < EDAD_MINIMA) return `Para asociarte tenés que ser mayor de ${EDAD_MINIMA}. Si el titular es otra persona, cargá sus datos.`;
+  if (edad > EDAD_MAXIMA) return 'Revisá el año: parece un error de tipeo.';
+  return null;
+}
+
+/** ¿La fecha de nacimiento sirve para el titular? */
+export function fnacValida(fnac: string, hoy: string): boolean {
+  const iso = fnacAISO(fnac);
+  if (!iso) return false;
+  const edad = edadCumplida(iso, hoy);
+  return edad >= EDAD_MINIMA && edad <= EDAD_MAXIMA;
+}
