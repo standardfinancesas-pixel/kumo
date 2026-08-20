@@ -5,7 +5,7 @@ import {
   esGratis, planElegido, colors, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '../../lib/supabase';
-import { postAlta, crearSuscripcion } from '../../lib/api';
+import { postAlta } from '../../lib/api';
 import type { FotoElegida } from '../../lib/subirFoto';
 import { Texto as Text, BRAND, MUTED } from '../ui/Texto';
 import PasoMascotas from './PasoMascotas';
@@ -208,7 +208,3 @@ export default function Alta({
     </View>
   );
 }
-
-/** Se reexporta para que `App.tsx` pueda pedir el pago sin importar `lib/api` dos
- *  veces: la pantalla final es la que abre Mercado Pago. */
-export { crearSuscripcion };
