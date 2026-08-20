@@ -10,7 +10,7 @@ import {
   colors, PROVINCIAS, partirZona,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
+  ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
@@ -88,6 +88,18 @@ const PROMOS = [
 type Screen = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'reintegros' | 'foros' | 'perfil' | 'mismascotas' | 'guardados' | 'minegocio' | 'notif' | 'prestar';
 type Tab = 'inicio' | 'carnet' | 'servicios' | 'beneficios' | 'foros';
 const openWa = (phone: string) => Linking.openURL('https://wa.me/' + (phone || '').replace(/\D/g, ''));
+
+/**
+ * Abrir un lugar en la aplicación de mapas del teléfono.
+ *
+ * Se usa el esquema del sistema y no un link a Google Maps: así se abre la app que la
+ * persona ya usa —Google Maps, Apple Maps, Organic Maps, la que sea— en vez de
+ * imponerle una. iOS y Android tienen esquemas distintos y ninguno acepta el del otro.
+ */
+const abrirMapa = (consulta: string) => {
+  const q = encodeURIComponent(consulta);
+  Linking.openURL(Platform.OS === 'ios' ? `maps:0,0?q=${q}` : `geo:0,0?q=${q}`);
+};
 /** Del ícono genérico que devuelve `KIND_ICON` al nombre que entiende `Ic`. */
 const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
 /** WhatsApp del club, para el muro de la cuota. Pendiente: sacarlo de
@@ -846,18 +858,35 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
     setBusy(false);
   };
 
-  const dato = (icono: IconName, texto: string, ultimo = false) => (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: ultimo ? 0 : 1, borderBottomColor: '#eeecf5' }}>
-      <Ic d={icono} size={19} />
-      <Text style={{ fontSize: 14, fontWeight: '600', color: INK, flex: 1 }}>{texto}</Text>
-    </View>
-  );
+  /*
+   * Cada dato de contacto es una acción, no un cartel.
+   *
+   * Eran cuatro filas de texto plano: no se podía ni tocar el teléfono para llamar ni
+   * abrir el Instagram. Los links los arma `@kumo/shared/prestadores`, porque el
+   * trabajo está en que la gente escribe estos datos como quiere (el sitio sin
+   * "https://", el Instagram con arroba o con la URL entera). Si un dato no se puede
+   * convertir en acción, la fila queda como texto.
+   */
+  const dato = (icono: IconName, texto: string, ultimo = false, abrir?: (() => void) | null) => {
+    const adentro = (
+      <>
+        <Ic d={icono} size={19} />
+        <Text style={{ fontSize: 14, fontWeight: '600', color: abrir ? BRAND : INK, flex: 1 }}>{texto}</Text>
+      </>
+    );
+    const estilo = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingVertical: 12, borderBottomWidth: ultimo ? 0 : 1, borderBottomColor: '#eeecf5' };
+    return abrir
+      ? <TouchableOpacity key={texto} onPress={abrir} style={estilo}>{adentro}</TouchableOpacity>
+      : <View key={texto} style={estilo}>{adentro}</View>;
+  };
+  const abrirSi = (url: string | null) => (url ? () => { void Linking.openURL(url); } : null);
+  const mapa = consultaMapa({ lat: p.lat, lng: p.lng, direccion: p.address, zona: p.zone });
   const contacto = [
-    p.website ? { i: 'globe' as IconName, t: p.website } : null,
-    p.instagram ? { i: 'instagram' as IconName, t: p.instagram } : null,
-    p.address ? { i: 'pin' as IconName, t: p.address } : null,
-    p.phone ? { i: 'phone' as IconName, t: p.phone } : null,
-  ].filter(Boolean) as { i: IconName; t: string }[];
+    p.website ? { i: 'globe' as IconName, t: p.website, abrir: abrirSi(urlSitio(p.website)) } : null,
+    p.instagram ? { i: 'instagram' as IconName, t: p.instagram, abrir: abrirSi(urlInstagram(p.instagram)) } : null,
+    p.address ? { i: 'pin' as IconName, t: p.address, abrir: mapa ? () => abrirMapa(mapa) : null } : null,
+    p.phone ? { i: 'phone' as IconName, t: p.phone, abrir: abrirSi(urlTel(p.phone)) } : null,
+  ].filter(Boolean) as { i: IconName; t: string; abrir: (() => void) | null }[];
 
   return (
     <View style={{ flex: 1 }}>
@@ -918,7 +947,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
 
           {contacto.length > 0 && (
             <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 16, marginBottom: 18 }}>
-              {contacto.map((c, i) => dato(c.i, c.t, i === contacto.length - 1))}
+              {contacto.map((c, i) => dato(c.i, c.t, i === contacto.length - 1, c.abrir))}
             </View>
           )}
 
@@ -1114,7 +1143,9 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
               {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
               <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
                 {ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews}) · ` : <Text style={{ color: '#a29dba' }}>Sin reseñas · </Text>}
-                <Text style={{ color: BRAND, fontWeight: '700' }}>{money(p.price)}{p.priceUnit}</Text>
+                {/* Sin tarifa cargada no se muestra nada: "$0" se lee como que trabaja
+                    gratis, y el que se acaba de dar de alta todavía no la puso. */}
+                {precioTexto(p.price, p.priceUnit) ? <Text style={{ color: BRAND, fontWeight: '700' }}>{precioTexto(p.price, p.priceUnit)}</Text> : null}
               </Text>
             </View>
             <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
@@ -2061,6 +2092,13 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   const [zona, setZona] = useState('');
   /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
   const [direccion, setDireccion] = useState('');
+  /* Instagram, sitio y tarifa: opcionales, pero se piden ACÁ y no solo al editar.
+     Antes solo existían en "Editar datos" del negocio ya publicado, así que la ficha
+     de todo prestador nuevo salía con dos filas y sin precio. */
+  const [instagram, setInstagram] = useState('');
+  const [sitio, setSitio] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [about, setAbout] = useState('');
   const [busy, setBusy] = useState(false);
@@ -2103,6 +2141,8 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
     const { data: alta, error: e } = await supabase.from('providers').insert({
       owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
       address: direccion.trim() || null,
+      instagram: instagram.trim() || null, website: sitio.trim() || null,
+      price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
       phone: tel.trim() || null, about: about.trim(), status: 'pendiente',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
@@ -2153,6 +2193,24 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
         onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)}
         ayuda="Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona."
       />
+
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+        <View style={{ flex: 1 }}>
+          <SheetLabel>Instagram · opcional</SheetLabel>
+          <TextInput value={instagram} onChangeText={setInstagram} placeholder="@tunegocio" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={input} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <SheetLabel>Sitio · opcional</SheetLabel>
+          <TextInput value={sitio} onChangeText={setSitio} placeholder="tunegocio.com.ar" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={input} />
+        </View>
+      </View>
+
+      <SheetLabel>Tarifa · opcional</SheetLabel>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="4500" placeholderTextColor={colors.violet[400]} style={{ ...input, flex: 1 }} />
+        <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...input, flex: 1 }} />
+      </View>
+      <Text style={{ fontSize: 12, color: MUTED, marginTop: 6, marginBottom: 12, lineHeight: 17 }}>Si no la ponés, tu ficha no muestra precio (mejor eso que mostrar "$0"). Podés cargarla después.</Text>
 
       <SheetLabel>Contanos sobre tu servicio</SheetLabel>
       <TextInput value={about} onChangeText={setAbout} multiline numberOfLines={3} placeholder="Experiencia, disponibilidad, precios de referencia…" placeholderTextColor={colors.violet[400]} style={{ ...input, height: 90, textAlignVertical: 'top', marginBottom: 16 }} />
@@ -2513,6 +2571,13 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
   const [zona, setZona] = useState('');
   /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
   const [direccion, setDireccion] = useState('');
+  /* Instagram, sitio y tarifa: opcionales, pero se piden ACÁ y no solo al editar.
+     Antes solo existían en "Editar datos" del negocio ya publicado, así que la ficha
+     de todo prestador nuevo salía con dos filas y sin precio. */
+  const [instagram, setInstagram] = useState('');
+  const [sitio, setSitio] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -2585,6 +2650,8 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
     const { data: alta, error: e } = await supabase.from('providers').insert({
       owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
       address: direccion.trim() || null,
+      instagram: instagram.trim() || null, website: sitio.trim() || null,
+      price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
       phone: tel.trim() || null, status: 'pendiente',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
@@ -2629,7 +2696,13 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
               <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
               {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
                   aparece en la lista pero sin distancia ni pin. */}
-              <Text style={{ fontSize: 11.5, color: MUTED, lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía.</Text>
+              <TextInput value={instagram} onChangeText={setInstagram} placeholder="Instagram (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
+              <TextInput value={sitio} onChangeText={setSitio} placeholder="Sitio web (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="Tarifa (opcional)" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
+                <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
+              </View>
+              <Text style={{ fontSize: 11.5, color: MUTED, lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
               {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>

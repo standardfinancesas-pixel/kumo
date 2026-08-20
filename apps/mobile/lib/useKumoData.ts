@@ -43,6 +43,9 @@ export type ProviderVM = {
   /** "de tu casa" · "de tu zona" · "del centro", según cuánto se pudo resolver del
    *  domicilio del socio. */
   kmDesde: string;
+  /** Para abrir el lugar en la app de mapas: se abre en el pin, no en el texto. */
+  lat: number | null;
+  lng: number | null;
   rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string;
   // Los usa la ficha del prestador.
   about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
@@ -316,6 +319,7 @@ export function useKumoData(userId: string | null) {
       id: r.id, name: r.name, category: r.category, zone: r.zone,
       km: r.lat != null && r.lng != null ? distanciaKm(desde, { lat: r.lat, lng: r.lng }) : null,
       kmDesde,
+      lat: r.lat, lng: r.lng,
       // El sello sale del estado que puso el admin, con el mismo criterio que la webapp.
       badge: providerBadge(r.status, r.rating, r.reviews), verificado: r.status === 'verificado',
       rating: r.rating, reviews: r.reviews, price: r.price, priceUnit: r.price_unit,

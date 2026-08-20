@@ -7,7 +7,7 @@ import {
   urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, partirZona,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
-  ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
+  ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -892,18 +892,47 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
       ))}
     </span>
   );
-  const dato = (icono: ReactNode, texto: string, ultimo = false) => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: ultimo ? 'none' : '1px solid rgb(238,236,245)' }}>
-      <span style={{ color: '#5D5491', flex: 'none' }}>{ic(icono, false, 19)}</span>
-      <span style={{ fontSize: 14, fontWeight: 600 }}>{texto}</span>
-    </div>
-  );
+  /*
+   * Cada dato de contacto es una acción, no un cartel.
+   *
+   * Eran cuatro filas de texto plano: se veían como información y no se podía hacer
+   * nada con ellas —ni tocar el teléfono para llamar, ni abrir el Instagram—. Los
+   * links los arma `@kumo/shared/prestadores`, porque el trabajo está en que la
+   * gente escribe estos datos como quiere: el sitio sin "https://", el Instagram con
+   * arroba o con la URL entera.
+   *
+   * Si un dato no se puede convertir en link, la fila queda como texto: mejor eso que
+   * un link roto.
+   */
+  const dato = (icono: ReactNode, texto: string, ultimo = false, href?: string | null) => {
+    const estilo: CSSProperties = {
+      display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0',
+      borderBottom: ultimo ? 'none' : '1px solid rgb(238,236,245)',
+      textDecoration: 'none', color: 'inherit',
+    };
+    const adentro = (
+      <>
+        <span style={{ color: '#5D5491', flex: 'none' }}>{ic(icono, false, 19)}</span>
+        <span style={{ fontSize: 14, fontWeight: 600, color: href ? 'rgb(93,84,145)' : 'inherit' }}>{texto}</span>
+      </>
+    );
+    if (!href) return <div key={texto} style={estilo}>{adentro}</div>;
+    // `tel:` no abre pestaña: la abriría en blanco y el teléfono nunca vuelve.
+    const nueva = !href.startsWith('tel:');
+    return (
+      <a key={texto} href={href} target={nueva ? '_blank' : undefined} rel={nueva ? 'noopener noreferrer' : undefined} style={estilo}>
+        {adentro}
+      </a>
+    );
+  };
   const contacto = [
-    p.website ? { i: globePath, t: p.website } : null,
-    p.instagram ? { i: igPath, t: p.instagram } : null,
-    p.address ? { i: pinDropPath, t: p.address } : null,
-    p.phone ? { i: phonePath, t: p.phone } : null,
-  ].filter(Boolean) as { i: ReactNode; t: string }[];
+    p.website ? { i: globePath, t: p.website, href: urlSitio(p.website) } : null,
+    p.instagram ? { i: igPath, t: p.instagram, href: urlInstagram(p.instagram) } : null,
+    // El mapa se abre en las coordenadas del pin cuando las hay, así el socio cae
+    // exactamente donde lo vio, y si no en la dirección escrita.
+    p.address ? { i: pinDropPath, t: p.address, href: urlMapaWeb({ lat: p.lat, lng: p.lng, direccion: p.address, zona: p.zone }) } : null,
+    p.phone ? { i: phonePath, t: p.phone, href: urlTel(p.phone) } : null,
+  ].filter(Boolean) as { i: ReactNode; t: string; href: string | null }[];
 
   return (
     <div style={{ padding: '0 0 24px' }}>
@@ -952,14 +981,14 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
             <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Servicios y tarifas</div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 13, padding: '12px 14px', marginBottom: 18 }}>
               <span style={{ fontSize: 14, fontWeight: 600 }}>{p.category}</span>
-              <span style={{ fontSize: 14, color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span>
+              <span style={{ fontSize: 14, color: 'rgb(93,84,145)', fontWeight: 700 }}>{precioTexto(p.price, p.priceUnit)}</span>
             </div>
           </>
         )}
 
         {contacto.length > 0 && (
           <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: '6px 16px', marginBottom: 18 }}>
-            {contacto.map((c, i) => dato(c.i, c.t, i === contacto.length - 1))}
+            {contacto.map((c, i) => dato(c.i, c.t, i === contacto.length - 1, c.href))}
           </div>
         )}
 
@@ -1174,8 +1203,10 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
               <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone}{p.km != null && <> · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></>}</div>
               {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
               <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>
-                {ratingLabel(p.rating, p.reviews) ? <>{star} {ratingLabel(p.rating, p.reviews)} ({p.reviews}) · </> : <span style={{ color: 'rgb(162,157,186)' }}>Sin reseñas · </span>}
-                <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>${p.price.toLocaleString('es-AR')}{p.priceUnit}</span>
+                {ratingLabel(p.rating, p.reviews) ? <>{star} {ratingLabel(p.rating, p.reviews)} ({p.reviews}){precioTexto(p.price, p.priceUnit) ? ' · ' : ''}</> : <span style={{ color: 'rgb(162,157,186)' }}>Sin reseñas{precioTexto(p.price, p.priceUnit) ? ' · ' : ''}</span>}
+                {/* Sin tarifa cargada no se muestra nada: "$0" se lee como que trabaja
+                    gratis, y el que se acaba de dar de alta todavía no la puso. */}
+                {precioTexto(p.price, p.priceUnit) && <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>{precioTexto(p.price, p.priceUnit)}</span>}
               </div>
             </div>
             <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
@@ -1219,6 +1250,14 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
   /** La dirección es opcional y es lo único que lo pone en el mapa: ver el aviso
    *  debajo del campo y  en lib/geocodificar. */
   const [direccion, setDireccion] = useState('');
+  /* Instagram, sitio y tarifa: opcionales, pero se piden ACÁ y no solo al editar.
+     Antes solo existían en "Editar datos" del negocio ya publicado, así que la ficha
+     de todo prestador nuevo salía con dos filas y sin precio, y el club no tenía
+     manera de mostrarlo bien hasta que el prestador volviera a entrar. */
+  const [instagram, setInstagram] = useState('');
+  const [sitio, setSitio] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(profile.phone ?? '');
   const [about, setAbout] = useState('');
   const [foto, setFoto] = useState<File | null>(null);
@@ -1265,6 +1304,8 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
     const { data: alta, error: insErr } = await supabase.from('providers').insert({
       owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
       address: direccion.trim() || null,
+      instagram: instagram.trim() || null, website: sitio.trim() || null,
+      price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
       phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, status: 'pendiente',
     }).select('id').single();
     if (insErr) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
@@ -1328,6 +1369,24 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       <label style={sheetLabel} htmlFor="pr-dir">Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
       <CampoDomicilio id="pr-dir" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Av. Santa Fe 3200" style={sheetInput} />
       <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</p>
+
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: '1 1 160px' }}>
+          <label style={sheetLabel} htmlFor="pr-ig">Instagram <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+          <input id="pr-ig" value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@tunegocio" style={sheetInput} />
+        </div>
+        <div style={{ flex: '1 1 160px' }}>
+          <label style={sheetLabel} htmlFor="pr-sitio">Sitio web <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+          <input id="pr-sitio" value={sitio} onChange={(e) => setSitio(e.target.value)} placeholder="tunegocio.com.ar" style={sheetInput} />
+        </div>
+      </div>
+
+      <label style={sheetLabel} htmlFor="pr-precio">Tarifa <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
+        <input id="pr-precio" value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="4500" style={{ ...sheetInput, flex: '1 1 110px', width: 'auto' }} />
+        <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ ...sheetInput, flex: '1 1 110px', width: 'auto' }} />
+      </div>
+      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '0 0 12px', lineHeight: 1.45 }}>Si no la ponés, tu ficha no muestra precio (mejor eso que mostrar "$0"). Podés cargarla después.</p>
 
       <label style={sheetLabel} htmlFor="pr-about">Contanos sobre tu servicio</label>
       <textarea id="pr-about" value={about} onChange={(e) => setAbout(e.target.value)} rows={3} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...sheetInput, marginBottom: 16, resize: 'none' }} />
@@ -1706,7 +1765,11 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(247,246,250)', borderRadius: 14, padding: 14, marginBottom: 12 }}>
           <span style={{ color: '#5D5491', flex: 'none' }}>{ic(pinDropPath, false, 18)}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(74,69,96)' }}>{b.address || b.zone}</div>
+            {/* La dirección del comercio abre el mapa, igual que en la ficha del
+                prestador: es el dato que se mira justo antes de ir. */}
+            {urlMapaWeb({ lat: b.lat, lng: b.lng, direccion: b.address, zona: b.zone })
+              ? <a href={urlMapaWeb({ lat: b.lat, lng: b.lng, direccion: b.address, zona: b.zone })!} target="_blank" rel="noopener noreferrer" style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(93,84,145)', textDecoration: 'none' }}>{b.address || b.zone}</a>
+              : <div style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(74,69,96)' }}>{b.address || b.zone}</div>}
             {b.address && b.zone && <div style={{ fontSize: 12, color: 'rgb(135,129,160)', marginTop: 2 }}>{b.zone}</div>}
           </div>
           {b.km != null && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100, flex: 'none' }}>{b.km} km {b.kmDesde}</span>}
@@ -2309,6 +2372,14 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
   /** La dirección es opcional y es lo único que lo pone en el mapa: ver el aviso
    *  debajo del campo y  en lib/geocodificar. */
   const [direccion, setDireccion] = useState('');
+  /* Instagram, sitio y tarifa: opcionales, pero se piden ACÁ y no solo al editar.
+     Antes solo existían en "Editar datos" del negocio ya publicado, así que la ficha
+     de todo prestador nuevo salía con dos filas y sin precio, y el club no tenía
+     manera de mostrarlo bien hasta que el prestador volviera a entrar. */
+  const [instagram, setInstagram] = useState('');
+  const [sitio, setSitio] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(profile.phone ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -2359,6 +2430,8 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     const { data: alta, error: e2 } = await supabase.from('providers').insert({
       owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
       address: direccion.trim() || null,
+      instagram: instagram.trim() || null, website: sitio.trim() || null,
+      price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
       phone: tel.trim() || null, status: 'pendiente',
     }).select('id').single();
     if (e2) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
@@ -2422,7 +2495,13 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
                 <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
                 {/* La dirección es lo único que lo pone en el mapa; sin ella el
                     negocio aparece en la lista pero sin distancia ni pin. */}
-                <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía.</p>
+                <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                <input value={sitio} onChange={(e) => setSitio(e.target.value)} placeholder="Sitio web (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="Tarifa (opcional)" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                  <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                </div>
+                <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</p>
                 {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
                 <button type="submit" disabled={busy} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
               </form>
