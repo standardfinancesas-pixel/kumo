@@ -22,6 +22,7 @@ import { useEsperarPago } from './lib/esperarPago';
 import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
+import { recalcularUbicacion } from './lib/api';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
@@ -896,7 +897,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
               </View>
             )}
             <View style={{ backgroundColor: colors.violet[100], paddingHorizontal: 11, paddingVertical: 5, borderRadius: 100 }}>
-              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 11.5 }}>{p.km} km de tu casa</Text>
+              {p.km != null && <Text style={{ color: BRAND, fontWeight: '700', fontSize: 11.5 }}>{p.km} km {p.kmDesde}</Text>}
             </View>
           </View>
 
@@ -998,7 +999,11 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
   const [radius, setRadius] = useState(5);
   const [selId, setSelId] = useState<string | null>(null);
   const ql = q.trim().toLowerCase();
-  const list = providers.filter((p) => (!cat || p.category === cat) && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql)) && p.km <= radius);
+  // El radio descarta al que SABEMOS que está lejos; el que no tiene coordenadas no
+  // entra ni sale del radio, así que se muestra sin distancia en vez de esconderlo.
+  const list = providers.filter((p) => (!cat || p.category === cat) && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql)) && (p.km == null || p.km <= radius));
+  /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
+  const masCerca = providers.reduce<number | null>((min, p) => (p.km != null && (min == null || p.km < min) ? p.km : min), null);
 
   const sel = providers.find((p) => p.id === selId);
   if (sel) {
@@ -1083,7 +1088,15 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
       </View>
       {list.length === 0 && (
         <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 22, alignItems: 'center' }}>
-          <Text style={{ fontSize: 13.5, color: MUTED, textAlign: 'center' }}>Sin resultados en {radius} km. Ampliá el radio o cambiá de servicio.</Text>
+          {/* Ahora que las distancias salen del domicilio del socio, "ampliá el radio"
+              es un consejo inútil para alguien de Tandil: el radio llega a 25 km y el
+              prestador más cercano está a 350. Que lo diga el número. */}
+          <Text style={{ fontSize: 13.5, color: MUTED, textAlign: 'center' }}>
+            Sin resultados en {radius} km.{' '}
+            {masCerca != null && masCerca > radius
+              ? `El más cercano está a ${masCerca} km ${providers[0]?.kmDesde ?? ''}.`
+              : 'Ampliá el radio o cambiá de servicio.'}
+          </Text>
         </View>
       )}
       <View style={{ gap: 12 }}>
@@ -1095,7 +1108,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
                 <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
                 {p.badge ? <View style={{ backgroundColor: colors.violet[100], borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}><Text style={{ fontSize: 9, fontWeight: '700', color: BRAND }}>{p.badge}</Text></View> : null}
               </View>
-              <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone} · {p.km} km</Text>
+              <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone}{p.km != null ? ` · ${p.km} km` : ''}</Text>
               {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
               <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
                 {ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews}) · ` : <Text style={{ color: '#a29dba' }}>Sin reseñas · </Text>}
@@ -1367,6 +1380,14 @@ function Perfil({ profile, planes, go, reload, pago, onPlan }: { profile: Profil
       bank_cbu: datos.bancoCbu.replace(/\D/g, '') || null,
     }).eq('id', profile.id).select('id');
     if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    /* Si se mudó, el mapa se muda con él: sin esto las coordenadas quedan en la
+       dirección anterior y la pantalla le muestra prestadores cerca de donde ya no
+       vive. Solo cuando el domicilio cambió, y sin esperar la respuesta. */
+    if (datos.dom.trim() !== (profile.address === '—' ? '' : profile.address)
+      || datos.localidad.trim() !== (profile.city === '—' ? '' : profile.city)
+      || datos.provincia.trim() !== (profile.province === '—' ? '' : profile.province)) {
+      void recalcularUbicacion();
+    }
     setEditando(false);
     await reload();
     setBusy(false);
@@ -1986,7 +2007,7 @@ function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[];
               <Image source={petImg(p.photo)} style={{ width: 50, height: 50, borderRadius: 15, backgroundColor: colors.violet[100] }} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
-                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone} · {p.km} km</Text>
+                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone}{p.km != null ? ` · ${p.km} km` : ''}</Text>
                 <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews})` : 'Sin reseñas'}</Text>
               </View>
               <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>

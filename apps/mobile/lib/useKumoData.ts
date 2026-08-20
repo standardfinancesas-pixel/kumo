@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, distanciaKm, origenDelSocio, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -35,7 +35,14 @@ export type Profile = {
   suscripcion: EstadoSuscripcion;
 };
 export type ProviderVM = {
-  id: string; name: string; category: string; zone: string; km: number; badge?: string;
+  id: string; name: string; category: string; zone: string; badge?: string;
+  /** Null = el prestador no tiene coordenadas cargadas: no se sabe a qué distancia
+   *  está, así que no se muestra ni se filtra por radio (antes era 0 km, que lo
+   *  ponía primero en la lista como si estuviera en la puerta). */
+  km: number | null;
+  /** "de tu casa" · "de tu zona" · "del centro", según cuánto se pudo resolver del
+   *  domicilio del socio. */
+  kmDesde: string;
   rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string;
   // Los usa la ficha del prestador.
   about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
@@ -122,15 +129,9 @@ function relTime(iso: string): string {
   return days === 1 ? 'ayer' : `hace ${days} días`;
 }
 
-/* Distancia real desde un punto de referencia en CABA (no hay geolocalización todavía). */
-const CABA_LAT = -34.6037, CABA_LNG = -58.3816;
-function haversineKm(lat: number | null, lng: number | null): number {
-  if (lat == null || lng == null) return 0;
-  const R = 6371, toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(lat - CABA_LAT), dLng = toRad(lng - CABA_LNG);
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(CABA_LAT)) * Math.cos(toRad(lat)) * Math.sin(dLng / 2) ** 2;
-  return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 10) / 10;
-}
+/* Las distancias se miden desde el domicilio del socio (`profiles.lat/lng`,
+   geocodificado en el alta) y no desde un punto fijo en CABA. La cuenta y el texto
+   de "desde dónde" están en `@kumo/shared` (cerca.ts), compartidos con la web. */
 
 const PET_FALLBACK = ['happy-dog.webp', 'plan-cat.webp'];
 const PROVIDER_FALLBACK = 'prestador-walker.webp';
@@ -185,7 +186,7 @@ export function useKumoData(userId: string | null) {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
+      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
@@ -304,15 +305,22 @@ export function useKumoData(userId: string | null) {
       };
     });
 
+    /* Desde dónde ve el mundo este socio: su domicilio, o el centro de CABA si no
+       se pudo geocodificar —y en ese caso la pantalla lo dice. */
+    const desde = origenDelSocio({ lat: p?.lat, lng: p?.lng, geoOrigen: p?.geo_origen });
+    const kmDesde = textoDistancia(desde.origen);
     const providers: ProviderVM[] = (provRes.data ?? []).map((r) => ({
       id: r.id, name: r.name, category: r.category, zone: r.zone,
-      km: haversineKm(r.lat, r.lng),
+      km: r.lat != null && r.lng != null ? distanciaKm(desde, { lat: r.lat, lng: r.lng }) : null,
+      kmDesde,
       // El sello sale del estado que puso el admin, con el mismo criterio que la webapp.
       badge: providerBadge(r.status, r.rating, r.reviews), verificado: r.status === 'verificado',
       rating: r.rating, reviews: r.reviews, price: r.price, priceUnit: r.price_unit,
       phone: r.phone ?? '', photo: r.photo_url ?? PROVIDER_FALLBACK,
       about: r.about ?? '', address: r.address ?? '', instagram: r.instagram, website: r.website,
-    })).sort((a, b) => a.km - b.km);
+      // Los que no tienen coordenadas van al final: no se puede afirmar que estén
+      // cerca, pero tampoco hay motivo para esconderlos.
+    })).sort((a, b) => (a.km ?? Infinity) - (b.km ?? Infinity));
 
     const benefits: BenefitVM[] = (benefRes.data ?? []).map((b) => ({
       id: b.id, name: b.name, cat: b.category, disc: b.discount, icon: benefitIcon(b.category),

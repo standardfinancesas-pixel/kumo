@@ -24,17 +24,6 @@ import { MapaPrestadores } from '@/components/MapaPrestadores';
  * Pantallas listas: Inicio, Carnet. El resto se va completando.
  */
 
-/**
- * El centro del mapa de prestadores.
- *
- * Es el Obelisco, y es provisorio a propósito: lo correcto es centrarlo en el
- * domicilio del socio (`profiles.address`), pero para eso hay que geocodificar la
- * dirección y todavía no se hace. Con el centro fijo el mapa ya contesta "quién hay
- * en la ciudad"; centrado en el socio contestaría "quién hay cerca de mí", que es la
- * pregunta de verdad.
- */
-const CENTRO_MAPA = { lat: -34.6037, lng: -58.3816 };
-
 /** Landing: login, planes y destino al cerrar sesión. */
 const LANDING = urls.landing;
 
@@ -116,7 +105,12 @@ export type EmergencyContact = { id: string; name: string; phone: string; type: 
 /** `lat`/`lng` viajan además de `km`: la distancia sirve para ordenar la lista, pero
  *  para dibujar el pin en el mapa hace falta la coordenada. Pueden ser null — un
  *  prestador cargado a mano por el club puede no tenerlas — y ahí no se dibuja. */
-export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
+/** `km` es null cuando el prestador no tiene coordenadas: a qué distancia está no
+ *  se sabe, y por eso no se muestra ni se usa para filtrar (pero el prestador
+ *  aparece igual en la lista). `kmDesde` es el texto de desde dónde se mide —"de tu
+ *  casa", "de tu zona", "del centro"—, que lo decide el servidor según cuánto pudo
+ *  resolver del domicilio del socio. */
+export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number | null; kmDesde: string; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
 /** La ficha del beneficio necesita todo lo que la tabla ya guardaba y no se usaba:
  *  descripción, zona, días, horario y vigencia. */
 export type BenefitVM = {
@@ -948,7 +942,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5f7d10" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">{shieldPath}</svg>Verificado por Kumo
             </span>
           )}
-          <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>{p.km} km de tu casa</span>
+          {p.km != null && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100 }}>{p.km} km {p.kmDesde}</span>}
         </div>
 
         {p.about && <p style={{ fontSize: 14, color: 'rgb(91,86,112)', lineHeight: 1.6, margin: '0 0 18px' }}>{p.about}</p>}
@@ -1036,7 +1030,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
 }
 const star = <svg width="12" height="12" viewBox="0 0 24 24" fill="#f5b301" style={{ display: 'inline', verticalAlign: -1 }}><path d="M12 3.4 14.6 9l6 .5-4.6 4 1.4 5.9L12 18l-5.4 3.2 1.4-5.9-4.6-4 6-.5z" /></svg>;
 
-function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; profile: Profile; reviews: Record<string, Review[]> }) {
+function Servicios({ go, providers, initialGuardados, profile, reviews, centro }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; profile: Profile; reviews: Record<string, Review[]>; centro: { lat: number; lng: number } }) {
   const memberId = profile.id;
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
@@ -1062,11 +1056,17 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
   }
   const guardadosList = providers.filter((p) => guardados.includes(p.id));
   const list = providers.filter((p) => {
-    if (p.km > radio) return false;
+    // Se descarta al que SABEMOS que está lejos. El que no tiene coordenadas no
+    // entra ni sale del radio: no se puede afirmar ninguna de las dos cosas, así que
+    // se muestra sin distancia en vez de esconderlo.
+    if (p.km != null && p.km > radio) return false;
     if (cat && p.category !== cat) return false;
     if (ql && !(`${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql))) return false;
     return true;
   });
+  /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
+  const conDistancia = providers.map((p) => p.km).filter((k): k is number => k != null);
+  const masCerca = conDistancia.length ? Math.min(...conDistancia) : null;
   const pct = ((radio - 1) / 24) * 100;
 
   return (
@@ -1128,7 +1128,7 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
         */}
       <MapaPrestadores
         pins={list.filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, nombre: x.name, categoria: x.category, lat: x.lat as number, lng: x.lng as number }))}
-        centro={CENTRO_MAPA}
+        centro={centro}
         radioKm={radio}
         onPin={(id) => setSelId(id)}
         style={{ marginBottom: 14 }}
@@ -1173,7 +1173,7 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
                 {p.badge && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 5 }}>{p.badge}</span>}
               </div>
-              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone} · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></div>
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone}{p.km != null && <> · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></>}</div>
               {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
               <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>
                 {ratingLabel(p.rating, p.reviews) ? <>{star} {ratingLabel(p.rating, p.reviews)} ({p.reviews}) · </> : <span style={{ color: 'rgb(162,157,186)' }}>Sin reseñas · </span>}
@@ -1183,9 +1183,16 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
             <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
           </button>
         ))}
+        {/* El vacío dice a qué distancia está el más cercano.
+            Ahora que las distancias se miden desde la casa del socio, "ampliá el
+            radio" es un consejo inútil para alguien de Tandil: el radio llega hasta
+            25 km y el prestador más cercano está a 350. Que lo diga el número. */}
         {list.length === 0 && (
           <div style={{ textAlign: 'center', padding: '30px 10px', color: 'rgb(162,157,186)', fontSize: 14, lineHeight: 1.5 }}>
-            Sin resultados en {radio} km.<br />Ampliá el radio o cambiá de servicio.
+            Sin resultados en {radio} km.
+            {masCerca != null && masCerca > radio
+              ? <><br />El más cercano está a {masCerca} km {providers[0]?.kmDesde ?? ''}.</>
+              : <><br />Ampliá el radio o cambiá de servicio.</>}
           </div>
         )}
       </div>
@@ -2569,6 +2576,13 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onP
       phone: datos.tel.trim() || null, email: datos.email.trim(),
     }).eq('id', profile.id);
     if (e) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
+    /* Si se mudó, el mapa tiene que mudarse con él: sin esto las coordenadas quedan
+       en la dirección anterior y la pantalla le muestra prestadores cerca de donde
+       ya no vive. Se pide solo cuando el domicilio cambió, y no se espera la
+       respuesta: es el centro de un mapa, no parte de guardar los datos. */
+    if (datos.dom.trim() !== (profile.address ?? '') || datos.localidad.trim() !== (profile.city ?? '') || datos.provincia.trim() !== (profile.province ?? '')) {
+      void fetch('/api/perfil/ubicacion', { method: 'POST' });
+    }
     setEditando(false);
     router.refresh();
     setBusy(false);
@@ -3385,7 +3399,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver. */ centro: { lat: number; lng: number } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -3455,7 +3469,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
           {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
-          {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
+          {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} />}

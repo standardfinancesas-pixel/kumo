@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
+import { geocodificarDomicilio } from '@/lib/geocodificar';
 import { quienPide } from '@/lib/quien-pide';
 import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta, claveValida, fnacValida, fnacAISO, avisoFnac, EDAD_MINIMA, hoyISO, CLAVE_MINIMA } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
@@ -323,6 +324,26 @@ export async function POST(req: Request) {
     mascotas: mascotas.map((m) => m.nombre),
     memberNo: profileRow.member_no,
     planName: plan,
+  });
+
+  /*
+   * El domicilio, convertido en un punto del mapa.
+   *
+   * Va en `after`: la respuesta del alta no espera a un servicio de terceros —el
+   * socio ya es socio y lo único que falta es dónde centrarle el mapa—. Y no
+   * revierte nada si falla: un domicilio que Nominatim no encuentra es un mapa
+   * centrado en CABA, no un alta fallida.
+   */
+  after(async () => {
+    const ubicacion = await geocodificarDomicilio({
+      address: socio.domicilio, city: socio.localidad, province: socio.provincia,
+    });
+    if (!ubicacion) return;
+    const { error: geoErr } = await db
+      .from('profiles')
+      .update({ lat: ubicacion.lat, lng: ubicacion.lng, geo_origen: ubicacion.origen })
+      .eq('id', userId);
+    if (geoErr) console.error('[onboarding] no pude guardar la ubicación', geoErr);
   });
 
   return NextResponse.json({ memberNo: profileRow.member_no, photoError });

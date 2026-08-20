@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review } from '@kumo/shared';
+import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, distanciaKm, origenDelSocio, textoDistancia, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM } from './AppClient';
 
@@ -72,24 +72,23 @@ function relTime(iso: string): string {
   return days === 1 ? 'ayer' : `hace ${days} días`;
 }
 
-/** Distancia aproximada al centro de CABA (no tenemos la ubicación real del socio). */
-const CABA_LAT = -34.6037;
-const CABA_LNG = -58.3816;
-function haversineKm(lat: number, lng: number): number {
-  const R = 6371;
-  const dLat = ((lat - CABA_LAT) * Math.PI) / 180;
-  const dLng = ((lng - CABA_LNG) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos((CABA_LAT * Math.PI) / 180) * Math.cos((lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)) * 10) / 10;
-}
+/* Las distancias ya no se miden desde el Obelisco: el origen es el domicilio del
+   socio, geocodificado en el alta (`profiles.lat/lng`). La cuenta y el texto de
+   "desde dónde" viven en `@kumo/shared` (cerca.ts), compartidos con la app. */
 
 type ProviderRow = { id: string; name: string; category: string; zone: string; address: string | null; phone: string | null; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number | null; price_unit: string | null; photo_url: string | null; lat: number | null; lng: number | null; status: string };
-function mapProvider(row: ProviderRow): ProviderVM {
-  const km = row.lat != null && row.lng != null ? haversineKm(row.lat, row.lng) : 5;
+function mapProvider(row: ProviderRow, desde: Punto & { origen: OrigenDistancia }): ProviderVM {
+  // Sin coordenadas no hay distancia. Antes se le ponía 5 km, que es la clase de
+  // dato inventado que después se lee como cierto: quedaba en el radio de todos y
+  // ordenado como si estuviera cerca. Null es "no sabemos", y la pantalla lo omite.
+  const km = row.lat != null && row.lng != null ? distanciaKm(desde, { lat: row.lat, lng: row.lng }) : null;
   return {
     id: row.id, name: row.name, category: row.category, zone: row.zone, address: row.address ?? '', phone: row.phone ?? '',
     instagram: row.instagram, website: row.website, about: row.about, rating: row.rating, reviews: row.reviews,
     price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: imgSrc(row.photo_url), km,
+    // De dónde se está midiendo, para que el chip no diga "de tu casa" cuando el
+    // origen es el centro de CABA porque no sabemos dónde vive.
+    kmDesde: textoDistancia(desde.origen),
     lat: row.lat, lng: row.lng,
     // El sello sale del estado que puso el admin, no del rating.
     verificado: row.status === 'verificado',
@@ -206,7 +205,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
+      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -354,7 +353,13 @@ export default async function Page() {
   ));
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
   const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));
-  const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow));
+  /*
+   * Desde dónde ve el mundo este socio: su domicilio geocodificado en el alta. Si no
+   * lo tenemos, el centro de CABA — y en ese caso la pantalla lo dice, en vez de
+   * llamarle "tu casa" al Obelisco.
+   */
+  const desde = origenDelSocio({ lat: profileRow.lat, lng: profileRow.lng, geoOrigen: profileRow.geo_origen });
+  const providers: ProviderVM[] = (providerRows ?? []).map((r) => mapProvider(r as ProviderRow, desde));
 
   const reviews: Record<string, Review[]> = {};
   for (const r of reviewRows ?? []) {
@@ -397,5 +402,5 @@ export default async function Page() {
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} centro={{ lat: desde.lat, lng: desde.lng }} />;
 }

@@ -65,6 +65,15 @@ create table if not exists profiles (
   address      text,
   city         text,
   province     text,
+  -- El domicilio convertido en un punto del mapa: lo escribe el servidor
+  -- geocodificando las tres columnas de arriba con Nominatim (OpenStreetMap), una
+  -- vez por socio. Es el centro del mapa de prestadores y el origen de todos los
+  -- "a 5,9 km de tu casa", que antes se medían desde el Obelisco.
+  -- `geo_origen` dice con qué precisión se resolvió, y de eso depende el texto:
+  -- 'domicilio' → "de tu casa", 'localidad' → "de tu zona", null → "del centro".
+  lat          double precision,
+  lng          double precision,
+  geo_origen   text constraint profiles_geo_origen_valido check (geo_origen is null or geo_origen in ('domicilio', 'localidad')),
   dni          text,
   birth_date   date,
   plan_id      uuid,

@@ -162,3 +162,25 @@ export async function confirmarSuscripcion(): Promise<{ hasta: string | null; ac
     return null;
   }
 }
+
+/**
+ * "Me mudé": recalcular las coordenadas del domicilio.
+ *
+ * Se llama después de guardar los datos, y solo si el domicilio cambió. La ruta no
+ * recibe la dirección —la lee de la fila del socio— así que acá no hay nada que
+ * mandar. Si falla no se avisa: lo único que queda mal es el centro del mapa, y se
+ * arregla la próxima vez que edite sus datos.
+ */
+export async function recalcularUbicacion(): Promise<void> {
+  try {
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses.session?.access_token;
+    if (!token) return;
+    await fetch(`${apiKumo}/api/perfil/ubicacion`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    // sin ubicación nueva: el mapa sigue centrado donde estaba
+  }
+}
