@@ -308,19 +308,20 @@ function Hero() {
                 </button>
                 <button onClick={() => setPet('gato')} style={{ flex: '1 1 0%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, padding: '11px 16px', borderRadius: 100, transition: '0.15s', ...selStyle(pet === 'gato') }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={pet === 'gato' ? '#5D5491' : '#a8a0b5'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block', flexShrink: 0 }}>
-                    <path d="M4 4l3 4M20 4l-3 4" />
-                    {/* La cabeza, simétrica. El path del prototipo era
-                        `M5 10a7 5 0 0 1 14 0v4a6 6 0 0 1-12 0z`: bajaba recto 4px
-                        por la derecha (`v4`) y cerraba la izquierda con la
-                        diagonal de la `z`, así que el gato quedaba hundido de un
-                        costado. Ahora los dos lados bajan igual y el mentón es una
-                        semielipse completa de 19 a 5. */}
-                    <path d="M5 10a7 5 0 0 1 14 0v4a7 6 0 0 1-14 0z" />
-                    <line x1="9.5" y1="12" x2="9.5" y2="12.2" />
-                    <line x1="14.5" y1="12" x2="14.5" y2="12.2" />
-                    <path d="M10.5 15c.5.6 2.5.6 3 0" />
-                    <line x1="8" y1="15" x2="5.5" y2="14.5" />
-                    <line x1="16" y1="15" x2="18.5" y2="14.5" />
+                    {/* Las orejas son dos triángulos abiertos que nacen en los
+                        costados de la cabeza. Antes eran dos rayas sueltas arriba
+                        (`M4 4l3 4M20 4l-3 4`) que no llegaban a tocar la cabeza, y
+                        la cabeza era una cápsula con los lados rectos: el conjunto
+                        no se leía como un gato, se leía como un bicho. */}
+                    <path d="M5 10.2V5.1l4.6 2.8" />
+                    <path d="M19 10.2V5.1l-4.6 2.8" />
+                    {/* El mentón y la frente, cada uno su arco: así la cabeza cierra
+                        redonda entre las dos orejas. */}
+                    <path d="M5 10.2a7 7 0 0 0 14 0" />
+                    <path d="M9.6 7.9a5.6 5.6 0 0 1 4.8 0" />
+                    <path d="M10 12.3h.01M14 12.3h.01" />
+                    <path d="M11 14.8c.6.5 1.4.5 2 0" />
+                    <path d="M4.6 13.4l2.8.4M19.4 13.4l-2.8.4" />
                   </svg>
                   Gato
                 </button>
@@ -723,9 +724,9 @@ function Community() {
 /* ── Cómo funcionan los reintegros ─────────────────────────────── */
 const steps = [
   { n: '1', t: 'Guardá la factura', d: 'Ticket fiscal a tu nombre, con detalle de la atención.' },
-  { n: '2', t: 'Subila a la app', d: 'Por app, WhatsApp o email, dentro de los 30 días.' },
+  { n: '2', t: 'Subila a la app', d: 'Por app, WhatsApp o email, dentro de los 30 días corridos.' },
   { n: '3', t: 'Indicá tu CBU/CVU', d: 'Para que podamos acreditarte el dinero.' },
-  { n: '4', t: 'Cobrá el reintegro', d: 'Lo acreditamos en hasta 30 días hábiles.' },
+  { n: '4', t: 'Cobrá el reintegro', d: 'Lo acreditamos dentro de los 30 días corridos.' },
 ];
 const carencias = [
   ['Consultas y vacunas', '60 días'], ['Estudios', '90 días'], ['Cirugías', '180 días'], ['Accidentes', '72 horas'],
@@ -809,9 +810,12 @@ function WhatsApp() {
   const { whatsapp } = useContent();
   return (
     <a href={waLink(whatsapp)} target="_blank" rel="noopener" aria-label="WhatsApp" className="scpo" style={{ position: 'fixed', right: 24, bottom: 96, zIndex: 150, width: 58, height: 58, borderRadius: '50%', background: 'rgb(37,211,102)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 8px 24px rgba(37,211,102,0.4)', textDecoration: 'none', transition: 'transform 0.18s, box-shadow 0.18s' }}>
-      <svg width="31" height="31" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>
-        <path d="M17.5 14.4c-.3-.2-1.7-.9-2-1-.3-.1-.5-.2-.7.1-.2.3-.7 1-.9 1.2-.2.2-.3.2-.6.1-.3-.2-1.2-.5-2.3-1.5-.9-.8-1.4-1.7-1.6-2-.2-.3 0-.5.1-.6l.5-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5 0-.2-.7-1.6-.9-2.2-.2-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.2 3.4 5.3 4.7.7.3 1.3.5 1.8.6.7.2 1.4.2 1.9.1.6-.1 1.7-.7 2-1.4.2-.7.2-1.3.2-1.4-.1-.2-.3-.2-.6-.4z" />
-        <path d="M12 2a10 10 0 0 0-8.5 15.2L2 22l4.9-1.4A10 10 0 1 0 12 2zm0 18.2c-1.6 0-3.1-.4-4.4-1.2l-.3-.2-3 .9.9-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2z" />
+      {/* El glifo oficial de WhatsApp (el mismo trazado que publica la marca), en
+          vez de la aproximación dibujada a mano que teníamos: el auricular no
+          tenía la inclinación del original y la burbuja cerraba con una cola
+          recta, así que de cerca se notaba que no era el logo. */}
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.347-.347.52-.52.174-.174.232-.298.347-.497.116-.198.058-.371-.025-.52-.083-.148-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 0 1-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 0 1-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 0 1 2.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0 0 12.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 0 0 5.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 0 0-3.48-8.413Z" />
       </svg>
     </a>
   );

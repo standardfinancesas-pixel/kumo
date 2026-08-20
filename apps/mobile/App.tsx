@@ -2583,7 +2583,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
 
 /* ── Sub-pantalla: Reintegros ──────────────────────────────────── */
 const REFUND_PCT: Record<string, number> = { AMIGO: 30, FAMILIA: 50, VIP: 70 };
-const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU en hasta 30 días hábiles. Podés pedir 1 reintegro de consultas cada 2 meses.';
+const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU dentro de los 30 días corridos. Podés pedir 1 reintegro de consultas cada 2 meses.';
 const reintTone = (raw: string) => REINT_TONE[raw] ?? REINT_TONE.en_revision!;
 
 /* ── Sub-pantalla: detalle de un reintegro ─────────────────────── */
@@ -2788,7 +2788,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
           </View>
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '700', fontSize: 15, color: '#3f5410' }}>Solicitud enviada</Text>
-            <Text style={{ fontSize: 13, color: '#5f7d10' }}>La revisamos y acreditamos en tu CBU/CVU en hasta 30 días hábiles.</Text>
+            <Text style={{ fontSize: 13, color: '#5f7d10' }}>La revisamos y acreditamos en tu CBU/CVU dentro de los 30 días corridos.</Text>
           </View>
           <TouchableOpacity onPress={() => setEnviado(false)}><Text style={{ color: '#5f7d10', fontSize: 18 }}>✕</Text></TouchableOpacity>
         </View>

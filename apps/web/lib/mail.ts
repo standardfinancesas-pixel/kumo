@@ -216,7 +216,7 @@ export async function sendReintegroResuelto(opts: {
 
   const cuerpo = acreditado
     ? `${h1('Aprobamos tu reintegro 🎉')}
-       ${par(`${firstName}, ya está: transferimos ${money(refund)} a tu CBU y se acredita en los próximos días hábiles.`)}
+       ${par(`${firstName}, ya está: transferimos ${money(refund)} a tu CBU y se acredita dentro de los 30 días corridos.`)}
        ${detalle}`
     : `${h1('Sobre tu reintegro')}
        ${par(`${firstName}, esta vez no pudimos aprobarlo. Los motivos más comunes son que el comprobante no se lee bien, que el gasto no entra en tu plan, o que ya usaste el tope del mes.`)}
@@ -224,7 +224,7 @@ export async function sendReintegroResuelto(opts: {
        ${par(`Si creés que hubo un error, ${linkWa(wa, 'escribinos por WhatsApp')} y lo revisamos con vos. Si el problema era el comprobante, podés cargarlo de nuevo desde la app.`, true)}`;
 
   const text = acreditado
-    ? `${firstName}, aprobamos tu reintegro.\n\n${providerName} · ${concept}\nGastaste ${money(amount)} · te transferimos ${money(refund)} a tu CBU.\n\nSe acredita en los próximos días hábiles.`
+    ? `${firstName}, aprobamos tu reintegro.\n\n${providerName} · ${concept}\nGastaste ${money(amount)} · te transferimos ${money(refund)} a tu CBU.\n\nSe acredita dentro de los 30 días corridos.`
     : `${firstName}, esta vez no pudimos aprobar tu reintegro de ${providerName} (${concept}, ${money(amount)}).\n\nSi creés que hubo un error, escribinos por WhatsApp: ${waLink(wa)}\nSi el problema era el comprobante, podés cargarlo de nuevo desde la app.`;
 
   return enviar(

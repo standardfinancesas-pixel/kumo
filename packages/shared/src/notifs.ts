@@ -123,7 +123,7 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
     if (r.status === 'acreditado') {
       items.push({ id: `re-${r.id}`, kind: 'reintegro-ok', title: 'Reintegro acreditado', body: `Se acreditaron ${money(r.refund)} por tu gasto en ${r.providerName}.`, date: cuando, to: 'reintegros' });
     } else if (r.status === 'aprobado') {
-      items.push({ id: `re-${r.id}`, kind: 'reintegro-ok', title: 'Reintegro aprobado', body: `Aprobamos ${money(r.refund)} por tu gasto en ${r.providerName}. Se acredita en tu CBU en las próximas 48 h.`, date: cuando, to: 'reintegros' });
+      items.push({ id: `re-${r.id}`, kind: 'reintegro-ok', title: 'Reintegro aprobado', body: `Aprobamos ${money(r.refund)} por tu gasto en ${r.providerName}. Se acredita en tu CBU dentro de los 30 días corridos.`, date: cuando, to: 'reintegros' });
     } else if (r.status === 'rechazado') {
       items.push({ id: `re-${r.id}`, kind: 'reintegro-no', title: 'Reintegro no aprobado', body: `No pudimos aprobar el pedido de ${r.providerName}. Respondé el mail que te enviamos y lo revisamos.`, date: cuando, to: 'reintegros' });
     } else {

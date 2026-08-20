@@ -1235,7 +1235,7 @@ const m$ = (n: number) => '$' + n.toLocaleString('es-AR');
 const reintTone = (raw: string) => REINT_TONE[raw] ?? REINT_TONE.en_revision!;
 const upIcon = <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M7 10l5-5 5 5" /><line x1="12" y1="5" x2="12" y2="16" /></>;
 const infoIcon = <><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><line x1="12" y1="8" x2="12" y2="8" /></>;
-const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU en hasta 30 días hábiles. Podés pedir 1 reintegro de consultas cada 2 meses.';
+const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU dentro de los 30 días corridos. Podés pedir 1 reintegro de consultas cada 2 meses.';
 
 /* ── Detalle de un reintegro ───────────────────────────────────── */
 /** Montos, seguimiento, comprobante y datos de acreditación. Antes el historial
@@ -1443,7 +1443,7 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 15, color: 'rgb(63,84,16)' }}>Solicitud enviada</div>
-            <div style={{ fontSize: 13, color: 'rgb(95,125,16)' }}>La revisamos y acreditamos en tu CBU/CVU en hasta 30 días hábiles.</div>
+            <div style={{ fontSize: 13, color: 'rgb(95,125,16)' }}>La revisamos y acreditamos en tu CBU/CVU dentro de los 30 días corridos.</div>
           </div>
           <button onClick={() => setEnviado(false)} aria-label="Cerrar" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgb(95,125,16)', fontSize: 18, lineHeight: 1, padding: 0 }}>✕</button>
         </div>

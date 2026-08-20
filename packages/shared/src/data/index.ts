@@ -93,7 +93,7 @@ export const faqs: Faq[] = [
     order: 5,
     question: '¿Cuándo recibo los reintegros?',
     answer:
-      'Presentás la factura en la app, nuestro equipo la revisa en 2-5 días hábiles. Si todo está correcto, el reintegro se acredita en tu cuenta en 48 horas.',
+      'Presentás la factura en la app y la revisa una persona del club. Si está todo bien, el reintegro se acredita en tu CBU/CVU dentro de los 30 días corridos.',
   },
 ];
 

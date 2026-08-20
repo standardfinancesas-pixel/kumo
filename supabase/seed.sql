@@ -24,7 +24,7 @@ insert into faqs (question, answer, "order") values
 ('¿Cuál es la diferencia entre los planes?', 'Cada plan ofrece diferentes descuentos y porcentajes de reintegro. Amigo es básico, Familia incluye más beneficios y reintegros, VIP es premium con máximos beneficios.', 2),
 ('¿Puedo cambiar de plan cuando quiera?', 'Sí, podés cambiar tu plan cuando lo necesites. Los cambios se aplican al próximo ciclo de facturación.', 3),
 ('¿Cómo funciona el carnet digital de salud?', 'En la app registrás vacunas, tratamientos y estudios de tu mascota. El carnet se actualiza automáticamente y podés compartirlo con veterinarios.', 4),
-('¿Cuándo recibo los reintegros?', 'Presentás la factura en la app, la revisamos en 2-5 días hábiles y el reintegro se acredita en 48 horas.', 5);
+('¿Cuándo recibo los reintegros?', 'Presentás la factura en la app y la revisa una persona del club. Si está todo bien, el reintegro se acredita en tu CBU/CVU dentro de los 30 días corridos.', 5);
 
 -- Beneficios
 insert into benefits (name, category, discount, plan_requirement, status, description, valid_until, zone, days, hours) values
