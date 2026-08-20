@@ -40,16 +40,16 @@ const estiloInput = {
   backgroundColor: '#fff',
 } as const;
 
-/** La búsqueda con debounce. `elegido` evita que al elegir se dispare una búsqueda
+/** La búsqueda con debounce. `elegidos` evita que al elegir se dispare una búsqueda
  *  nueva con ese mismo texto y la lista vuelva a aparecer sola. */
-function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'localidad', provincia?: string) {
+function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'localidad', provincia?: string, localidad?: string) {
   const [sugerencias, setSugerencias] = useState<T[]>([]);
-  const elegido = useRef<string | null>(null);
+  const elegidos = useRef<Set<string>>(new Set());
   const minimo = tipo === 'localidad' ? 3 : 4;
 
   useEffect(() => {
     const texto = valor.trim();
-    if (texto === elegido.current) return;
+    if (elegidos.current.has(texto)) return;
     if (texto.length < minimo) { setSugerencias([]); return; }
 
     let vivo = true;
@@ -58,6 +58,9 @@ function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'loca
         const params = new URLSearchParams({ q: texto });
         if (tipo === 'localidad') params.set('tipo', 'localidad');
         if (provincia) params.set('provincia', provincia);
+        // La localidad es la pista que más acota: sin ella, "9 de julio 250" en Buenos
+        // Aires devuelve Bahía Blanca y Coronel Dorrego, y Tandil ni aparece.
+        if (localidad) params.set('localidad', localidad);
         const r = await fetch(`${apiKumo}/api/lugares?${params}`);
         if (!r.ok || !vivo) return;
         const { sugerencias: lista } = (await r.json()) as { sugerencias: T[] };
@@ -68,10 +71,14 @@ function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'loca
     }, ESPERA_MS);
 
     return () => { vivo = false; clearTimeout(reloj); };
-  }, [valor, provincia, tipo, minimo]);
+  }, [valor, provincia, localidad, tipo, minimo]);
 
-  const cerrar = (textoElegido: string) => {
-    elegido.current = textoElegido;
+  const cerrar = (...textos: string[]) => {
+    /* Se recuerdan TODOS los textos de la sugerencia elegida, no solo uno: el campo
+       de zona guarda "Palermo, CABA" y el de localidad guarda "Palermo", y si el
+       guard solo conoce una de las dos formas, el cambio de valor dispara una
+       búsqueda nueva y la lista se vuelve a abrir sola después de elegir. */
+    elegidos.current = new Set(textos);
     setSugerencias([]);
   };
 
@@ -122,18 +129,21 @@ function CampoConLista<T extends Fila>({
 }
 
 export function CampoDomicilio({
-  label = 'Domicilio', valor, provincia, onCambio, onElegir, placeholder = 'Calle y número', ayuda,
+  label = 'Domicilio', valor, provincia, localidad, onCambio, onElegir, placeholder = 'Calle y número', ayuda,
 }: {
   label?: string;
   valor: string;
   /** La provincia ya elegida, si hay: acota la búsqueda muchísimo. */
   provincia?: string;
+  /** La localidad ya elegida, si hay: es la pista que hace que la calle correcta
+   *  aparezca primera en vez de perderse entre las de otras diez ciudades. */
+  localidad?: string;
   onCambio: (texto: string) => void;
   onElegir: (lugar: LugarElegido) => void;
   placeholder?: string;
   ayuda?: string;
 }) {
-  const { sugerencias, cerrar } = useSugerencias<FilaDireccion>(valor, 'direccion', provincia);
+  const { sugerencias, cerrar } = useSugerencias<FilaDireccion>(valor, 'direccion', provincia, localidad);
   return (
     <CampoConLista
       label={label}
@@ -143,7 +153,7 @@ export function CampoDomicilio({
       placeholder={placeholder}
       ayuda={ayuda}
       onElegir={(f) => {
-        cerrar(f.domicilio);
+        cerrar(f.domicilio, f.etiqueta);
         onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
         /* En CABA el callejero oficial devuelve la comuna, y nadie dice que vive en la
            Comuna 13: dice Belgrano. El barrio se pregunta aparte —una consulta, recién
@@ -183,7 +193,7 @@ export function CampoZona({
       placeholder={placeholder}
       ayuda={ayuda}
       onElegir={(f) => {
-        cerrar(f.zona);
+        cerrar(f.zona, f.localidad, f.etiqueta);
         onElegir({ zona: f.zona, localidad: f.localidad, provincia: f.provincia });
       }}
     />

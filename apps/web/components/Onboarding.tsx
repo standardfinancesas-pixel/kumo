@@ -11,7 +11,7 @@ import {
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
-import { CampoDomicilio } from '@/components/CampoDomicilio';
+import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 
 /*
  * Alta de socio — el formulario, presentado como WEB y no dentro de un marco de
@@ -391,6 +391,29 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
                 </>
               ))}</div>
             </div>
+            {/*
+              * La provincia y la localidad van ARRIBA del domicilio, y no es un capricho
+              * de orden: son las pistas con las que se busca la calle. "9 de julio 250"
+              * en Buenos Aires devuelve Bahía Blanca y Coronel Dorrego y Tandil ni
+              * aparece; con la localidad puesta, contesta una sola dirección y es la
+              * correcta. Con los campos abajo, cuando alguien escribía su calle los dos
+              * estaban vacíos y competía el país entero.
+              */}
+            <div style={{ display: 'flex', gap: 12 }}>
+              <div style={{ flex: 1 }}>{field('Provincia', <select value={socio.provincia} onChange={(e) => setB({ ...b, socio: { ...socio, provincia: e.target.value } })} style={input}><option value="">Elegí una provincia</option>{PROVINCIAS.map((p) => <option key={p}>{p}</option>)}</select>)}</div>
+              <div style={{ flex: 1 }}>{field('Localidad', (
+                <CampoZona
+                  valor={socio.localidad}
+                  provincia={socio.provincia || undefined}
+                  onCambio={(t) => setB({ ...b, socio: { ...socio, localidad: t } })}
+                  // Elegir la localidad completa también la provincia: "Tandil" es de
+                  // Buenos Aires y no hace falta que nadie lo aclare.
+                  onElegir={(z) => setB({ ...b, socio: { ...socio, localidad: z.localidad, provincia: z.provincia } })}
+                  placeholder="Ej. Palermo"
+                  style={input}
+                />
+              ))}</div>
+            </div>
             {/* Elegir de la lista llena los tres campos de una vez y ya normalizados
                 (ver CampoDomicilio). Escribir a mano sigue siendo válido: el callejero
                 oficial no tiene countries ni direcciones rurales. */}
@@ -398,16 +421,13 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
               <CampoDomicilio
                 valor={socio.domicilio}
                 provincia={socio.provincia || undefined}
+                localidad={socio.localidad || undefined}
                 onCambio={(t) => setB({ ...b, socio: { ...socio, domicilio: t } })}
                 onElegir={(l) => setB({ ...b, socio: { ...socio, domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia } })}
                 placeholder="Calle y número"
                 style={input}
               />
             ))}
-            <div style={{ display: 'flex', gap: 12 }}>
-              <div style={{ flex: 1 }}>{field('Localidad', <input autoComplete="address-level2" value={socio.localidad} onChange={(e) => setB({ ...b, socio: { ...socio, localidad: e.target.value } })} placeholder="Ej. Palermo" style={input} />)}</div>
-              <div style={{ flex: 1 }}>{field('Provincia', <select value={socio.provincia} onChange={(e) => setB({ ...b, socio: { ...socio, provincia: e.target.value } })} style={input}><option value="">Elegí una provincia</option>{PROVINCIAS.map((p) => <option key={p}>{p}</option>)}</select>)}</div>
-            </div>
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>{field('Teléfono', <input autoComplete="tel" value={socio.tel} onChange={(e) => setB({ ...b, socio: { ...socio, tel: formatTel(e.target.value) } })} placeholder="11 5555 2024" style={{ ...input, borderColor: socio.tel && !v.tel ? '#c14d7a' : '#e6e3f0' }} />)}</div>
               <div style={{ flex: 1 }}>{field('Email', <input type="email" autoComplete="email" value={socio.email} onChange={(e) => setB({ ...b, socio: { ...socio, email: e.target.value } })} readOnly={conGoogle} placeholder="tu@email.com" style={{ ...input, borderColor: socio.email && !v.email ? '#c14d7a' : '#e6e3f0', background: conGoogle ? '#faf9fd' : '#fff', color: conGoogle ? '#5b5670' : undefined }} />)}</div>

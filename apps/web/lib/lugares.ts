@@ -47,6 +47,14 @@ const PROVINCIA_CANONICA: Record<string, string> = {
   'Ciudad Autónoma de Buenos Aires': 'CABA',
   'Tierra del Fuego, Antártida e Islas del Atlántico Sur': 'Tierra del Fuego',
 };
+/** ¿La provincia es la Ciudad de Buenos Aires, escrita de cualquiera de sus formas?
+ *  Importa porque CABA es el caso especial de todo esto: no tiene localidades (tiene
+ *  barrios, que el callejero no conoce como tales) y es donde vive la mayoría. */
+export function esCABA(provincia?: string | null): boolean {
+  const p = (provincia ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  return /^(caba|c\.?a\.?b\.?a\.?|capital federal|capital|ciudad (autonoma )?de buenos aires)$/.test(p);
+}
+
 function canonizarProvincia(nombre: string): string {
   const mapeada = PROVINCIA_CANONICA[nombre] ?? nombre;
   // Si Georef devolviera una provincia que el selector no tiene, se manda igual el

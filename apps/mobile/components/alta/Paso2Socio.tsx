@@ -2,7 +2,7 @@ import { View } from 'react-native';
 import { PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, type SocioAlta } from '@kumo/shared';
 import { Texto as Text, INK, MUTED } from '../ui/Texto';
 import { Campo, CampoClave, Selector } from '../ui/Controles';
-import { CampoDomicilio } from '../ui/CampoDomicilio';
+import { CampoDomicilio, CampoZona } from '../ui/CampoDomicilio';
 
 /**
  * Paso 2 · Los datos del socio.
@@ -50,23 +50,35 @@ export default function Paso2Socio({
         </View>
       </View>
 
+      {/*
+        * La provincia y la localidad van ARRIBA del domicilio, y no es orden estético:
+        * son las pistas con las que se busca la calle. "9 de julio 250" en Buenos Aires
+        * devuelve Bahía Blanca y Coronel Dorrego y Tandil ni aparece; con la localidad
+        * puesta contesta una sola dirección y es la correcta. Con los campos abajo,
+        * cuando alguien escribía su calle los dos estaban vacíos.
+        */}
+      <Selector
+        label="Provincia" valor={socio.provincia} opciones={PROVINCIAS}
+        placeholder="Elegí una provincia" onCambio={(p) => set({ provincia: p })}
+      />
+      <CampoZona
+        label="Localidad" valor={socio.localidad}
+        provincia={socio.provincia || undefined}
+        onCambio={(t) => set({ localidad: t })}
+        // Elegir la localidad completa también la provincia: "Tandil" es de Buenos
+        // Aires y no hace falta que nadie lo aclare.
+        onElegir={(z) => set({ localidad: z.localidad, provincia: z.provincia })}
+        placeholder="Ej. Palermo"
+      />
       {/* Elegir de la lista llena domicilio, localidad y provincia de una vez y ya
           normalizados (ver CampoDomicilio). Escribir a mano sigue valiendo: el
           callejero oficial no tiene countries ni direcciones rurales. */}
       <CampoDomicilio
         valor={socio.domicilio}
         provincia={socio.provincia || undefined}
+        localidad={socio.localidad || undefined}
         onCambio={(t) => set({ domicilio: t })}
         onElegir={(l) => set({ domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
-      />
-      <View style={{ flexDirection: 'row', gap: 12 }}>
-        <View style={{ flex: 1 }}>
-          <Campo label="Localidad" valor={socio.localidad} onCambio={(t) => set({ localidad: t })} placeholder="Ej. Palermo" />
-        </View>
-      </View>
-      <Selector
-        label="Provincia" valor={socio.provincia} opciones={PROVINCIAS}
-        placeholder="Elegí una provincia" onCambio={(p) => set({ provincia: p })}
       />
 
       <View style={{ flexDirection: 'row', gap: 12 }}>

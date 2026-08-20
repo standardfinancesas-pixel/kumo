@@ -7,7 +7,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  colors, PROVINCIAS,
+  colors, PROVINCIAS, partirZona,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -1513,18 +1513,26 @@ function Perfil({ profile, planes, go, reload, pago, onPlan }: { profile: Profil
           {/* El mismo campo del alta. Importa acá porque este formulario es el que
               puede DESHACER lo que el alta resolvió bien: alguien escribía "bs as" y
               el mapa se perdía. */}
-          <CampoDomicilio
-            valor={datos.dom}
-            provincia={datos.provincia || undefined}
-            onCambio={(v) => { setDatos({ ...datos, dom: v }); setError(''); }}
-            onElegir={(l) => setDatos({ ...datos, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
-          />
-          {campo('Localidad', datos.localidad, (v) => setDatos({ ...datos, localidad: v }))}
-          {/* Selector y no texto libre, igual que en el alta: era la única pantalla
-              donde se podía escribir cualquier cosa como provincia. */}
+          {/* Mismo orden que el alta: la provincia y la localidad son las pistas con
+              las que se busca la calle, así que van antes. El selector reemplaza al
+              texto libre, que era con lo que se podía deshacer lo que el alta resolvió. */}
           <Selector
             label="Provincia" valor={datos.provincia} opciones={PROVINCIAS}
             placeholder="Elegí una provincia" onCambio={(v) => setDatos({ ...datos, provincia: v })}
+          />
+          <CampoZona
+            label="Localidad" valor={datos.localidad}
+            provincia={datos.provincia || undefined}
+            onCambio={(v) => { setDatos({ ...datos, localidad: v }); setError(''); }}
+            onElegir={(z) => setDatos({ ...datos, localidad: z.localidad, provincia: z.provincia })}
+            placeholder="Ej. Palermo"
+          />
+          <CampoDomicilio
+            valor={datos.dom}
+            provincia={datos.provincia || undefined}
+            localidad={datos.localidad || undefined}
+            onCambio={(v) => { setDatos({ ...datos, dom: v }); setError(''); }}
+            onElegir={(l) => setDatos({ ...datos, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
           />
           {campo('Teléfono', datos.tel, (v) => setDatos({ ...datos, tel: v }), { keyboardType: 'phone-pad' })}
 
@@ -2141,7 +2149,7 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
       </View>
 
       <CampoDomicilio
-        label="Dirección (opcional)" valor={direccion}
+        label="Dirección (opcional)" valor={direccion} {...partirZona(zona)}
         onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)}
         ayuda="Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona."
       />
@@ -2617,7 +2625,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
                 ))}
               </View>
               <CampoZona label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
-              <CampoDomicilio label="Dirección (opcional)" valor={direccion} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
+              <CampoDomicilio label="Dirección (opcional)" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
               <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
               {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
                   aparece en la lista pero sin distancia ni pin. */}
@@ -2674,7 +2682,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
         <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], borderRadius: 20, padding: 18, marginBottom: 18, gap: 10 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>Editar datos</Text>
           <CampoZona label="Zona" valor={ed.zone} onCambio={(v) => { setEd({ ...ed, zone: v }); setError(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setError(''); }} />
-          <CampoDomicilio label="Dirección (opcional)" valor={ed.address} onCambio={(v) => setEd({ ...ed, address: v })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} ayuda="Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona." />
+          <CampoDomicilio label="Dirección (opcional)" valor={ed.address} {...partirZona(ed.zone)} onCambio={(v) => setEd({ ...ed, address: v })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} ayuda="Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona." />
           {[
             ['Nombre del negocio', ed.name, (v: string) => setEd({ ...ed, name: v }), {}],
             ['Teléfono', ed.phone, (v: string) => setEd({ ...ed, phone: v }), { keyboardType: 'phone-pad' as const }],

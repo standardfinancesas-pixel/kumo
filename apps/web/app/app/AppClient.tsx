@@ -4,7 +4,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS,
+  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, partirZona,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
@@ -1326,7 +1326,7 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       </div>
 
       <label style={sheetLabel} htmlFor="pr-dir">Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-      <CampoDomicilio id="pr-dir" valor={direccion} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Av. Santa Fe 3200" style={sheetInput} />
+      <CampoDomicilio id="pr-dir" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Av. Santa Fe 3200" style={sheetInput} />
       <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</p>
 
       <label style={sheetLabel} htmlFor="pr-about">Contanos sobre tu servicio</label>
@@ -2418,7 +2418,7 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
                   {RUBROS.map((r) => <option key={r}>{r}</option>)}
                 </select>
                 <CampoZona valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
-                <CampoDomicilio valor={direccion} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
+                <CampoDomicilio valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
                 <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
                 {/* La dirección es lo único que lo pone en el mapa; sin ella el
                     negocio aparece en la lista pero sin distancia ni pin. */}
@@ -2539,7 +2539,7 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
           <label style={sheetLabel}>Zona de cobertura</label>
           <CampoZona valor={ed.zone} onCambio={(t) => { setEd({ ...ed, zone: t }); setError(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setError(''); }} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 12 }} />
           <label style={sheetLabel}>Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-          <CampoDomicilio valor={ed.address} onCambio={(t) => setEd({ ...ed, address: t })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} placeholder="Av. Santa Fe 3200" style={sheetInput} />
+          <CampoDomicilio valor={ed.address} {...partirZona(ed.zone)} onCambio={(t) => setEd({ ...ed, address: t })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} placeholder="Av. Santa Fe 3200" style={sheetInput} />
           <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona.</p>
           <label style={sheetLabel}>Tarifa</label>
           <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
@@ -2770,30 +2770,41 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onP
             <input id="pf-nom" value={datos.nombre} onChange={(e) => { setDatos((d) => ({ ...d, nombre: e.target.value })); setError(''); }} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-dni">DNI</label>
             <input id="pf-dni" value={datos.dni} onChange={(e) => setDatos((d) => ({ ...d, dni: e.target.value }))} style={inputEdit} />
+            {/* Mismo orden que el alta: la provincia y la localidad son las pistas con
+                las que se busca la calle, así que van antes. */}
+            <label style={sheetLabel} htmlFor="pf-prov">Provincia</label>
+            {/* Selector y no texto libre: era la única pantalla donde se podía escribir
+                cualquier cosa como provincia, y con eso deshacer lo que el alta había
+                resuelto bien. */}
+            <select id="pf-prov" value={datos.provincia} onChange={(e) => setDatos((d) => ({ ...d, provincia: e.target.value }))} style={inputEdit}>
+              <option value="">Elegí una provincia</option>
+              {PROVINCIAS.map((p) => <option key={p}>{p}</option>)}
+            </select>
+            <label style={sheetLabel} htmlFor="pf-loc">Localidad</label>
+            <div style={{ marginBottom: 8 }}>
+              <CampoZona
+                id="pf-loc"
+                valor={datos.localidad}
+                provincia={datos.provincia || undefined}
+                onCambio={(t) => setDatos((d) => ({ ...d, localidad: t }))}
+                onElegir={(z) => setDatos((d) => ({ ...d, localidad: z.localidad, provincia: z.provincia }))}
+                placeholder="Ej. Palermo"
+                style={{ ...inputEdit, marginBottom: 0 }}
+              />
+            </div>
             <label style={sheetLabel} htmlFor="pf-dom">Domicilio</label>
-            {/* El mismo campo del alta: elegir de la lista llena localidad y provincia.
-                Importa acá porque este formulario es el que puede DESHACER lo que el
-                alta resolvió bien —alguien escribía "bs as" y el mapa se perdía—. */}
             <div style={{ marginBottom: 10 }}>
               <CampoDomicilio
                 id="pf-dom"
                 valor={datos.dom}
                 provincia={datos.provincia || undefined}
+                localidad={datos.localidad || undefined}
                 onCambio={(t) => setDatos((d) => ({ ...d, dom: t }))}
                 onElegir={(l) => setDatos((d) => ({ ...d, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia }))}
                 placeholder="Calle y número"
                 style={{ ...inputEdit, marginBottom: 0 }}
               />
             </div>
-            <label style={sheetLabel} htmlFor="pf-loc">Localidad</label>
-            <input id="pf-loc" value={datos.localidad} onChange={(e) => setDatos((d) => ({ ...d, localidad: e.target.value }))} style={inputEdit} />
-            <label style={sheetLabel} htmlFor="pf-prov">Provincia</label>
-            {/* Selector y no texto libre, igual que en el alta: era la única pantalla
-                donde se podía escribir cualquier cosa como provincia. */}
-            <select id="pf-prov" value={datos.provincia} onChange={(e) => setDatos((d) => ({ ...d, provincia: e.target.value }))} style={inputEdit}>
-              <option value="">Elegí una provincia</option>
-              {PROVINCIAS.map((p) => <option key={p}>{p}</option>)}
-            </select>
             <label style={sheetLabel} htmlFor="pf-tel">Teléfono</label>
             <input id="pf-tel" value={datos.tel} onChange={(e) => setDatos((d) => ({ ...d, tel: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-mail">Email</label>

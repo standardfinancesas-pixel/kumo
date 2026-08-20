@@ -39,19 +39,19 @@ const ESPERA_MS = 350;
 /**
  * La búsqueda con debounce, compartida por los dos campos.
  *
- * `elegido` guarda lo último que se eligió de la lista para que al elegir no se
+ * `elegidos` guarda los textos de lo último que se eligió, para que al elegir no se
  * dispare una búsqueda nueva con ese mismo texto y la lista vuelva a abrirse sola.
  */
-function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'localidad', provincia?: string) {
+function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'localidad', provincia?: string, localidad?: string) {
   const [sugerencias, setSugerencias] = useState<T[]>([]);
   const [abierto, setAbierto] = useState(false);
   const [marcada, setMarcada] = useState(-1);
-  const elegido = useRef<string | null>(null);
+  const elegidos = useRef<Set<string>>(new Set());
   const minimo = tipo === 'localidad' ? 3 : 4;
 
   useEffect(() => {
     const texto = valor.trim();
-    if (texto === elegido.current) return;
+    if (elegidos.current.has(texto)) return;
     if (texto.length < minimo) { setSugerencias([]); setAbierto(false); return; }
 
     const corte = new AbortController();
@@ -60,6 +60,9 @@ function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'loca
         const params = new URLSearchParams({ q: texto });
         if (tipo === 'localidad') params.set('tipo', 'localidad');
         if (provincia) params.set('provincia', provincia);
+        // La localidad es la pista que más acota: sin ella, "9 de julio 250" en Buenos
+        // Aires devuelve Bahía Blanca y Coronel Dorrego, y Tandil ni aparece.
+        if (localidad) params.set('localidad', localidad);
         const r = await fetch(`/api/lugares?${params}`, { signal: corte.signal });
         if (!r.ok) return;
         const { sugerencias: lista } = (await r.json()) as { sugerencias: T[] };
@@ -72,10 +75,14 @@ function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'loca
     }, ESPERA_MS);
 
     return () => { clearTimeout(reloj); corte.abort(); };
-  }, [valor, provincia, tipo, minimo]);
+  }, [valor, provincia, localidad, tipo, minimo]);
 
-  const cerrar = (textoElegido?: string) => {
-    if (textoElegido !== undefined) elegido.current = textoElegido;
+  const cerrar = (...textos: string[]) => {
+    /* Se recuerdan TODOS los textos de la sugerencia elegida, no solo uno: el campo
+       de zona guarda "Palermo, CABA" y el de localidad guarda "Palermo", y si el
+       guard solo conoce una de las dos formas, el cambio de valor dispara una
+       búsqueda nueva y la lista se vuelve a abrir sola después de elegir. */
+    if (textos.length) elegidos.current = new Set(textos);
     setAbierto(false);
     setSugerencias([]);
   };
@@ -168,25 +175,28 @@ function CampoConLista<T extends Fila>({
 }
 
 export function CampoDomicilio({
-  valor, provincia, onCambio, onElegir, id, placeholder, style,
+  valor, provincia, localidad, onCambio, onElegir, id, placeholder, style,
 }: {
   valor: string;
   /** La provincia ya elegida, si hay: acota la búsqueda muchísimo. */
   provincia?: string;
+  /** La localidad ya elegida, si hay: es la pista que hace que la calle correcta
+   *  aparezca primera en vez de perderse entre las de otras diez ciudades. */
+  localidad?: string;
   onCambio: (texto: string) => void;
   onElegir: (lugar: LugarElegido) => void;
   id?: string;
   placeholder?: string;
   style?: CSSProperties;
 }) {
-  const busqueda = useSugerencias<FilaDireccion>(valor, 'direccion', provincia);
+  const busqueda = useSugerencias<FilaDireccion>(valor, 'direccion', provincia, localidad);
   return (
     <CampoConLista
       {...busqueda}
       valor={valor}
       onCambio={onCambio}
       onElegir={(f) => {
-        busqueda.cerrar(f.domicilio);
+        busqueda.cerrar(f.domicilio, f.etiqueta);
         onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
         /* En CABA el callejero oficial devuelve la comuna, y nadie dice que vive en la
            Comuna 13: dice Belgrano. El barrio se pregunta aparte —una consulta, recién
@@ -226,7 +236,7 @@ export function CampoZona({
       valor={valor}
       onCambio={onCambio}
       onElegir={(f) => {
-        busqueda.cerrar(f.zona);
+        busqueda.cerrar(f.zona, f.localidad, f.etiqueta);
         onElegir({ zona: f.zona, localidad: f.localidad, provincia: f.provincia });
       }}
       id={id}

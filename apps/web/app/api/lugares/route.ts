@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { buscarDirecciones, buscarLocalidades } from '@/lib/lugares';
+import { buscarDirecciones, buscarLocalidades, esCABA } from '@/lib/lugares';
 
 /**
  * El buscador de direcciones que usan los campos de domicilio.
@@ -39,6 +39,17 @@ export async function GET(req: Request) {
      altura, una zona es un área de cobertura ('Palermo', 'Tandil'). Georef tiene un
      endpoint para cada cosa y preguntarle a uno lo del otro no devuelve nada. */
   const zona = url.searchParams.get('tipo') === 'localidad';
+  /*
+   * La localidad es la pista que hace la diferencia. Con la provincia sola, "9 de
+   * julio 250" en Buenos Aires devuelve Bahía Blanca y Coronel Dorrego y Tandil no
+   * entra en la lista; con la localidad, contesta una sola dirección y es la correcta.
+   *
+   * En CABA se ignora a propósito: ahí lo que se guarda como localidad es el BARRIO
+   * ("Belgrano"), el callejero no conoce barrios como localidad y filtrar por eso no
+   * encuentra nada. La ciudad tampoco hace falta, porque hay una sola.
+   */
+  const enCABA = esCABA(provincia);
+  const localidad = enCABA ? '' : (url.searchParams.get('localidad') ?? '').trim().slice(0, 80);
 
   // Menos de esto no es un lugar, es alguien empezando a escribir. Los barrios son
   // más cortos que las calles ('Boca', 'Once'), así que ahí el mínimo es menor.
@@ -57,15 +68,25 @@ export async function GET(req: Request) {
     marca.cuantas += 1;
   }
 
-  const clave = `${zona ? 'z' : 'd'}|${provincia}|${q.toLowerCase()}`;
+  const clave = `${zona ? 'z' : 'd'}|${provincia}|${localidad}|${q.toLowerCase()}`;
   const guardada = cache.get(clave);
   if (guardada && ahora - guardada.cuando < CACHE_MS) {
     return NextResponse.json(guardada.datos);
   }
 
-  const sugerencias = zona
-    ? await buscarLocalidades(q, provincia || undefined)
-    : await buscarDirecciones(q, provincia || undefined);
+  let sugerencias;
+  if (zona) {
+    sugerencias = await buscarLocalidades(q, provincia || undefined);
+  } else {
+    sugerencias = await buscarDirecciones(q, provincia || undefined, localidad || undefined);
+    /* La pista de localidad puede venir escrita de una forma que el callejero no
+       tiene ("Todo CABA", "Zona Sur GBA", un barrio) y ahí filtra de más. Si no
+       encontró nada, se vuelve a preguntar sin ella: es mejor una lista amplia que
+       una lista vacía. */
+    if (localidad && sugerencias.length === 0) {
+      sugerencias = await buscarDirecciones(q, provincia || undefined);
+    }
+  }
   const datos = { sugerencias };
 
   // Se guarda incluso la lista vacía: si Georef no conoce esa calle, tampoco la va a

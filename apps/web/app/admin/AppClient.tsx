@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta, mesActualISO } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 
@@ -1294,7 +1294,7 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
         </div>
         <div>
           <label style={fieldLabel}>DIRECCIÓN (OPCIONAL)</label>
-          <CampoDomicilio valor={address} onCambio={setAddress} onElegir={(l) => setAddress(l.domicilio)} style={inp} placeholder="Av. Santa Fe 3200" />
+          <CampoDomicilio valor={address} {...partirZona(zone)} onCambio={setAddress} onElegir={(l) => setAddress(l.domicilio)} style={inp} placeholder="Av. Santa Fe 3200" />
           <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Con la dirección, el socio ve a cuántos kilómetros le queda. Sin ella, el beneficio se ve igual pero sin distancia.</div>
         </div>
         {/* Los tres que faltaban. La ficha del socio los muestra, así que sin

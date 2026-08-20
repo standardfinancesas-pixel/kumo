@@ -1,3 +1,5 @@
+import { PROVINCIAS } from './alta';
+
 /**
  * Kumo · qué queda cerca de quién
  *
@@ -90,4 +92,27 @@ export function distanciaKm(desde: Punto, hasta: Punto): number {
   const a = Math.sin(dLat / 2) ** 2
     + Math.cos(rad(desde.lat)) * Math.cos(rad(hasta.lat)) * Math.sin(dLng / 2) ** 2;
   return Math.round(R * 2 * Math.asin(Math.min(1, Math.sqrt(a))) * 10) / 10;
+}
+
+/**
+ * De una zona escrita, la pista para buscar direcciones ahí.
+ *
+ * Los campos de zona guardan "Palermo, CABA" cuando se eligen de la lista, y de ahí
+ * sale el contexto que necesita el buscador de calles: sin localidad, "Mitre 500"
+ * tiene candidatos en cincuenta pueblos.
+ *
+ * Solo se parte cuando lo que sigue a la coma es una provincia de verdad. Las zonas
+ * viejas ("CABA · Caballito", "Zona Sur GBA") se devuelven enteras como localidad y,
+ * si el callejero no las conoce, el servidor vuelve a preguntar sin la pista: es
+ * mejor una lista amplia que una lista vacía.
+ */
+export function partirZona(zona?: string | null): { localidad?: string; provincia?: string } {
+  const texto = (zona ?? '').trim();
+  if (!texto) return {};
+  const partes = texto.split(',').map((t) => t.trim()).filter(Boolean);
+  const ultima = partes[partes.length - 1];
+  if (partes.length >= 2 && ultima && (PROVINCIAS as readonly string[]).includes(ultima)) {
+    return { localidad: partes.slice(0, -1).join(', '), provincia: ultima };
+  }
+  return { localidad: texto };
 }
