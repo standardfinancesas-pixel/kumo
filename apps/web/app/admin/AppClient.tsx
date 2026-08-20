@@ -494,6 +494,100 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
 }
 
 /**
+ * Borrar un socio para siempre.
+ *
+ * Es lo único del panel que no se puede deshacer, así que el diálogo hace dos cosas
+ * que el resto no: dice EXACTAMENTE qué se va a llevar (contado de la base, no
+ * prometido) y pide escribir BORRAR. Un `confirm()` de una línea para esto es la
+ * receta del click de más.
+ *
+ * Y aclara la diferencia con dar de baja, porque son dos cosas que se piden con las
+ * mismas palabras: la baja deja al socio en el sistema (y en el churn) y se puede
+ * revertir; esto borra los datos, que es lo que hay que hacer cuando alguien lo pide
+ * por privacidad o cuando se limpia una prueba.
+ */
+function DialogoBorrarSocio({ socio, onCerrar, onBorrar, busy }: { socio: SocioRow; onCerrar: () => void; onBorrar: () => void; busy: boolean }) {
+  const [palabra, setPalabra] = useState('');
+  const [cuentas, setCuentas] = useState<{ mascotas: number; reintegros: number; pagos: number; publicaciones: number; negocios: number } | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const [mascotas, reintegros, pagos, publicaciones, negocios] = await Promise.all([
+        supabase.from('pets').select('id', { count: 'exact', head: true }).eq('owner_id', socio.id),
+        supabase.from('reimbursements').select('id', { count: 'exact', head: true }).eq('member_id', socio.id),
+        supabase.from('payments').select('id', { count: 'exact', head: true }).eq('member_id', socio.id),
+        supabase.from('community_posts').select('id', { count: 'exact', head: true }).eq('author_id', socio.id),
+        supabase.from('providers').select('id', { count: 'exact', head: true }).eq('owner_id', socio.id),
+      ]);
+      if (!vivo) return;
+      setCuentas({
+        mascotas: mascotas.count ?? 0, reintegros: reintegros.count ?? 0, pagos: pagos.count ?? 0,
+        publicaciones: publicaciones.count ?? 0, negocios: negocios.count ?? 0,
+      });
+    })();
+    return () => { vivo = false; };
+  }, [socio.id]);
+
+  const listo = palabra.trim().toUpperCase() === 'BORRAR' && !busy;
+  const fila = (k: string, v: number) => (
+    <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid #f0eef7', fontSize: 13.5 }}>
+      <span style={{ color: '#5b5670' }}>{k}</span><span style={{ fontWeight: 700 }}>{v}</span>
+    </div>
+  );
+
+  return (
+    <Modal title="Borrar a este socio" sub={`${socio.nombre} · ${socio.n}`} onClose={onCerrar} width={460}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ background: 'rgb(251,232,239)', color: 'rgb(176,72,63)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, lineHeight: 1.5 }}>
+          Esto <strong>no se puede deshacer</strong>. Si lo que querés es que no entre más pero
+          conservar su historial, usá <strong>Suspender el acceso</strong> o la baja.
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 6 }}>SE VA A BORRAR</div>
+          {cuentas ? (
+            <>
+              {fila('Mascotas (con sus vacunas y fotos)', cuentas.mascotas)}
+              {fila('Declaraciones y reintegros', cuentas.reintegros)}
+              {fila('Cobros del historial', cuentas.pagos)}
+              {fila('Publicaciones en el foro', cuentas.publicaciones)}
+              {cuentas.negocios > 0 ? fila('Negocio publicado en el directorio', cuentas.negocios) : null}
+            </>
+          ) : <div style={{ fontSize: 13, color: '#8781a0' }}>Contando lo que tiene cargado…</div>}
+          <div style={{ fontSize: 12.5, color: '#8781a0', marginTop: 8, lineHeight: 1.5 }}>
+            {socio.cuotaAlDia
+              ? 'Su débito automático se cancela primero, así que Mercado Pago deja de cobrarle. '
+              : ''}
+            También se borra su usuario de acceso, así que ese mail queda libre para un alta nueva.
+          </div>
+        </div>
+        <div>
+          <label style={fieldLabel} htmlFor="borrar-palabra">ESCRIBÍ <strong>BORRAR</strong> PARA CONFIRMAR</label>
+          <input
+            id="borrar-palabra"
+            value={palabra}
+            onChange={(e) => setPalabra(e.target.value)}
+            autoFocus
+            placeholder="BORRAR"
+            style={{ width: '100%', padding: '12px 13px', borderRadius: 11, border: '1px solid #e0dcec', fontFamily: '"DM Sans"', fontSize: 14.5, color: '#3f3a55', background: '#fff' }}
+          />
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button style={btnGhost} onClick={onCerrar} disabled={busy}>Cancelar</button>
+          <button
+            onClick={onBorrar}
+            disabled={!listo}
+            style={{ background: 'rgb(176,72,63)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 14, padding: '12px 18px', borderRadius: 11, cursor: listo ? 'pointer' : 'default', opacity: listo ? 1 : 0.5 }}
+          >
+            {busy ? 'Borrando…' : 'Borrar para siempre'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
  * Registrar a mano un mes que el club cobró por fuera (efectivo, transferencia).
  *
  * Es un diálogo y no un `confirm()` porque hay dos datos que preguntar.
@@ -596,6 +690,8 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
    */
   const PLANES_FILTRO = ['Todos', 'AMIGO', 'FAMILIA', 'VIP', 'Gratuito',
     ...(socios.some((s) => s.sinPlan && s.cuotaAlDia) ? ['Sin plan'] : [])];
+  /** El socio que se está por borrar para siempre, o null. */
+  const [aBorrar, setABorrar] = useState<SocioRow | null>(null);
   /** El socio al que se le está registrando un pago a mano, o null. */
   const [cobro, setCobro] = useState<SocioRow | null>(null);
   const [plan, setPlan] = useState('Todos');
@@ -635,6 +731,39 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
    * idempotencia. Dos caminos para sumar un mes es la forma segura de que uno de
    * los dos quede mal.
    */
+  /**
+   * Borrar un socio para siempre.
+   *
+   * El aviso de después es largo a propósito: enumera lo que se llevó. Es la única
+   * acción del panel sin vuelta atrás, y que el club vea exactamente qué desapareció
+   * es lo que le permite darse cuenta AHORA si borró al socio equivocado.
+   */
+  const borrarSocio = async (s: SocioRow) => {
+    setBusyId(s.id); setAviso('');
+    try {
+      const res = await fetch('/api/socios/borrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: s.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAviso(data.error ?? 'No pudimos borrar al socio.'); setBusyId(null); return; }
+      setABorrar(null);
+      const partes = [
+        `${data.mascotas} ${data.mascotas === 1 ? 'mascota' : 'mascotas'}`,
+        `${data.pagos} ${data.pagos === 1 ? 'cobro' : 'cobros'}`,
+        ...(data.reintegros ? [`${data.reintegros} reintegros`] : []),
+        ...(data.publicaciones ? [`${data.publicaciones} publicaciones`] : []),
+        ...(data.negocios ? [`${data.negocios} negocio`] : []),
+      ];
+      setAviso(`Borramos a ${s.nombre} y ${partes.join(', ')}.${data.debitoCancelado ? ' Su débito de Mercado Pago quedó cancelado.' : ''}${data.avisoAuth ? ' ' + data.avisoAuth : ''}`);
+    } catch {
+      setAviso('No pudimos borrar al socio. Revisá la conexión.');
+    }
+    router.refresh();
+    setBusyId(null);
+  };
+
   /** El monto llega del diálogo: ver `DialogoCobro` para por qué se pregunta. */
   const registrarPago = async (s: SocioRow, monto: number, detalle: string, plan: string | null) => {
     setCobro(null);
@@ -680,6 +809,14 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
   return (
     <div>
       {ficha && <FichaSocioModal socio={ficha} onClose={() => setFicha(null)} />}
+      {aBorrar && (
+        <DialogoBorrarSocio
+          socio={aBorrar}
+          busy={busyId === aBorrar.id}
+          onCerrar={() => setABorrar(null)}
+          onBorrar={() => borrarSocio(aBorrar)}
+        />
+      )}
       {cobro && <DialogoCobro socio={cobro} planes={planes} onCerrar={() => setCobro(null)} onRegistrar={(monto, detalle, plan) => registrarPago(cobro, monto, detalle, plan)} />}
       <h1 className="adm-h1" style={h1}>Socios</h1>
       <p style={sub}>{socios.length.toLocaleString('es-AR')} socios · hacé clic en un socio para ver su ficha</p>
@@ -751,6 +888,10 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
                             onClick: () => cambiarEstado(s, 'suspendido'),
                           }
                         : { label: 'Reactivar', onClick: () => cambiarEstado(s, 'activo') },
+                      // Sin `confirmar`: la confirmación es el diálogo, que cuenta lo que
+                      // se va a llevar y pide escribir BORRAR. Para lo único irreversible
+                      // del panel, un confirm de una línea es poco.
+                      { label: 'Borrar para siempre', destructiva: true, onClick: () => setABorrar(s) },
                     ]}
                   />
                 </td>
@@ -1762,8 +1903,48 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
  * llamándolo, no esperando.
  */
 function Cobros({ cobros }: { cobros: CobroRow[] }) {
+  const router = useRouter();
   const [filtro, setFiltro] = useState('Todos');
   const [medio, setMedio] = useState('Todos');
+  const [borrando, setBorrando] = useState<string | null>(null);
+  const [aviso, setAviso] = useState('');
+
+  /*
+   * Borrar un cobro.
+   *
+   * Lo que hay que entender antes de tocarlo: un cobro ACREDITADO le sumó un mes a la
+   * cuota del socio, así que borrarlo se lo descuenta (lo hace `borrar_pago` en la
+   * base). Si no, quedaría con un mes de acceso que nadie pagó y el panel no podría
+   * explicar de dónde salió esa fecha. Por eso el aviso dice hasta cuándo le queda
+   * paga la cuota después de borrar: es la consecuencia que no se ve en esta tabla.
+   *
+   * Y lo que NO hace: devolver la plata. Si el cobro entró por Mercado Pago, el
+   * reintegro se hace en Mercado Pago.
+   */
+  const borrar = async (c: CobroRow) => {
+    const acreditado = c.estado === 'aprobado';
+    const texto = acreditado
+      ? `¿Borrar el cobro de ${money(c.monto)} de ${c.socio}?\n\nEstaba acreditado, así que se le va a descontar el mes que este cobro le había sumado. No se le devuelve la plata: si entró por Mercado Pago, el reintegro se hace desde ahí.`
+      : `¿Borrar el cobro de ${money(c.monto)} de ${c.socio}? No estaba acreditado, así que no le cambia la cuota.`;
+    if (!window.confirm(texto)) return;
+    setBorrando(c.id); setAviso('');
+    try {
+      const res = await fetch('/api/pagos/borrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pagoId: c.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) setAviso(data.error ?? 'No pudimos borrar el cobro.');
+      else setAviso(acreditado
+        ? `Borramos el cobro de ${money(c.monto)} de ${c.socio}. Su cuota queda paga ${data.paga_hasta ? `hasta el ${fmtFechaCorta(data.paga_hasta)}` : 'sin fecha'}.`
+        : `Borramos el cobro de ${money(c.monto)} de ${c.socio}.`);
+    } catch {
+      setAviso('No pudimos borrar el cobro. Revisá la conexión.');
+    }
+    router.refresh();
+    setBorrando(null);
+  };
 
   const ESTADO_LABEL: Record<CobroRow['estado'], string> = {
     aprobado: 'Acreditado', pendiente: 'Pendiente', rechazado: 'Rechazado', devuelto: 'Devuelto',
@@ -1824,6 +2005,8 @@ function Cobros({ cobros }: { cobros: CobroRow[] }) {
         </div>
       </div>
 
+      <Aviso texto={aviso} />
+
       {cobros.length === 0 ? (
         <div style={{ ...card, textAlign: 'center', padding: '38px 20px' }}>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18, marginBottom: 6 }}>Todavía no hay cobros</div>
@@ -1834,7 +2017,7 @@ function Cobros({ cobros }: { cobros: CobroRow[] }) {
       ) : (
         <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['SOCIO', 'PLAN', 'MONTO', 'MEDIO', 'CUANDO', 'CUBRE HASTA', 'ESTADO'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
+            <thead><tr>{['SOCIO', 'PLAN', 'MONTO', 'MEDIO', 'CUANDO', 'CUBRE HASTA', 'ESTADO', ''].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
             <tbody>
               {lista.map((c) => (
                 <tr key={c.id} className="adm-row">
@@ -1859,6 +2042,19 @@ function Cobros({ cobros }: { cobros: CobroRow[] }) {
                     {c.estado !== 'aprobado' && c.detalle && (
                       <span style={{ display: 'block', fontSize: 11.5, color: '#8781a0', marginTop: 4, maxWidth: 260 }}>{c.detalle}</span>
                     )}
+                  </td>
+                  {/* Borrar el cobro. Va como acción de la fila y no en un menú porque es
+                      la única que hay acá, y el aviso posterior dice cómo le quedó la
+                      cuota al socio: es la consecuencia que esta tabla no muestra. */}
+                  <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <button
+                      onClick={() => borrar(c)}
+                      disabled={borrando === c.id}
+                      aria-label={`Borrar el cobro de ${c.socio}`}
+                      style={{ background: 'none', border: '1px solid #eeecf5', borderRadius: 9, color: 'rgb(176,72,63)', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 12.5, padding: '6px 10px', cursor: borrando === c.id ? 'default' : 'pointer', opacity: borrando === c.id ? 0.5 : 1 }}
+                    >
+                      {borrando === c.id ? 'Borrando…' : 'Borrar'}
+                    </button>
                   </td>
                 </tr>
               ))}
