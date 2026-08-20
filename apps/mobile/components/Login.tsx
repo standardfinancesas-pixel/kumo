@@ -90,8 +90,12 @@ export default function Login({ onAlta, onRecuperar }: { onAlta: () => void; onR
           </View>
           <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>¿Todavía no sos socio?</Text>
         </View>
+        {/* Que el botón de Google también sirve para asociarse no se ve: está arriba,
+            debajo de "Ingresar". Sin decirlo, quien quiere entrar con Google y todavía
+            no es socio no sabe que ese es su camino. */}
         <Text style={{ fontSize: 13, color: MUTED, lineHeight: 19, marginBottom: 12 }}>
           Sumá a tu mascota al club desde acá: son cinco pasos y te queda el carnet digital listo.
+          También podés empezar con Google, con el botón de arriba.
         </Text>
         <TouchableOpacity
           onPress={onAlta}

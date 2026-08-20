@@ -108,8 +108,16 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
     window.location.href = profile?.role === 'admin' ? ADMIN : WEBAPP;
   };
 
-  /** Google sirve para entrar, no para asociarse: /auth/callback verifica que la
-   *  cuenta sea de un socio y, si no, la rebota con un aviso. */
+  /**
+   * El mismo botón sirve para entrar y para asociarse, y por eso está en las dos
+   * pestañas del modal: hasta que Google no contesta, Kumo no tiene forma de saber
+   * si esa cuenta ya es socia.
+   *
+   * Lo resuelve `/auth/callback`: si hay perfil entra a su sección, y si no lo manda
+   * al alta con la sesión puesta, el nombre y el mail cargados y sin paso de
+   * contraseña. Google aporta identidad, no membresía: el alta igual necesita las
+   * mascotas, la declaración jurada y el plan.
+   */
   const entrarConGoogle = async () => {
     setGoogleLoading(true);
     setError('');
