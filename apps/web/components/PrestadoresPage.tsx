@@ -2,6 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
+import { EMPRESA } from '@kumo/shared';
 
 /*
  * Landing de PRESTADORES — se abre desde "Quiero ofrecer servicios →" de la landing
@@ -225,7 +226,9 @@ export function PrestadoresPage({ open, onClose }: { open: boolean; onClose: () 
       <div style={{ borderTop: '1px solid #e6e3f0' }}>
         <div style={{ maxWidth: 1120, margin: '0 auto', padding: '28px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: BRAND }}>Kumo</span>
-          <span style={{ fontSize: 12.5, color: '#a29dba', maxWidth: 560, textAlign: 'right' }}>Administradora del club con sede en CABA, Argentina, habilitada a operar en todo el territorio nacional. Kumo no es un seguro ni una prepaga.</span>
+          <span style={{ fontSize: 12.5, color: '#a29dba', maxWidth: 560, textAlign: 'right' }}>
+            {EMPRESA.legal} <span style={{ whiteSpace: 'nowrap' }}>{EMPRESA.cuit}.</span>
+          </span>
         </div>
       </div>
 

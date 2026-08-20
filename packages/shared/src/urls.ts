@@ -26,6 +26,29 @@ export const urls = {
 export const SITIO = 'https://www.kumo.pet';
 
 /**
+ * La cuenta de Instagram del club, que es la única red que existe hoy.
+ *
+ * Va acá y no escrita en la landing porque el footer del sitio y el de la página
+ * de prestadores la muestran los dos, y un handle escrito dos veces se cambia una
+ * sola: el día que la cuenta cambie de nombre, uno de los dos iconos queda
+ * llevando a una cuenta que no existe.
+ */
+export const INSTAGRAM = 'https://www.instagram.com/kumo_app/';
+
+/**
+ * Quién administra Kumo, para el pie de página.
+ *
+ * El CUIT va aparte del resto de la frase porque en el pie se renderiza sin corte:
+ * la línea está alineada a la derecha y el navegador parte donde encuentra un guion,
+ * así que el número quedaba cortado en dos renglones ("33-" en uno y "71928936-9" en
+ * el otro), que para un dato fiscal se lee como un error de tipeo.
+ */
+export const EMPRESA = {
+  legal: 'Kumo y Kumo App son marcas registradas y están administradas por Standard Finance S.A.S.,',
+  cuit: 'CUIT 33-71928936-9',
+} as const;
+
+/**
  * Link de WhatsApp a partir del número que el admin carga en `club_settings`.
  *
  * wa.me solo acepta dígitos, y el número se guarda con el formato legible

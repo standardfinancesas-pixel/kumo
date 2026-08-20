@@ -2,7 +2,7 @@
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { data, urls, waLink } from '@kumo/shared';
+import { data, urls, waLink, INSTAGRAM, EMPRESA } from '@kumo/shared';
 import type { Faq, Plan } from '@kumo/shared';
 import { Onboarding } from '@/components/Onboarding';
 import { PrestadoresPage } from '@/components/PrestadoresPage';
@@ -853,15 +853,20 @@ function Footer() {
           <div>
             <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 26, letterSpacing: '-0.01em', color: 'rgb(93,84,145)' }}>Kumo</span>
             <p style={{ color: 'rgb(135,129,160)', fontSize: 14, lineHeight: 1.6, margin: '14px 0 18px', maxWidth: 260 }}>La app de mascotas con beneficios: descuentos, reintegros, carnet digital y una red de prestadores de confianza.</p>
+            {/* Solo Instagram: Facebook y Twitter eran dos iconos con `href="#"`, o sea
+                que no llevaban a ninguna parte. Un icono de red que no abre nada es peor
+                que no tenerlo — el que lo toca cree que el club no existe ahí. Cuando haya
+                cuentas se agregan con su link. */}
             <div style={{ display: 'flex', gap: 10 }}>
-              <a href="#" className="scpp" style={{ width: 36, height: 36, borderRadius: 10, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)', textDecoration: 'none' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.2c-5.4 0-9.8 4.4-9.8 9.8 0 4.9 3.6 8.9 8.3 9.7v-6.9H8.1v-2.8h2.4V9.8c0-2.4 1.4-3.7 3.6-3.7 1 0 2.1.2 2.1.2v2.3h-1.2c-1.2 0-1.5.7-1.5 1.5v1.8h2.6l-.4 2.8h-2.2v6.9c4.7-.7 8.3-4.8 8.3-9.7 0-5.4-4.4-9.8-9.8-9.8z" /></svg>
-              </a>
-              <a href="#" className="scpp" style={{ width: 36, height: 36, borderRadius: 10, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)', textDecoration: 'none' }}>
+              <a
+                href={INSTAGRAM}
+                target="_blank"
+                rel="noopener"
+                aria-label="Kumo en Instagram"
+                className="scpp"
+                style={{ width: 36, height: 36, borderRadius: 10, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)', textDecoration: 'none' }}
+              >
                 <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5.5" /><circle cx="12" cy="12" r="4.2" /><line x1="17.5" y1="6.5" x2="17.5" y2="6.5" /></svg>
-              </a>
-              <a href="#" className="scpp" style={{ width: 36, height: 36, borderRadius: 10, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)', textDecoration: 'none' }}>
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M22 5.9c-.7.3-1.6.6-2.4.7.9-.5 1.5-1.4 1.9-2.3-.8.5-1.7.8-2.7 1a4.3 4.3 0 0 0-7.3 3.9A12.2 12.2 0 0 1 2.9 4.6a4.3 4.3 0 0 0 1.3 5.7c-.7 0-1.3-.2-1.9-.5v.1c0 2.1 1.5 3.8 3.4 4.2-.6.2-1.2.2-1.8.1.5 1.7 2.1 2.9 3.9 2.9A8.6 8.6 0 0 1 2 18.6a12.2 12.2 0 0 0 6.6 1.9c7.9 0 12.2-6.5 12.2-12.2v-.6c.8-.6 1.5-1.3 2.2-2.1z" /></svg>
               </a>
             </div>
           </div>
@@ -880,7 +885,9 @@ function Footer() {
         </div>
         <div style={{ borderTop: '1px solid rgb(230,227,240)', padding: '22px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
           <span style={{ fontSize: 12.5, color: 'rgb(162,157,186)' }}>© 2026 Kumo. Todos los derechos reservados.</span>
-          <span className="r-foot-legal" style={{ fontSize: 12.5, color: 'rgb(162,157,186)', maxWidth: 640, textAlign: 'right' }}>Administradora del club con sede en CABA, Argentina, habilitada a operar en todo el territorio nacional. Kumo no es un seguro ni una prepaga. Tus derechos como consumidor están protegidos por la Ley 24.240.</span>
+          <span className="r-foot-legal" style={{ fontSize: 12.5, color: 'rgb(162,157,186)', maxWidth: 640, textAlign: 'right' }}>
+            {EMPRESA.legal} <span style={{ whiteSpace: 'nowrap' }}>{EMPRESA.cuit}.</span>
+          </span>
         </div>
       </div>
     </footer>
