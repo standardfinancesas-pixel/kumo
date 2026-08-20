@@ -4,7 +4,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  urls, FOTO_TIPOS, FOTO_MAX,
+  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
@@ -17,6 +17,7 @@ import {
 import { supabase } from '@/lib/supabase-browser';
 import { confirmarPago } from '@/lib/confirmarPago';
 import { MapaPrestadores } from '@/components/MapaPrestadores';
+import { CampoDomicilio } from '@/components/CampoDomicilio';
 
 /*
  * Webapp del socio — vista "App compu" del prototipo (reference/kumo-prototype.html).
@@ -2765,11 +2766,29 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onP
             <label style={sheetLabel} htmlFor="pf-dni">DNI</label>
             <input id="pf-dni" value={datos.dni} onChange={(e) => setDatos((d) => ({ ...d, dni: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-dom">Domicilio</label>
-            <input id="pf-dom" value={datos.dom} onChange={(e) => setDatos((d) => ({ ...d, dom: e.target.value }))} placeholder="Calle y número" style={inputEdit} />
+            {/* El mismo campo del alta: elegir de la lista llena localidad y provincia.
+                Importa acá porque este formulario es el que puede DESHACER lo que el
+                alta resolvió bien —alguien escribía "bs as" y el mapa se perdía—. */}
+            <div style={{ marginBottom: 10 }}>
+              <CampoDomicilio
+                id="pf-dom"
+                valor={datos.dom}
+                provincia={datos.provincia || undefined}
+                onCambio={(t) => setDatos((d) => ({ ...d, dom: t }))}
+                onElegir={(l) => setDatos((d) => ({ ...d, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia }))}
+                placeholder="Calle y número"
+                style={{ ...inputEdit, marginBottom: 0 }}
+              />
+            </div>
             <label style={sheetLabel} htmlFor="pf-loc">Localidad</label>
             <input id="pf-loc" value={datos.localidad} onChange={(e) => setDatos((d) => ({ ...d, localidad: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-prov">Provincia</label>
-            <input id="pf-prov" value={datos.provincia} onChange={(e) => setDatos((d) => ({ ...d, provincia: e.target.value }))} style={inputEdit} />
+            {/* Selector y no texto libre, igual que en el alta: era la única pantalla
+                donde se podía escribir cualquier cosa como provincia. */}
+            <select id="pf-prov" value={datos.provincia} onChange={(e) => setDatos((d) => ({ ...d, provincia: e.target.value }))} style={inputEdit}>
+              <option value="">Elegí una provincia</option>
+              {PROVINCIAS.map((p) => <option key={p}>{p}</option>)}
+            </select>
             <label style={sheetLabel} htmlFor="pf-tel">Teléfono</label>
             <input id="pf-tel" value={datos.tel} onChange={(e) => setDatos((d) => ({ ...d, tel: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-mail">Email</label>

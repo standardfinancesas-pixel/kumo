@@ -2,6 +2,7 @@ import { View } from 'react-native';
 import { PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, type SocioAlta } from '@kumo/shared';
 import { Texto as Text, INK, MUTED } from '../ui/Texto';
 import { Campo, CampoClave, Selector } from '../ui/Controles';
+import { CampoDomicilio } from '../ui/CampoDomicilio';
 
 /**
  * Paso 2 · Los datos del socio.
@@ -49,7 +50,15 @@ export default function Paso2Socio({
         </View>
       </View>
 
-      <Campo label="Domicilio" valor={socio.domicilio} onCambio={(t) => set({ domicilio: t })} placeholder="Calle y número" />
+      {/* Elegir de la lista llena domicilio, localidad y provincia de una vez y ya
+          normalizados (ver CampoDomicilio). Escribir a mano sigue valiendo: el
+          callejero oficial no tiene countries ni direcciones rurales. */}
+      <CampoDomicilio
+        valor={socio.domicilio}
+        provincia={socio.provincia || undefined}
+        onCambio={(t) => set({ domicilio: t })}
+        onElegir={(l) => set({ domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
+      />
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
           <Campo label="Localidad" valor={socio.localidad} onCambio={(t) => set({ localidad: t })} placeholder="Ej. Palermo" />

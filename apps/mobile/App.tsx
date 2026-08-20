@@ -7,7 +7,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  colors,
+  colors, PROVINCIAS,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -23,6 +23,8 @@ import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
 import { recalcularUbicacion, ubicarNegocio } from './lib/api';
+import { CampoDomicilio } from './components/ui/CampoDomicilio';
+import { Selector } from './components/ui/Controles';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
@@ -1508,9 +1510,22 @@ function Perfil({ profile, planes, go, reload, pago, onPlan }: { profile: Profil
         <View style={{ marginBottom: 20 }}>
           {campo('Apellido y nombre', datos.nombre, (v) => setDatos({ ...datos, nombre: v }))}
           {campo('DNI', datos.dni, (v) => setDatos({ ...datos, dni: v }), { keyboardType: 'numeric' })}
-          {campo('Domicilio', datos.dom, (v) => setDatos({ ...datos, dom: v }))}
+          {/* El mismo campo del alta. Importa acá porque este formulario es el que
+              puede DESHACER lo que el alta resolvió bien: alguien escribía "bs as" y
+              el mapa se perdía. */}
+          <CampoDomicilio
+            valor={datos.dom}
+            provincia={datos.provincia || undefined}
+            onCambio={(v) => { setDatos({ ...datos, dom: v }); setError(''); }}
+            onElegir={(l) => setDatos({ ...datos, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
+          />
           {campo('Localidad', datos.localidad, (v) => setDatos({ ...datos, localidad: v }))}
-          {campo('Provincia', datos.provincia, (v) => setDatos({ ...datos, provincia: v }))}
+          {/* Selector y no texto libre, igual que en el alta: era la única pantalla
+              donde se podía escribir cualquier cosa como provincia. */}
+          <Selector
+            label="Provincia" valor={datos.provincia} opciones={PROVINCIAS}
+            placeholder="Elegí una provincia" onCambio={(v) => setDatos({ ...datos, provincia: v })}
+          />
           {campo('Teléfono', datos.tel, (v) => setDatos({ ...datos, tel: v }), { keyboardType: 'phone-pad' })}
 
           {/* La cuenta donde el club te transfiere los reintegros. Va acá y no en

@@ -11,6 +11,7 @@ import {
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
+import { CampoDomicilio } from '@/components/CampoDomicilio';
 
 /*
  * Alta de socio — el formulario, presentado como WEB y no dentro de un marco de
@@ -390,7 +391,19 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
                 </>
               ))}</div>
             </div>
-            {field('Domicilio', <input autoComplete="street-address" value={socio.domicilio} onChange={(e) => setB({ ...b, socio: { ...socio, domicilio: e.target.value } })} placeholder="Calle y número" style={input} />)}
+            {/* Elegir de la lista llena los tres campos de una vez y ya normalizados
+                (ver CampoDomicilio). Escribir a mano sigue siendo válido: el callejero
+                oficial no tiene countries ni direcciones rurales. */}
+            {field('Domicilio', (
+              <CampoDomicilio
+                valor={socio.domicilio}
+                provincia={socio.provincia || undefined}
+                onCambio={(t) => setB({ ...b, socio: { ...socio, domicilio: t } })}
+                onElegir={(l) => setB({ ...b, socio: { ...socio, domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia } })}
+                placeholder="Calle y número"
+                style={input}
+              />
+            ))}
             <div style={{ display: 'flex', gap: 12 }}>
               <div style={{ flex: 1 }}>{field('Localidad', <input autoComplete="address-level2" value={socio.localidad} onChange={(e) => setB({ ...b, socio: { ...socio, localidad: e.target.value } })} placeholder="Ej. Palermo" style={input} />)}</div>
               <div style={{ flex: 1 }}>{field('Provincia', <select value={socio.provincia} onChange={(e) => setB({ ...b, socio: { ...socio, provincia: e.target.value } })} style={input}><option value="">Elegí una provincia</option>{PROVINCIAS.map((p) => <option key={p}>{p}</option>)}</select>)}</div>

@@ -1,9 +1,17 @@
 /**
  * De un domicilio escrito a mano, un punto en el mapa.
  *
- * Usa **Nominatim**, el geocodificador de OpenStreetMap: gratis, sin clave y sin
- * tarjeta, igual que las teselas del mapa. Su política de uso pide tres cosas y las
- * tres se cumplen acá:
+ * Son dos fuentes, en este orden:
+ *
+ *  1. **Georef**, el callejero oficial argentino (ver `lugares.ts`), que es el mismo
+ *     que alimenta el autocompletado del campo de domicilio. Va primero justamente
+ *     por eso: el punto guardado tiene que ser el que la persona vio al elegir.
+ *  2. **Nominatim** (OpenStreetMap), para todo lo que Georef no tiene: una localidad
+ *     sin calle, un barrio privado, una dirección rural. Es también el único camino
+ *     para los comercios, que se buscan por barrio y no por localidad censal.
+ *
+ * Sobre Nominatim: es gratis, sin clave y sin tarjeta, igual que las teselas del
+ * mapa. Su política de uso pide tres cosas y las tres se cumplen acá:
  *
  *  · Identificarse con un User-Agent propio y un contacto (abajo). Con el
  *    User-Agent que pone la librería de turno cortan el acceso.
@@ -17,6 +25,8 @@
  * que queda sin coordenadas ve el mapa en el centro de CABA y la pantalla se lo
  * dice ("del centro" en vez de "de tu casa").
  */
+import { buscarDirecciones } from './lugares';
+
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 /* Quién consulta y a dónde escribirle: lo exige la política de Nominatim. El sitio
    va escrito y no importado de `@kumo/shared` para que este archivo se pueda
@@ -184,6 +194,25 @@ export async function geocodificarDomicilio(partes: {
   city?: string | null;
   province?: string | null;
 }): Promise<Ubicacion | null> {
+  /*
+   * Primero el callejero oficial argentino (Georef), que es EL MISMO que usa el
+   * autocompletado del campo de domicilio. Así, el punto que se guarda es exactamente
+   * el que la persona vio al elegir su dirección, y no otro parecido: los dos
+   * servicios no coinciden —para "Av. Santa Fe 3200" hay 900 metros de diferencia—
+   * y con dos fuentes distintas el mapa terminaba mostrando un lugar que la pantalla
+   * del alta nunca ofreció.
+   *
+   * Nominatim queda de respaldo, y sigue siendo el único camino para lo que Georef no
+   * tiene: una localidad sin calle, un country, una dirección rural.
+   */
+  const calle = limpiarCalle(partes.address);
+  if (calle) {
+    const conLocalidad = await buscarDirecciones(calle, partes.province ?? undefined, partes.city ?? undefined);
+    // Sin la localidad también, porque a veces está escrita como no figura en el
+    // callejero ("caba" para una dirección de Palermo) y filtra de más.
+    const [mejor] = conLocalidad.length ? conLocalidad : await buscarDirecciones(calle, partes.province ?? undefined);
+    if (mejor) return { lat: mejor.lat, lng: mejor.lng, origen: 'domicilio' };
+  }
   return correr(consultasDeDomicilio(partes));
 }
 
