@@ -958,16 +958,18 @@ comment on function public.borrar_socio(uuid) is
 revoke all on function public.borrar_socio(uuid) from public, anon, authenticated;
 
 /* ── Borrar un cobro ────────────────────────────────────────── */
+-- `paid_until` queda donde llegan los cobros que sobreviven, no restando un mes:
+-- restando, borrar un cobro del medio dejaba la fecha peleada con lo que declaran
+-- los cobros que quedan. Ver la migración 20260820200000.
 create or replace function public.borrar_pago(p_pago_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  pago   record;
-  antes  date;
-  nueva  date;
-  quedan integer;
+  pago  record;
+  antes date;
+  nueva date;
 begin
-  select id, member_id, amount, status, method, mp_payment_id
+  select id, member_id, amount, status, method
     into pago
     from public.payments
    where id = p_pago_id;
@@ -979,13 +981,12 @@ begin
 
   delete from public.payments where id = p_pago_id;
 
-  if pago.status = 'aprobado' and antes is not null then
-    -- Se cuenta DESPUÉS de borrar: la pregunta es qué le queda, no qué tenía.
-    select count(*) into quedan
+  -- Un cobro rechazado o pendiente nunca movió la cuota, así que no hay nada que
+  -- recalcular: se borra la fila y listo.
+  if pago.status = 'aprobado' then
+    select max(covers_until) into nueva
       from public.payments
      where member_id = pago.member_id and status = 'aprobado';
-
-    nueva := case when quedan = 0 then null else (antes - interval '1 month')::date end;
 
     perform set_config('kumo.acreditando', 'on', true);
     update public.profiles set paid_until = nueva where id = pago.member_id;
@@ -1004,7 +1005,7 @@ begin
 end $$;
 
 comment on function public.borrar_pago(uuid) is
-  'Borra un cobro y le descuenta al socio el mes que ese cobro le habia sumado. Si no le queda ningun cobro acreditado, `paid_until` vuelve a null: nunca pago. Solo la service-role.';
+  'Borra un cobro y deja `paid_until` en la fecha mas lejana que declaren los cobros aprobados que quedan (null si no queda ninguno). No resta meses: restando, borrar un cobro del medio dejaba la cuota peleada con lo que dicen los cobros que sobreviven. Solo la service-role.';
 
 revoke all on function public.borrar_pago(uuid) from public, anon, authenticated;
 
