@@ -14,6 +14,7 @@ import {
   type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
+import { confirmarPago } from '@/lib/confirmarPago';
 
 /*
  * Webapp del socio — vista "App compu" del prototipo (reference/kumo-prototype.html).
@@ -185,13 +186,16 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
   const esperando = estado === 'confirmando';
 
   /*
-   * Mientras esperamos el aviso, se vuelve a preguntar al servidor. Tres decisiones
-   * que NO son opcionales:
+   * Cada pasada le PREGUNTA a Mercado Pago cómo salió el cobro, en vez de esperar
+   * que avise. Cuatro decisiones que NO son opcionales:
    *
-   * · La ventana es de 3 minutos (`ESPERA_PAGO`). Eran 30 segundos y no alcanzaban:
-   *   medido el 19/08 con una suscripción real, del checkout al mes acreditado
-   *   pasaron 2 minutos. Con el corte a los 30 segundos el socio pagaba bien y leía
-   *   "está tardando", que es justo lo que empuja a pagar dos veces.
+   * · La primera pasada va sin demora. Medido el 19/08 con una suscripción real: MP
+   *   debitó 18 segundos después de autorizar y su aviso llegó 1:41 más tarde, así
+   *   que cuando el socio vuelve el cobro ya existe y preguntando se resuelve en el
+   *   acto. Sondear la base sola no servía: no cambia hasta que llega el aviso.
+   * · La ventana sigue siendo de 3 minutos (`ESPERA_PAGO`), para el que autorizó y
+   *   volvió antes de que MP debitara. Eran 30 segundos y no alcanzaban: el socio
+   *   pagaba bien y leía "está tardando", que es lo que empuja a pagar dos veces.
    * · Escalonado: los primeros 30 segundos cada 3, después cada 6. Pareja a 3
    *   segundos son 60 recargas, y `/app` hace una docena de consultas en cada una.
    * · Hay límite. La primera versión recargaba sin fin y dejaba al socio en una
@@ -199,11 +203,31 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
    *
    * A diferencia del muro, esperar no bloquea nada: el socio ya está adentro.
    */
+  /*
+   * Cada pasada le PREGUNTA a Mercado Pago en vez de esperar que avise.
+   *
+   * La primera va sin demora, y ahí se resuelve el caso normal: medido contra la
+   * cuenta real, MP debita 18 segundos después de autorizar, así que cuando el socio
+   * vuelve el cobro ya existe — lo que tardaba 2 minutos era el aviso, no la plata.
+   * Sondear la base sola no alcanzaba: la base no cambia hasta que llega el aviso.
+   *
+   * Las pasadas siguientes cubren al que autorizó y volvió antes de que MP debitara.
+   * Sigue escalonado y con límite (`ESPERA_PAGO`), y sigue sin bloquear nada: el socio
+   * ya está adentro.
+   */
   useEffect(() => {
     if (!esperando || intentos >= ESPERA_PAGO.limite) return;
-    const espera = intentos < ESPERA_PAGO.rapidos ? ESPERA_PAGO.msRapido : ESPERA_PAGO.msLento;
-    const t = setTimeout(() => { setIntentos((n) => n + 1); router.refresh(); }, espera);
-    return () => clearTimeout(t);
+    const espera = intentos === 0
+      ? 0
+      : intentos < ESPERA_PAGO.rapidos ? ESPERA_PAGO.msRapido : ESPERA_PAGO.msLento;
+    let vivo = true;
+    const t = setTimeout(async () => {
+      await confirmarPago();
+      if (!vivo) return;
+      setIntentos((n) => n + 1);
+      router.refresh();
+    }, espera);
+    return () => { vivo = false; clearTimeout(t); };
   }, [esperando, intentos, router]);
 
   const pagar = async () => {

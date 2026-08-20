@@ -130,3 +130,31 @@ export async function crearSuscripcion(opts: { plan: string; odonto: boolean; de
     return { error: 'No pudimos abrir la suscripción. Revisá la conexión.' };
   }
 }
+
+/**
+ * Preguntarle a Mercado Pago cómo salió el cobro, sin esperar su aviso.
+ *
+ * Misma ruta que usa la web (`/api/pagos/confirmar`): es el servidor el que habla
+ * con Mercado Pago, porque el token de la cuenta no puede vivir en la app —
+ * cualquiera puede abrir el bundle de un APK.
+ *
+ * No devuelve error a la pantalla: si no se pudo confirmar, la espera sigue su
+ * curso y el webhook termina el trabajo. Que la consulta falle no es un pago
+ * fallido, y decírselo al socio sería asustarlo por nada.
+ */
+export async function confirmarSuscripcion(): Promise<{ hasta: string | null; acreditado: boolean } | null> {
+  try {
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses.session?.access_token;
+    if (!token) return null;
+    const res = await fetch(`${apiKumo}/api/pagos/confirmar`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as { hasta: string | null; acreditado: boolean };
+  } catch {
+    return null;
+  }
+}

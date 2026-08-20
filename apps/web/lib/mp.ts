@@ -219,6 +219,29 @@ export async function traerDebito(id: string): Promise<DebitoMP> {
   }
 }
 
+/**
+ * Los débitos de una suscripción, preguntados en el momento.
+ *
+ * Es lo que permite que la vuelta de Mercado Pago no espere el aviso: el primer
+ * cobro sale segundos después de que el socio autoriza (medido: 18 s), pero el
+ * aviso tardó 2 minutos. Preguntando, el socio ve su plan activo al instante.
+ *
+ * Mercado Pago llama "authorized payments" a estos objetos y NO son pagos: cada uno
+ * tiene un pago adentro con su propio estado. Confundirlos es acreditar meses que la
+ * tarjeta rechazó.
+ */
+export async function buscarDebitos(preapprovalId: string): Promise<DebitoMP[]> {
+  try {
+    const res = (await new Invoice(cliente()).search({
+      options: { preapproval_id: preapprovalId, sort: 'debit_date:desc', limit: 10 },
+    })) as unknown as { results?: DebitoMP[] };
+    return res?.results ?? [];
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar('/authorized_payments/search', e);
+  }
+}
+
 export type PagoMP = {
   id: number;
   status: 'approved' | 'pending' | 'in_process' | 'rejected' | 'refunded' | 'cancelled' | 'charged_back';

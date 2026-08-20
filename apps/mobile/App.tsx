@@ -17,6 +17,7 @@ import {
   type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
+import { useEsperarPago } from './lib/esperarPago';
 import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
@@ -2105,6 +2106,10 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
   });
   const copy = copyCuota(estado, profile.firstName, profile.cuotaHasta ? fmtFechaCorta(profile.cuotaHasta) : null);
   const esperando = estado === 'confirmando';
+  /* Mientras espera, le pregunta a Mercado Pago en vez de esperar su aviso: ver
+     `lib/esperarPago.ts`. Antes la hoja solo se refrescaba si el socio tocaba el
+     botón, así que el que volvía y esperaba quieto no veía nada cambiar. */
+  const { seAgoto } = useEsperarPago(esperando, recargar);
 
   const suscribirme = async () => {
     if (!planSel) { setError('Elegí un plan para activar tu cuota.'); return; }
@@ -2173,9 +2178,21 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{copy.cta} →</Text>
         </TouchableOpacity>
       ) : esperando ? (
-        <TouchableOpacity onPress={() => recargar()} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
-          <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>{copy.cta}</Text>
-        </TouchableOpacity>
+        <>
+          {/* Se agotó la espera. Lo importante del texto: que NO pague de nuevo. Un
+              socio que ve una pantalla trabada después de pagar vuelve a pagar, y ahí
+              el problema pasa a ser plata. */}
+          {seAgoto ? (
+            <View style={{ backgroundColor: '#fbf3e2', borderRadius: 13, padding: 13, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: '#92690a', lineHeight: 19 }}>
+                Está tardando más de lo normal. Si ya autorizaste el pago, se activa solo en cuanto Mercado Pago lo cobre: no hace falta pagar de nuevo.
+              </Text>
+            </View>
+          ) : null}
+          <TouchableOpacity onPress={() => recargar()} activeOpacity={0.85} style={{ backgroundColor: '#f0edf9', borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
+            <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>{copy.cta}</Text>
+          </TouchableOpacity>
+        </>
       ) : (
         <>
           <Text style={{ fontSize: 11, fontWeight: '700', color: '#a29dba', letterSpacing: 0.5, marginBottom: 8 }}>ELEGÍ TU PLAN</Text>

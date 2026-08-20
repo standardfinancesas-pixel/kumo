@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Linking, ScrollView, TouchableOpacity, View } from 'react-native';
 import { colors, etiquetaPlan } from '@kumo/shared';
 import { crearSuscripcion } from '../../lib/api';
+import { useEsperarPago } from '../../lib/esperarPago';
 import { Texto as Text, BRAND, INK, LIME, MUTED } from '../ui/Texto';
 
 /** Lo mínimo de una mascota para dibujar su carnet. Sale de los datos ya cargados. */
@@ -56,6 +57,11 @@ export default function AltaListo({
     })();
     return () => { vivo = false; };
   }, [pagar, fueAMP, recargar]);
+
+  /* Volvió de Mercado Pago: se le pregunta por el cobro en vez de esperar el aviso,
+     que es lo que hacía que el carnet apareciera con la cuota "confirmando" un par de
+     minutos después de que el socio ya había pagado. */
+  useEsperarPago(fueAMP && debePagar, recargar);
 
   const etiqueta = etiquetaPlan(planName, debePagar);
   const varias = mascotas.length > 1;
