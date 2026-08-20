@@ -1,5 +1,5 @@
 import { TouchableOpacity, View } from 'react-native';
-import { colors, cuotaMensual, ODONTO_PRECIO } from '@kumo/shared';
+import { colors, cuotaMensual, ODONTO_PRECIO, esGratis, planElegido, type EleccionPlan } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, LIME, MUTED } from '../ui/Texto';
 import { Punto, Tilde } from '../ui/Controles';
 
@@ -9,26 +9,30 @@ export type PlanAlta = { id: string; name: string; basePrice: number; tagline: s
 const plata = (n: number) => '$' + n.toLocaleString('es-AR');
 
 /**
- * Paso 3 · El plan.
+ * Paso 3 · El plan, o entrar gratis.
  *
  * La bajada y los beneficios salen de la tabla `plans`, que es lo que el club edita
- * desde el panel. La web todavía muestra un texto congelado en el código para esto
- * y le pasa por encima a lo que el club escribió; acá no se repite ese error.
+ * desde el panel.
  *
- * La cobertura odontológica va UNA sola vez, debajo de la lista, y no dentro de
- * cada tarjeta: es una columna del socio (`addon_odonto`), no del plan. Cuando el
- * check vivía dentro de las tarjetas parecía ser de ese plan, y tildarlo en uno lo
- * tildaba en todos.
+ * "Continuar gratis" va abajo y con menos jerarquía que las tarjetas, a propósito: la
+ * web pública vende tres planes, y si esto compitiera visualmente el formulario
+ * vendería cuatro. Es la salida para quien duda, no una opción más.
+ *
+ * La cobertura odontológica va UNA sola vez y solo con un plan elegido: es una
+ * columna del socio (`addon_odonto`), no del plan, y sin cuota no hay dónde cobrarla.
  */
 export default function Paso3Plan({
-  planes, elegido, odonto, onPlan, onOdonto,
+  planes, eleccion, odonto, onEleccion, onOdonto,
 }: {
   planes: PlanAlta[];
-  elegido: string | null;
+  eleccion: EleccionPlan | null;
   odonto: boolean;
-  onPlan: (nombre: string) => void;
+  onEleccion: (e: EleccionPlan) => void;
   onOdonto: (v: boolean) => void;
 }) {
+  const gratis = esGratis(eleccion);
+  const elegido = planElegido(eleccion);
+
   return (
     <View>
       <Text style={{ fontFamily: 'Baloo2_800ExtraBold', fontSize: 26, color: INK, marginBottom: 4 }}>Elegí tu plan</Text>
@@ -40,7 +44,7 @@ export default function Paso3Plan({
           return (
             <TouchableOpacity
               key={p.id}
-              onPress={() => onPlan(p.name)}
+              onPress={() => onEleccion({ modo: 'pago', plan: p.name, aceptaCuota: eleccion?.modo === 'pago' ? eleccion.aceptaCuota : false })}
               style={{ borderWidth: 2, borderColor: on ? BRAND : colors.violet[200], backgroundColor: on ? colors.violet[50] : '#fff', borderRadius: 18, padding: 18 }}
             >
               {p.featured ? (
@@ -69,13 +73,15 @@ export default function Paso3Plan({
         })}
       </View>
 
-      <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: colors.violet[50], borderRadius: 12, padding: 14, marginTop: 16 }}>
-        <Tilde marcado={odonto} onCambio={onOdonto}>
-          <Text style={{ fontSize: 13.5, color: '#5b5670' }}>
-            ¿Sumar cobertura odontológica? <Text style={{ fontWeight: '700', color: INK }}>+{plata(ODONTO_PRECIO)}/mes</Text>
-          </Text>
-        </Tilde>
-      </View>
+      {elegido ? (
+        <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: colors.violet[50], borderRadius: 12, padding: 14, marginTop: 16 }}>
+          <Tilde marcado={odonto} onCambio={onOdonto}>
+            <Text style={{ fontSize: 13.5, color: '#5b5670' }}>
+              ¿Sumar cobertura odontológica? <Text style={{ fontWeight: '700', color: INK }}>+{plata(ODONTO_PRECIO)}/mes</Text>
+            </Text>
+          </Tilde>
+        </View>
+      ) : null}
 
       {elegido ? (
         <View style={{ backgroundColor: BRAND, borderRadius: 14, padding: 16, marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -85,6 +91,21 @@ export default function Paso3Plan({
           </Text>
         </View>
       ) : null}
+
+      <View style={{ borderTopWidth: 1, borderTopColor: colors.violet[200], marginTop: 22, paddingTop: 18 }}>
+        <TouchableOpacity
+          onPress={() => onEleccion({ modo: 'gratis' })}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: gratis ? BRAND : colors.violet[200], backgroundColor: gratis ? colors.violet[50] : '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 15 }}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>Continuar gratis</Text>
+            <Text style={{ fontSize: 13, color: MUTED, marginTop: 2, lineHeight: 19 }}>
+              Tenés el carnet de tus mascotas, las vacunas, los prestadores y los foros. Los reintegros y los beneficios se activan con un plan, cuando quieras.
+            </Text>
+          </View>
+          <Punto on={gratis} />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 }

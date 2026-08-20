@@ -33,7 +33,7 @@ export async function POST(req: Request) {
    * el monto viniera del cliente, cualquiera se suscribiría por $1 — y es el error
    * más común de estas integraciones.
    */
-  const elegido = (await req.json().catch(() => ({}))) as { plan?: string; odonto?: boolean };
+  const elegido = (await req.json().catch(() => ({}))) as { plan?: string; odonto?: boolean; desde?: 'alta' };
 
   const { data: perfil } = await getServiceClient()
     .from('profiles')
@@ -146,8 +146,15 @@ export async function POST(req: Request) {
        * La webapp reconoce la vuelta por el `preapproval_id` que agrega MP, así que
        * no hace falta marcarla nosotros.
        */
+      /*
+       * Tres destinos, y el del alta no es un lujo: si la vuelta del pago fuera a
+       * /app, el socio que recien se dio de alta nunca veria la pantalla final con el
+       * carnet de sus mascotas — se la saltearia justo despues de pagar.
+       */
       volverA: quien.desdeLaApp
         ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/suscripcion/listo`
+        : elegido.desde === 'alta'
+          ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/alta/listo`
         : `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}`,
     });
 

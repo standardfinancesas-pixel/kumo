@@ -39,12 +39,14 @@ export type RespuestaAlta =
  * (la crea este mismo pedido), y el alta con Google sí — y ahí el servidor saca la
  * identidad de la sesión, nunca del cuerpo.
  */
-export async function postAlta(payload: BodyAlta, foto?: FotoElegida | null): Promise<RespuestaAlta> {
+export async function postAlta(payload: BodyAlta, fotos: (FotoElegida | undefined)[] = []): Promise<RespuestaAlta> {
   const form = new FormData();
   form.append('payload', JSON.stringify(payload));
-  if (foto) {
-    form.append('photo', { uri: foto.uri, name: foto.name, type: foto.type } as unknown as Blob);
-  }
+  // Una parte por mascota, en el mismo orden que el payload: repetir la clave
+  // la clave `photo` sería ambigua cuando solo la segunda mascota tiene foto.
+  fotos.forEach((f, i) => {
+    if (f) form.append(`photo_${i}`, { uri: f.uri, name: f.name, type: f.type } as unknown as Blob);
+  });
 
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -80,5 +82,51 @@ export async function pedirLinkDeClave(email: string): Promise<void> {
   } catch {
     /* Sin señal a propósito: la pantalla ya dice "mirá tu casilla", y contar que
        falló la red no ayuda a nadie a recuperar la clave. */
+  }
+}
+
+export type RespuestaCobro =
+  | { ok: true; initPoint: string }
+  | { yaAutorizada: true }
+  | { error: string };
+
+/**
+ * Abre el cobro de la cuota y devuelve a dónde hay que mandar al socio.
+ *
+ * Vivía dentro del muro. Se mudó acá porque ahora lo piden dos pantallas: la hoja
+ * del plan y la pantalla final del alta.
+ *
+ * El reintento con el token renovado NO es de más: pasó de verdad — con la app un
+ * rato en segundo plano el token guardado ya había vencido, el servidor contestaba
+ * "Sin sesión" y el socio quedaba sin poder pagar sin entender por qué.
+ */
+export async function crearSuscripcion(opts: { plan: string; odonto: boolean; desde?: 'alta' }): Promise<RespuestaCobro> {
+  const pedir = async (token: string) => {
+    const res = await fetch(`${apiKumo}/api/pagos/crear`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(opts),
+    });
+    return { res, data: (await res.json().catch(() => ({}))) as { initPoint?: string; yaAutorizada?: boolean; error?: string } };
+  };
+
+  try {
+    const { data: ses } = await supabase.auth.getSession();
+    let token = ses.session?.access_token;
+    if (!token) return { error: 'Se cerró tu sesión. Volvé a entrar y probá de nuevo.' };
+
+    let intento = await pedir(token);
+    if (intento.res.status === 401) {
+      const { data: nueva } = await supabase.auth.refreshSession();
+      token = nueva.session?.access_token;
+      if (!token) return { error: 'Se cerró tu sesión. Volvé a entrar y probá de nuevo.' };
+      intento = await pedir(token);
+    }
+
+    if (intento.data.yaAutorizada) return { yaAutorizada: true };
+    if (!intento.res.ok || !intento.data.initPoint) return { error: intento.data.error ?? 'No pudimos abrir la suscripción.' };
+    return { ok: true, initPoint: intento.data.initPoint };
+  } catch {
+    return { error: 'No pudimos abrir la suscripción. Revisá la conexión.' };
   }
 }

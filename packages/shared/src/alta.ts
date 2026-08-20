@@ -1,14 +1,13 @@
-import { HEALTH_Q, SANITARIO_Q } from './declaracion';
-import { cbuValido, tarjetaMeta, type TarjetaMeta } from './pagos';
+import { HEALTH_Q, SANITARIO_Q, armarDeclaracion, type RespuestaDeclarada } from './declaracion';
 
 /**
  * El alta de socio, en la parte que tiene que valer igual en la web y en la app.
  *
- * Antes vivía entera dentro del formulario web (`apps/web/components/Onboarding.tsx`):
- * las provincias, los formateadores y —lo importante— la regla de "este paso está
- * completo". Al portar el alta al celular eso habría quedado escrito dos veces, y
- * el primer síntoma no habría sido una pantalla distinta sino un socio guardado
- * con datos que una superficie acepta y la otra no.
+ * Antes vivía entera dentro del formulario web: las provincias, los formateadores
+ * y —lo importante— la regla de "este paso está completo". Al portar el alta al
+ * celular eso habría quedado escrito dos veces, y el primer síntoma no habría sido
+ * una pantalla distinta sino un socio guardado con datos que una superficie acepta
+ * y la otra no.
  *
  * Acá NO hay componentes ni estilos: la web usa DOM y el celular React Native, y
  * `CLAUDE.md` fija React 19 en una y 18.2.0 en la otra a propósito. Lo que se
@@ -22,6 +21,15 @@ export const PROVINCIAS = [
   'Neuquén', 'Río Negro', 'Salta', 'San Juan', 'San Luis', 'Santa Cruz', 'Santa Fe',
   'Santiago del Estero', 'Tierra del Fuego', 'Tucumán',
 ] as const;
+
+/**
+ * Cuántas mascotas se pueden cargar en un alta.
+ *
+ * No es un límite de producto —el club quiere que se puedan cargar todas—: es
+ * defensa contra un pedido armado a mano. La pantalla esconde "agregar otra" al
+ * llegar, y la función de la base corta más arriba todavía.
+ */
+export const MAX_MASCOTAS_ALTA = 6;
 
 /* ── Formateadores: lo que el socio ve mientras tipea ─────────────── */
 
@@ -65,71 +73,103 @@ export type MascotaAlta = {
   edad: string; peso: string; microchip: string; vet: string; foto: string;
 };
 
-/** A dónde el club transfiere los reintegros. A una tarjeta no se le puede
- *  transferir, así que esto no es un lujo: sin CBU no se le puede pagar. */
+/**
+ * Una mascota del formulario, con SUS respuestas de salud adentro.
+ *
+ * Las respuestas van acá y no en una lista aparte indexada igual: dos listas
+ * paralelas se desincronizan solas —se borra la segunda mascota y la declaración de
+ * la tercera queda pegada a la que quedó— y el resultado sería un documento jurado
+ * que dice cosas de otro animal.
+ *
+ * `uid` existe porque dos mascotas se pueden llamar igual ("Negro" y "Negro") y hay
+ * que poder borrar la fila correcta y encontrar su foto. No viaja al servidor.
+ */
+export type MascotaBorrador = {
+  uid: string;
+  datos: MascotaAlta;
+  salud: Record<number, string>;
+  sanit: Record<number, string>;
+};
+
+/** A dónde el club transfiere los reintegros. Ya no se pide en el alta: se pide al
+ *  cargar el primer reintegro, que es cuando recién hace falta. El tipo queda para
+ *  poder leer los pedidos de las apps viejas. */
 export type BancoAlta = {
   holder: string; holderDni: string; cuit: string; bank: string; cbu: string; alias: string;
 };
 
-export type DeclaracionAlta = {
-  health: Record<number, string>;
-  sanit: Record<number, string>;
-  firma: string;
-  /** Solo del formulario: el servidor arma la declaración con su propia lista. */
-  acepta: boolean;
-};
-
-export type PagoAlta = {
-  metodo: 'tarjeta' | 'cbu';
-  numero: string; exp: string; cvv: string; titular: string;
-  banco: BancoAlta;
-  aceptaCuota: boolean;
-};
+/**
+ * Qué eligió en el paso del plan.
+ *
+ * Hacen falta TRES estados y no dos: `null` es "todavía no eligió" (y bloquea el
+ * botón), `gratis` es una elección de verdad, y `pago` trae el plan. Sin la
+ * distinción, el paso quedaba sin forma de avanzar para quien no quiere pagar.
+ *
+ * `aceptaCuota` vive adentro de la variante `pago` a propósito: no hay cuota que
+ * aceptar en la rama gratuita, así que "socio gratuito que aceptó la cuota" no es
+ * un estado representable.
+ *
+ * No se usa un plan centinela 'GRATIS': `plans.name` es un enum de Postgres y
+ * consultarlo por un valor que no existe no devuelve vacío, tira error.
+ */
+export type EleccionPlan =
+  | { modo: 'gratis' }
+  | { modo: 'pago'; plan: string; aceptaCuota: boolean };
 
 export type BorradorAlta = {
   socio: SocioAlta;
-  pet: MascotaAlta;
-  plan: string | null;
+  mascotas: MascotaBorrador[];
+  eleccion: EleccionPlan | null;
   odonto: boolean;
-  declaracion: DeclaracionAlta;
-  pago: PagoAlta;
+  /** Una firma para todas las mascotas: es un solo acto legal con N anexos. */
+  firma: string;
+  acepta: boolean;
 };
 
-/** El cuerpo que espera `POST /api/onboarding`. Lo importa el route handler para
- *  no volver a declararlo: dos copias del mismo contrato divergen solas. */
+/** Una mascota tal como viaja al servidor: sus datos y sus respuestas. */
+export type MascotaBody = MascotaAlta & { salud: Record<number, string>; sanit: Record<number, string> };
+
+/** El cuerpo que espera `POST /api/onboarding`. Lo importa el route handler para no
+ *  volver a declararlo: dos copias del mismo contrato divergen solas. */
 export type BodyAlta = {
   socio: SocioAlta;
-  pet: MascotaAlta;
-  plan: string;
+  mascotas: MascotaBody[];
+  /** `null` = alta gratuita. Ojo: `undefined` NO es lo mismo y da 400. */
+  plan: string | null;
   odonto?: boolean;
-  declaracion?: { health: Record<number, string>; sanit: Record<number, string>; firma: string };
-  pago?: {
-    metodo?: string;
-    aceptaCuota?: boolean;
-    banco?: Partial<BancoAlta>;
-    tarjeta?: TarjetaMeta | null;
-  };
+  firma: string;
+  aceptaCuota?: boolean;
 };
 
-/** Un borrador en blanco, para arrancar el formulario. */
+let contador = 0;
+/** Un id local para la lista del formulario. No es un uuid: no sale de la pantalla. */
+const nuevoUid = () => 'm' + (contador += 1);
+
+export function mascotaVacia(inicial?: { nombre?: string; especie?: string }): MascotaBorrador {
+  return {
+    uid: nuevoUid(),
+    datos: {
+      nombre: inicial?.nombre ?? '',
+      especie: inicial?.especie === 'gato' ? 'Gato' : 'Perro',
+      sexo: 'Macho', castrado: 'Sí', raza: '', edad: '', peso: '', microchip: '', vet: '', foto: '',
+    },
+    salud: {},
+    sanit: {},
+  };
+}
+
+/** Un borrador en blanco, con una mascota para arrancar. */
 export function borradorVacio(inicial?: { nombre?: string; email?: string; mascota?: string; especie?: string }): BorradorAlta {
   return {
     socio: {
       nombre: inicial?.nombre ?? '', dni: '', fnac: '', domicilio: '', localidad: '',
       provincia: '', tel: '', email: inicial?.email ?? '', password: '',
     },
-    pet: {
-      nombre: inicial?.mascota ?? '', especie: inicial?.especie === 'gato' ? 'Gato' : 'Perro',
-      sexo: 'Macho', castrado: 'Sí', raza: '', edad: '', peso: '', microchip: '', vet: '', foto: '',
-    },
-    plan: null,
+    mascotas: [mascotaVacia({ nombre: inicial?.mascota, especie: inicial?.especie })],
+    eleccion: null,
     odonto: false,
-    declaracion: { health: {}, sanit: {}, firma: '', acepta: false },
-    pago: {
-      metodo: 'tarjeta', numero: '', exp: '', cvv: '', titular: '',
-      banco: { holder: '', holderDni: '', cuit: '', bank: '', cbu: '', alias: '' },
-      aceptaCuota: false,
-    },
+    firma: '',
+    acepta: false,
   };
 }
 
@@ -141,7 +181,7 @@ export type ValidacionSocio = {
 };
 
 /** Campo por campo, para poder marcar en rojo el que falla y no solo bloquear el
- *  botón: un formulario de 9 campos que no dice cuál está mal es una trampa. */
+ *  botón: un formulario de nueve campos que no dice cuál está mal es una trampa. */
 export function validarSocio(socio: SocioAlta, conGoogle = false): ValidacionSocio {
   const nombre = socio.nombre.trim().length > 1 && !socio.nombre.includes('@');
   const dni = /^\d{7,8}$/.test(socio.dni.replace(/\D/g, ''));
@@ -159,70 +199,125 @@ export function validarSocio(socio: SocioAlta, conGoogle = false): ValidacionSoc
   };
 }
 
-/** Todas contestadas y firmada. El enunciado no se valida acá porque no lo manda
- *  el cliente: el servidor lo arma con `HEALTH_Q`/`SANITARIO_Q`. */
-export function declaracionCompleta(d: DeclaracionAlta): boolean {
-  return Object.keys(d.health).length === HEALTH_Q.length
-    && Object.keys(d.sanit).length === SANITARIO_Q.length
-    && d.firma.trim().length > 2
-    && d.acepta;
+/** ¿Están las 11 respuestas de ESTA mascota? La firma se valida aparte: es una
+ *  sola para todas. */
+export function declaracionDeMascotaOk(m: MascotaBorrador): boolean {
+  const completa = (preguntas: readonly string[], r: Record<number, string>) =>
+    preguntas.every((_, i) => r[i] === 'Sí' || r[i] === 'No');
+  return completa(HEALTH_Q, m.salud) && completa(SANITARIO_Q, m.sanit);
 }
 
-/**
- * El medio de pago, validando SOLO la rama elegida.
- *
- * Acá estaba el bug que hacía imposible el alta por CBU: el formulario web
- * validaba siempre los campos de la tarjeta, así que quien elegía CBU veía
- * desaparecer esos campos y el botón "Confirmar y unirme" quedaba bloqueado para
- * siempre, sin ningún cartel. El club perdía esas altas sin enterarse.
- */
-export function pagoOk(pago: PagoAlta): boolean {
-  if (!pago.aceptaCuota) return false;
-  if (pago.metodo === 'cbu') {
-    return cbuValido(pago.banco.cbu) && pago.banco.holder.trim().length > 1;
-  }
-  return pago.numero.replace(/\D/g, '').length >= 13
-    && pago.exp.trim().length >= 4
-    && pago.cvv.trim().length >= 3;
+/** Todas las mascotas contestadas, firmado y aceptado. */
+export function declaracionCompleta(b: BorradorAlta): boolean {
+  return b.mascotas.length > 0
+    && b.mascotas.every(declaracionDeMascotaOk)
+    && b.firma.trim().length > 2
+    && b.acepta;
 }
+
+export const esGratis = (e: EleccionPlan | null) => e?.modo === 'gratis';
+export const planElegido = (e: EleccionPlan | null) => (e?.modo === 'pago' ? e.plan : null);
+
+/** Cuántos pasos tiene el alta: el del pago no existe si eligió gratis. */
+export const pasosDelAlta = (b: BorradorAlta) => (esGratis(b.eleccion) ? 4 : 5);
 
 /** ¿Se puede pasar al paso siguiente? Una sola definición para las dos
  *  superficies: es lo que evita que un arreglo entre en una y no en la otra. */
 export function pasoOk(paso: number, b: BorradorAlta, conGoogle = false): boolean {
   switch (paso) {
-    case 1: return b.pet.nombre.trim().length > 0;
+    // Todas las mascotas de la lista necesitan nombre: una fila vacía crearía una
+    // mascota sin nombre, y el nombre es lo único que el alta pide de verdad.
+    case 1: return b.mascotas.length > 0 && b.mascotas.every((m) => m.datos.nombre.trim().length > 0);
     case 2: return validarSocio(b.socio, conGoogle).ok;
-    case 3: return !!b.plan;
-    case 4: return declaracionCompleta(b.declaracion);
-    case 5: return pagoOk(b.pago);
+    case 3: return b.eleccion !== null;
+    case 4: return declaracionCompleta(b);
+    // El paso del pago solo existe con plan, y lo único que pide es aceptar la
+    // cuota: la tarjeta se pone en el sitio de Mercado Pago, no acá.
+    case 5: return b.eleccion?.modo === 'pago' && b.eleccion.aceptaCuota;
     default: return true;
   }
 }
 
-/**
- * El borrador convertido en el cuerpo del pedido.
- *
- * De la tarjeta viajan solo la marca, los últimos 4 y el vencimiento, calculados
- * en el cliente: si el número completo llegara al servidor lo metería en el
- * alcance de PCI DSS aunque no se guarde. El CVV no sale del formulario.
- *
- * `acepta` se queda afuera: es la tilde del formulario, no parte de la
- * declaración que se guarda firmada.
- */
+/** El borrador convertido en el cuerpo del pedido. */
 export function payloadAlta(b: BorradorAlta): BodyAlta {
   return {
     socio: b.socio,
-    pet: b.pet,
-    plan: b.plan ?? '',
-    odonto: b.odonto,
-    declaracion: { health: b.declaracion.health, sanit: b.declaracion.sanit, firma: b.declaracion.firma },
-    pago: {
-      metodo: b.pago.metodo,
-      aceptaCuota: b.pago.aceptaCuota,
-      banco: b.pago.banco,
-      tarjeta: b.pago.metodo === 'tarjeta'
-        ? tarjetaMeta({ numero: b.pago.numero, exp: b.pago.exp, holder: b.pago.titular })
-        : null,
-    },
+    mascotas: b.mascotas.map((m) => ({ ...m.datos, salud: m.salud, sanit: m.sanit })),
+    plan: planElegido(b.eleccion),
+    // Sin plan no hay cuota donde cobrar el add-on: guardarlo sería una mentira.
+    odonto: b.eleccion?.modo === 'pago' ? b.odonto : false,
+    firma: b.firma,
+    aceptaCuota: b.eleccion?.modo === 'pago' ? b.eleccion.aceptaCuota : false,
   };
+}
+
+export type DeclaracionArmada = {
+  nombre: string;
+  version: number;
+  answers: RespuestaDeclarada[];
+  sanitary: RespuestaDeclarada[];
+  signature: string;
+};
+
+/**
+ * Una declaración jurada por mascota, todas con la MISMA firma.
+ *
+ * Es un solo acto legal con N anexos, que es exactamente lo que es. Devuelve `null`
+ * si alguna está incompleta: media declaración jurada no se firma, y si una falla no
+ * se guarda ninguna.
+ */
+export function armarDeclaraciones(mascotas: MascotaBody[], firma: string): DeclaracionArmada[] | null {
+  if (mascotas.length === 0) return null;
+  const salida: DeclaracionArmada[] = [];
+  for (const m of mascotas) {
+    const d = armarDeclaracion({ health: m.salud, sanit: m.sanit, firma });
+    if (!d) return null;
+    salida.push({ nombre: m.nombre, ...d });
+  }
+  return salida;
+}
+
+/**
+ * Normaliza el cuerpo de un pedido viejo.
+ *
+ * Hay APKs instalados que siguen mandando la forma anterior: una sola mascota en
+ * `pet`, la declaración en `declaracion`, y los datos bancarios en `pago`. Sin esto,
+ * el alta desde esos teléfonos empieza a fallar con 400 y desde afuera parece que la
+ * app no anda. Es pura conversión, así que se puede probar sin base ni red.
+ *
+ * De lo viejo se sigue honrando el banco (es el destino real de los reintegros) y el
+ * "acepto la cuota"; se ignoran la tarjeta y el medio de pago, que describen algo
+ * que ya no existe.
+ */
+export function leerBodyAlta(raw: unknown): { body: BodyAlta; banco?: Partial<BancoAlta> } | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+
+  if (Array.isArray(r.mascotas)) return { body: r as unknown as BodyAlta };
+
+  // Forma vieja: una mascota, la declaración aparte y el plan siempre presente.
+  const pet = r.pet as MascotaAlta | undefined;
+  if (pet && typeof pet === 'object') {
+    const decl = (r.declaracion ?? {}) as { health?: Record<number, string>; sanit?: Record<number, string>; firma?: string };
+    const pago = (r.pago ?? {}) as { aceptaCuota?: boolean; banco?: Partial<BancoAlta> };
+    return {
+      body: {
+        socio: r.socio as SocioAlta,
+        mascotas: [{ ...pet, salud: decl.health ?? {}, sanit: decl.sanit ?? {} }],
+        /*
+         * En la forma vieja el plan era obligatorio, así que un vacío es un pedido
+         * roto y NO un alta gratuita: se deja pasar tal cual para que el chequeo del
+         * servidor lo rechace con 400. Convertirlo a `null` acá daría de alta socios
+         * gratuitos por accidente desde apps viejas.
+         */
+        plan: (typeof r.plan === 'string' && r.plan.length > 0 ? r.plan : undefined) as string,
+        odonto: r.odonto === true,
+        firma: decl.firma ?? '',
+        aceptaCuota: pago.aceptaCuota === true,
+      },
+      banco: pago.banco,
+    };
+  }
+
+  return null;
 }

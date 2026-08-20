@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
 import { quienPide } from '@/lib/quien-pide';
-import { FOTO_TIPOS, FOTO_MAX, armarDeclaracion, cuotaMensual } from '@kumo/shared';
+import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
 /**
  * Alta real de socio. Corre en el servidor con la service-role key e inserta el
- * perfil, la mascota y la declaración jurada. Guarda los 5 pasos.
+ * perfil, las mascotas y sus declaraciones juradas.
  *
  * Tiene dos modos, según cómo se identifique la persona:
  *
@@ -20,28 +20,15 @@ import { sendBienvenida } from '@/lib/mail';
  *     resuelve `quienPide`, que entiende las dos formas: cookies (el navegador) y
  *     `Authorization: Bearer` (la app del celular, que no tiene cookies).
  *
- * De la tarjeta llega solo el medio elegido: el CVV no se puede almacenar y el
- * número obliga a certificar PCI DSS. Cuando entre Mercado Pago se guardan el
- * token y los últimos 4 dígitos.
+ * **El plan es opcional**: entrar a Kumo es gratis, y lo que se paga son los
+ * reintegros y los beneficios. `plan: null` es un alta gratuita legítima;
+ * `undefined` o vacío es un pedido roto y da 400 (así una app vieja no crea
+ * socios gratuitos por accidente).
+ *
+ * De la tarjeta ya no llega nada: se tipea en el sitio de Mercado Pago. Y los datos
+ * bancarios tampoco se piden acá — se piden al cargar el primer reintegro, que es
+ * cuando recién hacen falta.
  */
-
-type Body = {
-  socio: { nombre: string; dni: string; fnac: string; domicilio: string; localidad: string; provincia: string; tel: string; email: string; password: string };
-  pet: { nombre: string; especie: string; sexo: string; castrado: string; raza: string; edad: string; peso: string; microchip: string; vet: string; foto: string };
-  plan: string;
-  odonto?: boolean;
-  declaracion?: { health: Record<number, string>; sanit: Record<number, string>; firma: string };
-  pago?: {
-    metodo?: string;
-    aceptaCuota?: boolean;
-    /** A dónde el club le transfiere los reintegros. La transferencia la hace el
-     *  club a mano: el sistema no mueve plata, solo guarda el destino. */
-    banco?: { holder?: string; holderDni?: string; cuit?: string; bank?: string; cbu?: string; alias?: string };
-    /** Marca, últimos 4 y vencimiento, ya calculados en el navegador. El número
-     *  completo y el CVV no llegan hasta acá a propósito (PCI DSS). */
-    tarjeta?: { brand: string; last4: string; exp: string; holder: string } | null;
-  };
-};
 
 const PET_TYPE: Record<string, string> = { Perro: 'perro', Gato: 'gato', Otro: 'otro' };
 const PET_SEX: Record<string, string> = { Macho: 'macho', Hembra: 'hembra' };
@@ -59,87 +46,118 @@ function leadingNumber(s: string): number | null {
 
 export async function POST(req: Request) {
   /*
-   * El pedido llega como multipart (el JSON en `payload` y la foto aparte). Si
+   * El pedido llega como multipart (el JSON en `payload` y las fotos aparte). Si
    * viene mal armado esto tiraba un 500 sin mensaje, que es lo peor para
    * diagnosticar desde un teléfono: la app arma el multipart distinto que el
    * navegador y un campo mal puesto no se ve por ningún lado.
    */
-  let cuerpo: Body;
-  let photoFile: FormDataEntryValue | null;
+  let cuerpo: BodyAlta;
+  let banco: Partial<BancoAlta> | undefined;
+  let form: FormData;
   try {
-    const form = await req.formData();
-    cuerpo = JSON.parse(form.get('payload') as string) as Body;
-    photoFile = form.get('photo');
+    form = await req.formData();
+    /*
+     * `leerBodyAlta` normaliza la forma vieja del pedido (una sola mascota en
+     * `pet`, la declaración aparte). Hay APKs instalados que la siguen mandando: sin
+     * esto, el alta desde esos teléfonos empieza a fallar con 400 y desde afuera
+     * parece que la app no anda.
+     */
+    const leido = leerBodyAlta(JSON.parse(form.get('payload') as string));
+    if (!leido) throw new Error('el payload no tiene mascotas ni pet');
+    cuerpo = leido.body;
+    banco = leido.banco;
   } catch (e) {
     console.error('[onboarding] pedido mal armado:', e instanceof Error ? e.message : e);
     return NextResponse.json({ error: 'No pudimos leer los datos del alta. Probá de nuevo.' }, { status: 400 });
   }
-  const { socio, pet, plan, odonto, declaracion, pago } = cuerpo;
+  const { socio, mascotas, plan, odonto, firma, aceptaCuota } = cuerpo;
 
   // Sin contraseña en el payload = alta con Google. No hace falta un flag del
   // cliente: en ese modo la identidad sale de la sesión, así que no hay nada que
   // pueda falsear declarándose de un modo u otro.
   const conGoogle = !socio?.password;
 
-  if (!socio?.nombre || !pet?.nombre || !plan) {
+  if (!socio?.nombre || !Array.isArray(mascotas) || mascotas.length === 0 || !mascotas.every((m) => m?.nombre?.trim())) {
     return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
+  }
+  if (mascotas.length > MAX_MASCOTAS_ALTA) {
+    return NextResponse.json({ error: 'Son demasiadas mascotas para un alta. Cargá las demás desde tu cuenta.' }, { status: 400 });
   }
   if (!conGoogle && (!socio?.email || socio.password.length < 6)) {
     return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
   }
+  /*
+   * `null` es "sin plan" (alta gratuita) y es válido. `undefined` o vacío es otra
+   * cosa: un pedido al que le falta el campo, y ahí sí corta. La diferencia importa
+   * porque una app vieja manda `plan: ''` cuando el socio no eligió, y tratarlo como
+   * gratuito daría de alta socios sin plan sin que nadie lo haya pedido.
+   */
+  if (plan === undefined || (typeof plan === 'string' && plan.trim().length === 0)) {
+    return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
+  }
 
-  // La declaración jurada se arma acá con la lista canónica de preguntas, no con
-  // el enunciado que manda el navegador. Y se exige: es la base para resolver un
-  // reintegro por preexistencia, así que un alta sin ella dejaría al club sin
-  // nada firmado (el paso 4 ya la pide en la pantalla, esto cierra el atajo de
-  // postear al endpoint directo).
-  const firmada = armarDeclaracion({
-    health: declaracion?.health ?? {},
-    sanit: declaracion?.sanit ?? {},
-    firma: declaracion?.firma ?? '',
-  });
-  if (!firmada) {
+  /*
+   * Las declaraciones juradas se arman acá con la lista canónica de preguntas, no
+   * con el enunciado que manda el navegador. Una por mascota, todas con la MISMA
+   * firma: es un solo acto legal con N anexos.
+   *
+   * Y se exigen: son la base para resolver un reintegro por preexistencia, así que
+   * un alta sin ellas dejaría al club sin nada firmado (el paso 4 ya las pide en la
+   * pantalla, esto cierra el atajo de postear al endpoint directo).
+   */
+  const firmadas = armarDeclaraciones(mascotas, firma ?? '');
+  if (!firmadas) {
     return NextResponse.json({ error: 'Falta completar y firmar la declaración jurada de salud.' }, { status: 400 });
   }
 
-  const payMethod = pago?.metodo === 'cbu' ? 'cbu' : pago?.metodo === 'tarjeta' ? 'tarjeta' : null;
-
   const limpio = (v?: string) => v?.trim() || null;
-  const banco = pago?.banco;
-  // Los últimos 4 se guardan solo si son 4 dígitos: la columna tiene un check y
-  // un "últimos 4" de dos dígitos es peor que no tener nada.
-  const tarjeta = pago?.tarjeta && /^\d{4}$/.test(pago.tarjeta.last4) ? pago.tarjeta : null;
-
   const db = getServiceClient();
 
-  let uploadedPhotoUrl: string | null = null;
-  // Si la foto no se puede guardar, el alta sigue igual (sería peor dejar a
-  // alguien afuera del club por una imagen) pero se avisa en la respuesta: antes
-  // devolvía "listo" y el socio descubría el problema al ver su carnet vacío.
-  let photoError: string | null = null;
-  if (photoFile instanceof File && photoFile.size > 0) {
-    if (!FOTO_TIPOS.includes(photoFile.type as (typeof FOTO_TIPOS)[number])) {
-      photoError = `No pudimos guardar la foto: el formato ${photoFile.type || 'del archivo'} no está soportado.`;
-    } else if (photoFile.size > FOTO_MAX) {
-      photoError = 'No pudimos guardar la foto porque pesa más de 5 MB.';
-    } else {
-      const ext = photoFile.name.split('.').pop() || 'jpg';
-      const path = `${crypto.randomUUID()}.${ext}`;
-      const { error: uploadErr } = await db.storage.from('pet-photos').upload(path, await photoFile.arrayBuffer(), { contentType: photoFile.type });
-      if (!uploadErr) {
-        uploadedPhotoUrl = db.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
-      } else {
-        console.error('[onboarding] photo upload failed', uploadErr);
-        photoError = 'No pudimos guardar la foto. Podés cargarla después desde el carnet.';
-      }
-    }
-  }
-
-  const { data: planRow, error: planErr } = await db.from('plans').select('id, base_price').eq('name', plan).single();
-  if (planErr || !planRow) {
+  const { data: planRow, error: planErr } = plan
+    ? await db.from('plans').select('id, base_price').eq('name', plan).single()
+    : { data: null, error: null };
+  if (plan && (planErr || !planRow)) {
     console.error('[onboarding] plan lookup failed', { plan, planErr });
     return NextResponse.json({ error: 'Plan inválido.' }, { status: 400 });
   }
+
+  /*
+   * Las fotos: `photo_0`, `photo_1`… en el mismo orden que las mascotas.
+   *
+   * Repetir la clave `photo` sería ambiguo cuando solo la segunda mascota tiene
+   * foto. Si una no se puede guardar, el alta sigue igual —sería peor dejar a
+   * alguien afuera del club por una imagen— pero se avisa en la respuesta, y el
+   * aviso NOMBRA a la mascota: con varias, "no pudimos guardar la foto" no dice
+   * cuál.
+   */
+  const fotos: (string | null)[] = [];
+  const avisos: string[] = [];
+  for (let i = 0; i < mascotas.length; i++) {
+    const archivo = form.get(`photo_${i}`);
+    const nombre = mascotas[i]!.nombre;
+    if (!(archivo instanceof File) || archivo.size === 0) { fotos.push(null); continue; }
+    if (!FOTO_TIPOS.includes(archivo.type as (typeof FOTO_TIPOS)[number])) {
+      avisos.push(`No pudimos guardar la foto de ${nombre}: el formato ${archivo.type || 'del archivo'} no está soportado.`);
+      fotos.push(null);
+      continue;
+    }
+    if (archivo.size > FOTO_MAX) {
+      avisos.push(`No pudimos guardar la foto de ${nombre} porque pesa más de 5 MB.`);
+      fotos.push(null);
+      continue;
+    }
+    const ext = archivo.name.split('.').pop() || 'jpg';
+    const path = `${crypto.randomUUID()}.${ext}`;
+    const { error: uploadErr } = await db.storage.from('pet-photos').upload(path, await archivo.arrayBuffer(), { contentType: archivo.type });
+    if (uploadErr) {
+      console.error('[onboarding] photo upload failed', uploadErr);
+      avisos.push(`No pudimos guardar la foto de ${nombre}. La podés cargar después desde el carnet.`);
+      fotos.push(null);
+      continue;
+    }
+    fotos.push(db.storage.from('pet-photos').getPublicUrl(path).data.publicUrl);
+  }
+  const photoError = avisos.length ? avisos.join(' ') : null;
 
   /** Con Google la identidad ya existe; con contraseña hay que crearla. */
   let userId: string;
@@ -180,9 +198,10 @@ export async function POST(req: Request) {
    * Deshacer un alta a medio hacer.
    *
    * Con contraseña alcanza con borrar el usuario de auth: `profiles.id` lo
-   * referencia con ON DELETE CASCADE, así que se lleva el perfil y las mascotas.
-   * Con Google el usuario de auth es de la persona y preexiste al alta, así que
-   * borrarlo sería sacarle la cuenta: se limpian solo las filas que creamos acá.
+   * referencia con ON DELETE CASCADE, así que se lleva el perfil, las mascotas y
+   * sus declaraciones, sean una o cinco. Con Google el usuario de auth es de la
+   * persona y preexiste al alta, así que borrarlo sería sacarle la cuenta: se
+   * limpian solo las filas que creamos acá.
    */
   const revertir = async () => {
     if (conGoogle) {
@@ -192,6 +211,9 @@ export async function POST(req: Request) {
       await db.auth.admin.deleteUser(userId);
     }
   };
+
+  // El add-on sin plan es una mentira: no hay cuota donde cobrarlo.
+  const conOdonto = odonto === true && !!planRow;
 
   const { data: profileRow, error: profileErr } = await db
     .from('profiles')
@@ -207,76 +229,68 @@ export async function POST(req: Request) {
       province: socio.provincia || null,
       dni: socio.dni || null,
       birth_date: fnacToIso(socio.fnac),
-      plan_id: planRow.id,
-      addon_odonto: odonto === true,
+      // Null = socio gratuito. No es un dato faltante: es un estado válido, y lo
+      // que decide el acceso a reintegros y beneficios es `paid_until`, no esto.
+      plan_id: planRow?.id ?? null,
+      addon_odonto: conOdonto,
       // La cuota la calcula el servidor con el precio real del plan: si la
       // mandara el cliente, se podría firmar por una cuota de $1.
-      monthly_fee_agreed: cuotaMensual(planRow.base_price, odonto === true),
-      pay_method: payMethod,
-      contract_accepted_at: pago?.aceptaCuota ? new Date().toISOString() : null,
-      // Destino de los reintegros. El club transfiere a mano, así que esto es
-      // todo lo que necesita saber para pagarle.
+      monthly_fee_agreed: planRow ? cuotaMensual(planRow.base_price, conOdonto) : null,
+      // Sin plan no hay cuota ni carencias que aceptar.
+      contract_accepted_at: planRow && aceptaCuota ? new Date().toISOString() : null,
+      /*
+       * Los datos bancarios ya no se piden en el alta: son el destino de los
+       * REINTEGROS y se piden al cargar el primero, que es cuando hacen falta. Acá
+       * quedan solo por si el pedido vino de una app vieja que todavía los manda.
+       */
       bank_holder: limpio(banco?.holder),
       bank_holder_dni: limpio(banco?.holderDni),
       bank_cuit: limpio(banco?.cuit),
       bank_name: limpio(banco?.bank),
       bank_cbu: limpio(banco?.cbu)?.replace(/\D/g, '') || null,
       bank_alias: limpio(banco?.alias),
-      // Medio de cobro de la cuota: metadata, no el instrumento.
-      card_brand: tarjeta?.brand ?? null,
-      card_last4: tarjeta?.last4 ?? null,
-      card_exp: tarjeta?.exp ?? null,
-      card_holder: tarjeta?.holder ?? null,
     })
     .select('member_no')
     .single();
 
   if (profileErr || !profileRow) {
+    console.error('[onboarding] profile insert failed', profileErr);
     await revertir();
     return NextResponse.json({ error: 'No se pudo crear el perfil del socio.' }, { status: 500 });
   }
 
-  const { data: petRow, error: petErr } = await db.from('pets').insert({
-    owner_id: userId,
-    name: pet.nombre,
-    type: PET_TYPE[pet.especie] ?? 'otro',
-    breed: pet.raza || null,
-    age_years: leadingNumber(pet.edad),
-    weight_kg: leadingNumber(pet.peso),
-    microchip: pet.microchip || null,
-    neutered: pet.castrado === 'Sí',
-    sex: PET_SEX[pet.sexo] ?? null,
-    vet_name: pet.vet || null,
-    // Solo la foto que subió. Antes se aceptaba una ruta de /img/ porque el alta
-    // ofrecía fotos de ejemplo; se sacaron (un carnet con la mascota de otro es peor
-    // que uno sin foto), así que esa rama ya no puede pasar.
-    photo_url: uploadedPhotoUrl,
-  })
-    .select('id')
-    .single();
-
-  if (petErr || !petRow) {
-    await revertir();
-    return NextResponse.json({ error: 'No se pudo crear la mascota.' }, { status: 500 });
-  }
-
-  // La declaración va después de la mascota porque la referencia. Si no se puede
-  // guardar, el alta se revierte entera: dejar un socio adentro del club sin su
-  // declaración jurada es justamente el agujero que esto viene a cerrar.
-  const { error: decErr } = await db.from('health_declarations').insert({
-    member_id: userId,
-    pet_id: petRow.id,
-    pet_name: pet.nombre,
-    version: firmada.version,
-    answers: firmada.answers,
-    sanitary: firmada.sanitary,
-    signature: firmada.signature,
+  /*
+   * Las mascotas y sus declaraciones, en UNA transacción de la base.
+   *
+   * No son inserts sueltos a propósito: para colgarle a cada declaración su
+   * `pet_id` habría que emparejar por orden de devolución, y una posición desfasada
+   * produce una declaración jurada firmada que dice cosas de otro animal. Si la
+   * tercera falla, no queda ninguna.
+   */
+  const { data: cuantas, error: petsErr } = await db.rpc('crear_mascotas_del_alta', {
+    p_member: userId,
+    p_version: firmadas[0]!.version,
+    p_firma: firmadas[0]!.signature,
+    p_mascotas: mascotas.map((m, i) => ({
+      nombre: m.nombre,
+      tipo: PET_TYPE[m.especie] ?? 'otro',
+      raza: m.raza || null,
+      sexo: PET_SEX[m.sexo] ?? null,
+      castrada: m.castrado === 'Sí',
+      edad: leadingNumber(m.edad),
+      peso: leadingNumber(m.peso),
+      microchip: m.microchip || null,
+      vet: m.vet || null,
+      foto: fotos[i],
+      answers: firmadas[i]!.answers,
+      sanitary: firmadas[i]!.sanitary,
+    })),
   });
 
-  if (decErr) {
-    console.error('[onboarding] health declaration failed', decErr);
+  if (petsErr || !cuantas) {
+    console.error('[onboarding] crear_mascotas_del_alta failed', petsErr);
     await revertir();
-    return NextResponse.json({ error: 'No se pudo guardar la declaración jurada. No se creó la cuenta.' }, { status: 500 });
+    return NextResponse.json({ error: 'No se pudieron guardar las mascotas. No se creó la cuenta.' }, { status: 500 });
   }
 
   // El alta ya está hecha; el mail es un extra. Si falla no se revierte nada ni
@@ -285,7 +299,7 @@ export async function POST(req: Request) {
   await sendBienvenida({
     to: email,
     firstName: socio.nombre.split(' ')[0] || socio.nombre,
-    petName: pet.nombre,
+    mascotas: mascotas.map((m) => m.nombre),
     memberNo: profileRow.member_no,
     planName: plan,
   });

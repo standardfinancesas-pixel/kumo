@@ -25,6 +25,7 @@ import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo
 import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
 import Entrada from './components/Entrada';
 import Alta from './components/alta/Alta';
+import AltaListo from './components/alta/AltaListo';
 import NuevaClave from './components/NuevaClave';
 import { resolverURL } from './lib/deepLink';
 
@@ -3328,6 +3329,14 @@ export default function App() {
   /** La hoja para elegir plan y pagar. Antes era un muro que tapaba todo, tabbar
    *  incluida; ahora se abre a pedido, porque el socio ya está adentro del club. */
   const [planAbierto, setPlanAbierto] = useState(false);
+  /**
+   * El alta terminada, esperando que la persona toque "Entrar a la app".
+   *
+   * Vive acá y no dentro del alta porque abrir la sesión —que hace falta para
+   * pagar— cambia el árbol y desmontaría el formulario con su pantalla final
+   * adentro. Acá arriba, además, sobrevive el viaje al navegador de Mercado Pago.
+   */
+  const [altaListo, setAltaListo] = useState<{ memberNo: number; avisoFoto: string | null; pagar: { plan: string; odonto: boolean } | null } | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   /**
@@ -3572,7 +3581,7 @@ export default function App() {
           <Alta
             identidad={identidad}
             onSalir={() => { supabase.auth.signOut(); }}
-            onListo={() => setPerfilExiste(null)}
+            onListo={(r) => { setAltaListo(r); setPerfilExiste(null); }}
           />
         ) : loading || !data ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -3636,6 +3645,20 @@ export default function App() {
         {masOpen && <MasSheet onClose={() => setMasOpen(false)} onGo={go} pago={pago} onPlan={() => { setMasOpen(false); setPlanAbierto(true); }} />}
           </>
         )}
+        {/* La pantalla final del alta, por encima de todo: es lo primero que ve quien
+            acaba de darse de alta, y de acá sale el pago si eligió un plan. */}
+        {altaListo && data?.profile ? (
+          <AltaListo
+            memberNo={altaListo.memberNo || Number(String(data.profile.memberNo).replace(/\D/g, "")) || 0}
+            avisoFoto={altaListo.avisoFoto}
+            pagar={altaListo.pagar}
+            mascotas={pets.map((m) => ({ id: m.id, nombre: m.name, especie: m.species, raza: m.breed, edad: m.age }))}
+            planName={data.profile.planName}
+            debePagar={data.profile.debePagar}
+            onEntrar={() => setAltaListo(null)}
+            recargar={reload}
+          />
+        ) : null}
         {/* La hoja del plan, a pedido. Ya no tapa nada: entrar es gratis y lo que se
             paga son los reintegros y los beneficios. Se abre desde Inicio, el menú
             "Más" y Mi perfil. */}

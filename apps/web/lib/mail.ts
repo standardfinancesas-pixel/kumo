@@ -29,6 +29,11 @@ const MUTED = '#8781a0';
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 
+/** 'Lola', 'Lola y Mora', 'Lola, Mora y Rocco'. Sin la coma de Oxford, que en
+ *  castellano no va. */
+const listar = (xs: string[]) =>
+  xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} y ${xs[xs.length - 1]}`;
+
 /**
  * El WhatsApp del club: es a dónde se manda a quien quiera contestar un mail.
  *
@@ -135,16 +140,35 @@ const verCuenta = { label: 'Ir a mi cuenta', href: `${SITE}${urls.webapp}` };
  */
 
 /** 1 · Bienvenida al alta de un socio. */
-export async function sendBienvenida(opts: { to: string; firstName: string; petName: string; memberNo: number; planName: string }) {
-  const { to, firstName, petName, memberNo, planName } = opts;
+/**
+ * Bienvenida al alta.
+ *
+ * Dos cosas cambiaron cuando entrar pasó a ser gratis:
+ *
+ *  · Puede haber VARIAS mascotas, así que el texto se pluraliza. Decirle "Lola ya
+ *    tiene su carnet" a quien cargó tres es no haber leído lo que mandó.
+ *  · Sin plan, la promesa de siempre era FALSA: el mail decía "podés pedir el
+ *    reintegro de lo que gastás en el veterinario", y el socio gratuito no puede.
+ *    Prometerle en el primer mail algo que la app no le va a dar es la peor forma
+ *    de empezar, así que la variante gratuita cuenta lo que sí tiene y ofrece el
+ *    plan como un paso siguiente, no como un requisito.
+ */
+export async function sendBienvenida(opts: { to: string; firstName: string; mascotas: string[]; memberNo: number; planName: string | null }) {
+  const { to, firstName, mascotas, memberNo, planName } = opts;
   const wa = await whatsappDelClub();
+  const nombres = listar(mascotas);
+  const varias = mascotas.length > 1;
+  const suCarnet = varias ? `sus carnets digitales` : `su carnet digital`;
+  const elCarnetDe = varias ? `los carnets de ${nombres}` : `el carnet de ${nombres}`;
   const cuerpo = `
     ${h1(`Te sumaste al club, ${firstName}`)}
-    ${par(`${petName} ya tiene su carnet digital, y vos tu número de socio.`)}
-    ${caja(`${filaChica('TU NÚMERO DE SOCIO')}${filaGrande(`#${memberNo}`)}${filaMedia(`Plan ${planName}`)}`)}
-    ${par(`Desde tu cuenta podés ver el carnet de ${petName}, pedir el reintegro de lo que gastás en el veterinario y usar los descuentos de la red de prestadores.`, true)}`;
-  const text = `Te sumaste al club, ${firstName}.\n\n${petName} ya tiene su carnet digital.\nTu número de socio: #${memberNo}\nPlan ${planName}\n\nEntrá a tu cuenta: ${SITE}${urls.webapp}`;
-  return enviar(to, `Ya sos parte de Kumo · socio #${memberNo}`, layout('Bienvenida a Kumo', cuerpo, wa, { label: 'Ver mi carnet', href: `${SITE}${urls.webapp}` }), text);
+    ${par(`${nombres} ya ${varias ? "tienen" : "tiene"} ${suCarnet}, y vos tu número de socio.`)}
+    ${caja(`${filaChica('TU NÚMERO DE SOCIO')}${filaGrande(`#${memberNo}`)}${filaMedia(planName ? `Plan ${planName}` : 'Plan gratuito')}`)}
+    ${par(planName
+      ? `Desde tu cuenta podés ver ${elCarnetDe}, pedir el reintegro de lo que gastás en el veterinario y usar los descuentos de la red de prestadores.`
+      : `Desde tu cuenta podés ver ${elCarnetDe}, anotar las vacunas, buscar prestadores cerca y participar de los foros. Los reintegros y los beneficios se activan con cualquier plan, cuando quieras.`, true)}`;
+  const text = `Te sumaste al club, ${firstName}.\n\n${nombres} ya ${varias ? "tienen" : "tiene"} ${suCarnet}.\nTu número de socio: #${memberNo}\n${planName ? `Plan ${planName}` : "Plan gratuito"}\n\nEntrá a tu cuenta: ${SITE}${urls.webapp}`;
+  return enviar(to, `Ya sos parte de Kumo · socio #${memberNo}`, layout('Bienvenida a Kumo', cuerpo, wa, { label: varias ? 'Ver mis carnets' : 'Ver mi carnet', href: `${SITE}${urls.webapp}` }), text);
 }
 
 /**
