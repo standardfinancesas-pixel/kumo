@@ -2933,15 +2933,24 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
 }
 
 /* ── Placeholder ───────────────────────────────────────────────── */
-/* ── Hoja inferior (los sheets del prototipo) ──────────────────── */
+/**
+ * El diálogo de la webapp: los 8 "sheets" de estas pantallas pasan por acá.
+ *
+ * Aparece CENTRADO, como cualquier modal. Venía del prototipo como hoja inferior
+ * —subía desde abajo, pegada al borde, con la barrita de arrastrar— porque el
+ * prototipo estaba dibujado como app de teléfono. En la webapp, que se usa en una
+ * pantalla grande, esa hoja aparecía lejísimos del lugar donde la persona acababa de
+ * hacer clic, y la barrita prometía un gesto de arrastre que en el navegador no
+ * existe. La app del celular sí mantiene sus hojas abajo, que ahí es lo correcto.
+ *
+ * `overscrollBehavior: contain` y `touchAction: pan-y` se quedan: sin eso, al llegar
+ * al final del contenido el gesto pasa a la página de atrás y el diálogo parece
+ * trabarse (pasa igual centrado, en una notebook con trackpad).
+ */
 function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(33,30,51,0.45)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'kfade 0.2s ease' }}>
-      {/* `overscrollBehavior: contain` y `touchAction: pan-y`: sin eso, al llegar
-          al final del contenido el gesto pasaba a la página de atrás y la hoja
-          parecía trabarse. */}
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', background: '#fff', borderRadius: '24px 24px 0 0', padding: '16px 20px 26px', animation: 'kslideup 0.28s cubic-bezier(.2,.8,.2,1)' }}>
-        <div style={{ width: 40, height: 4, borderRadius: 100, background: 'rgb(224,220,236)', margin: '0 auto 16px' }} />
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 60, background: 'rgba(33,30,51,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, animation: 'kfade 0.2s ease' }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 520, maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', overscrollBehavior: 'contain', touchAction: 'pan-y', background: '#fff', borderRadius: 24, padding: '24px 22px 22px', boxShadow: '0 24px 60px rgba(33,30,51,0.3)', animation: 'kpop 0.18s ease-out' }}>
         {children}
       </div>
     </div>
