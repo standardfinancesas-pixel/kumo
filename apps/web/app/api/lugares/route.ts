@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { buscarDirecciones } from '@/lib/lugares';
+import { buscarDirecciones, buscarLocalidades } from '@/lib/lugares';
 
 /**
  * El buscador de direcciones que usan los campos de domicilio.
@@ -35,9 +35,14 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const q = (url.searchParams.get('q') ?? '').trim().slice(0, 120);
   const provincia = (url.searchParams.get('provincia') ?? '').trim().slice(0, 60);
+  /* Dos búsquedas distintas en la misma ruta: una dirección es una calle con
+     altura, una zona es un área de cobertura ('Palermo', 'Tandil'). Georef tiene un
+     endpoint para cada cosa y preguntarle a uno lo del otro no devuelve nada. */
+  const zona = url.searchParams.get('tipo') === 'localidad';
 
-  // Menos de cuatro letras no es una dirección, es alguien empezando a escribir.
-  if (q.length < 4) return NextResponse.json({ sugerencias: [] });
+  // Menos de esto no es un lugar, es alguien empezando a escribir. Los barrios son
+  // más cortos que las calles ('Boca', 'Once'), así que ahí el mínimo es menor.
+  if (q.length < (zona ? 3 : 4)) return NextResponse.json({ sugerencias: [] });
 
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'sin-ip';
   const ahora = Date.now();
@@ -52,13 +57,15 @@ export async function GET(req: Request) {
     marca.cuantas += 1;
   }
 
-  const clave = `${provincia}|${q.toLowerCase()}`;
+  const clave = `${zona ? 'z' : 'd'}|${provincia}|${q.toLowerCase()}`;
   const guardada = cache.get(clave);
   if (guardada && ahora - guardada.cuando < CACHE_MS) {
     return NextResponse.json(guardada.datos);
   }
 
-  const sugerencias = await buscarDirecciones(q, provincia || undefined);
+  const sugerencias = zona
+    ? await buscarLocalidades(q, provincia || undefined)
+    : await buscarDirecciones(q, provincia || undefined);
   const datos = { sugerencias };
 
   // Se guarda incluso la lista vacía: si Georef no conoce esa calle, tampoco la va a

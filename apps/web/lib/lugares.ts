@@ -151,3 +151,74 @@ export async function buscarDirecciones(consulta: string, provincia?: string, lo
     return [];
   }
 }
+
+/* ── Zonas: localidades y barrios ─────────────────────────────────── */
+
+export type SugerenciaZona = {
+  id: string;
+  etiqueta: string;
+  /** Lo que se guarda en el campo "zona": "Palermo, CABA". */
+  zona: string;
+  localidad: string;
+  provincia: string;
+};
+
+type FilaLocalidad = {
+  nombre?: string | null;
+  departamento?: { nombre?: string | null } | null;
+  provincia?: { nombre?: string | null } | null;
+};
+
+/**
+ * Busca localidades y barrios, para los campos de ZONA.
+ *
+ * Una zona no es una dirección: es un área de cobertura ("Palermo", "Tandil"), así
+ * que va contra el otro endpoint de Georef, el de localidades — que además de las
+ * ciudades conoce los barrios de CABA como entidades. Probado: "palerm" devuelve
+ * Palermo, "caball" devuelve Caballito, "tandi" devuelve Tandil.
+ *
+ * Además del tipeo, esto arregla un problema silencioso: la lista de la comunidad y
+ * la de prestadores filtran por zona comparando texto, así que "Palermo", "palermo"
+ * y "Palermo, CABA" eran tres zonas distintas. Eligiendo de la lista, la zona se
+ * escribe siempre igual.
+ */
+export async function buscarLocalidades(consulta: string, provincia?: string): Promise<SugerenciaZona[]> {
+  const q = consulta.trim();
+  if (q.length < 3) return [];
+  const params = new URLSearchParams({ nombre: q, max: '8', campos: 'estandar' });
+  if (provincia) params.set('provincia', provincia);
+
+  try {
+    const r = await fetch(`https://apis.datos.gob.ar/georef/api/localidades?${params}`, {
+      signal: AbortSignal.timeout(5000),
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+    });
+    if (!r.ok) return [];
+    const { localidades } = (await r.json()) as { localidades?: FilaLocalidad[] };
+    const vistas = new Set<string>();
+    const salida: SugerenciaZona[] = [];
+
+    for (const fila of localidades ?? []) {
+      const nombre = fila.nombre?.trim();
+      const prov = fila.provincia?.nombre;
+      if (!nombre || !prov) continue;
+      const provinciaFinal = canonizarProvincia(prov);
+      // Georef devuelve la misma localidad más de una vez (entidad y asentamiento
+      // con el mismo nombre); para elegir una zona es la misma cosa.
+      const clave = `${nombre}|${provinciaFinal}`;
+      if (vistas.has(clave)) continue;
+      vistas.add(clave);
+      salida.push({
+        id: clave,
+        etiqueta: `${nombre} · ${provinciaFinal}`,
+        zona: `${nombre}, ${provinciaFinal}`,
+        localidad: nombre,
+        provincia: provinciaFinal,
+      });
+    }
+    return salida;
+  } catch {
+    return [];
+  }
+}

@@ -17,7 +17,7 @@ import {
 import { supabase } from '@/lib/supabase-browser';
 import { confirmarPago } from '@/lib/confirmarPago';
 import { MapaPrestadores } from '@/components/MapaPrestadores';
-import { CampoDomicilio } from '@/components/CampoDomicilio';
+import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 
 /*
  * Webapp del socio — vista "App compu" del prototipo (reference/kumo-prototype.html).
@@ -1315,7 +1315,9 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 160px' }}>
           <label style={sheetLabel} htmlFor="pr-zona">Zona</label>
-          <input id="pr-zona" value={zona} onChange={(e) => { setZona(e.target.value); setError(''); }} placeholder="Palermo, CABA" style={sheetInput} />
+          {/* Elegirla de la lista importa además del tipeo: el filtro por zona compara
+              texto, así que "Palermo" y "Palermo, CABA" eran dos zonas distintas. */}
+          <CampoZona id="pr-zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Palermo, CABA" style={sheetInput} />
         </div>
         <div style={{ flex: '1 1 160px' }}>
           <label style={sheetLabel} htmlFor="pr-tel">WhatsApp</label>
@@ -1324,7 +1326,7 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       </div>
 
       <label style={sheetLabel} htmlFor="pr-dir">Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-      <input id="pr-dir" value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Av. Santa Fe 3200" style={sheetInput} />
+      <CampoDomicilio id="pr-dir" valor={direccion} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Av. Santa Fe 3200" style={sheetInput} />
       <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</p>
 
       <label style={sheetLabel} htmlFor="pr-about">Contanos sobre tu servicio</label>
@@ -2174,7 +2176,10 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
       <textarea id="fo-body" value={cuerpo} onChange={(e) => setCuerpo(e.target.value)} rows={5} placeholder="Escribí tu consulta o experiencia…" style={{ ...sheetInput, resize: 'none', marginBottom: 12 }} />
 
       <label style={sheetLabel} htmlFor="fo-zona">Zona <span style={{ fontWeight: 400, color: 'rgb(162,157,186)' }}>· opcional</span></label>
-      <input id="fo-zona" value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 16 }} />
+      {/* La zona del posteo alimenta el filtro de la lista, que compara texto: sin
+          elegirla de una lista, cada persona escribía su barrio distinto y el filtro
+          se llenaba de zonas de una sola publicación. */}
+      <CampoZona id="fo-zona" valor={zona} onCambio={setZona} onElegir={(z) => setZona(z.zona)} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 16 }} />
 
       <label style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '11px 14px', marginBottom: 18, cursor: fotoBusy ? 'default' : 'pointer' }}>
         <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} onChange={(e) => elegirFoto(e.target.files?.[0])} style={{ display: 'none' }} />
@@ -2412,8 +2417,8 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
                 <select value={rubro} onChange={(e) => setRubro(e.target.value)} style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }}>
                   {RUBROS.map((r) => <option key={r}>{r}</option>)}
                 </select>
-                <input value={zona} onChange={(e) => { setZona(e.target.value); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+                <CampoZona valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
+                <CampoDomicilio valor={direccion} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
                 <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
                 {/* La dirección es lo único que lo pone en el mapa; sin ella el
                     negocio aparece en la lista pero sin distancia ni pin. */}
@@ -2532,9 +2537,9 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
           <label style={sheetLabel}>Descripción</label>
           <textarea value={ed.about} onChange={(e) => setEd({ ...ed, about: e.target.value })} rows={3} placeholder="Qué ofrecés, experiencia, disponibilidad…" style={{ ...sheetInput, resize: 'none', marginBottom: 12 }} />
           <label style={sheetLabel}>Zona de cobertura</label>
-          <input value={ed.zone} onChange={(e) => { setEd({ ...ed, zone: e.target.value }); setError(''); }} style={{ ...sheetInput, marginBottom: 12 }} />
+          <CampoZona valor={ed.zone} onCambio={(t) => { setEd({ ...ed, zone: t }); setError(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setError(''); }} placeholder="Palermo, CABA" style={{ ...sheetInput, marginBottom: 12 }} />
           <label style={sheetLabel}>Dirección <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-          <input value={ed.address} onChange={(e) => setEd({ ...ed, address: e.target.value })} placeholder="Av. Santa Fe 3200" style={sheetInput} />
+          <CampoDomicilio valor={ed.address} onCambio={(t) => setEd({ ...ed, address: t })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} placeholder="Av. Santa Fe 3200" style={sheetInput} />
           <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 12px', lineHeight: 1.45 }}>Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona.</p>
           <label style={sheetLabel}>Tarifa</label>
           <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>

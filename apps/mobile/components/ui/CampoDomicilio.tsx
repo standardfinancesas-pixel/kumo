@@ -5,26 +5,27 @@ import { Texto as Text, INK, MUTED } from './Texto';
 import { apiKumo } from '../../lib/api';
 
 /**
- * El campo de domicilio con las direcciones reales del callejero argentino.
+ * Los campos de lugar de la app, gemelos de los de la web
+ * (`apps/web/components/CampoDomicilio.tsx`).
  *
- * Es el gemelo del de la web (`apps/web/components/CampoDomicilio.tsx`): consulta la
- * misma ruta —`/api/lugares`, que es un pasamanos con caché a Georef, el
- * normalizador de direcciones del Estado— y al elegir de la lista llena el
- * domicilio, la localidad y la provincia de una vez, ya normalizados.
+ * Consultan la misma ruta —`/api/lugares`, un pasamanos con caché a Georef, el
+ * normalizador de direcciones del Estado— y son dos porque son dos preguntas:
+ * `CampoDomicilio` busca calles con altura y llena domicilio, localidad y provincia;
+ * `CampoZona` busca localidades y barrios, que es lo que va en un campo de zona.
  *
- * **Sigue siendo texto libre.** El callejero no tiene todo (countries, barrios
- * nuevos, direcciones rurales) y nadie puede quedarse sin poder darse de alta porque
- * su casa no figure en una base. La lista sugiere; no obliga.
+ * **Los dos siguen siendo texto libre**: el callejero no tiene countries, barrios
+ * nuevos ni "Zona Sur GBA", y nadie puede quedarse sin darse de alta porque su casa
+ * no figure en una base.
  *
- * La lista va en flujo y NO flotando encima del formulario: en el teléfono, un
- * desplegable absoluto queda debajo del teclado o tapa el campo siguiente, y acá el
- * paso del alta ya scrollea.
+ * La lista va EN FLUJO y no flotando encima del formulario: en el teléfono un
+ * desplegable absoluto queda debajo del teclado o tapa el campo siguiente, y las
+ * pantallas donde vive esto ya scrollean.
  */
 export type LugarElegido = { domicilio: string; localidad: string; provincia: string };
-type Sugerencia = LugarElegido & { id: string; etiqueta: string };
+export type ZonaElegida = { zona: string; localidad: string; provincia: string };
+type Fila = { id: string; etiqueta: string };
 
 const ESPERA_MS = 350;
-const MINIMO = 4;
 
 const estiloInput = {
   borderWidth: 1.5,
@@ -37,34 +38,27 @@ const estiloInput = {
   backgroundColor: '#fff',
 } as const;
 
-export function CampoDomicilio({
-  label = 'Domicilio', valor, provincia, onCambio, onElegir, placeholder = 'Calle y número',
-}: {
-  label?: string;
-  valor: string;
-  /** La provincia ya elegida, si hay: acota la búsqueda muchísimo. */
-  provincia?: string;
-  onCambio: (texto: string) => void;
-  onElegir: (lugar: LugarElegido) => void;
-  placeholder?: string;
-}) {
-  const [sugerencias, setSugerencias] = useState<Sugerencia[]>([]);
-  /* Lo último que se eligió: evita que al elegir se dispare una búsqueda nueva con
-     ese mismo texto y la lista vuelva a aparecer sola. */
+/** La búsqueda con debounce. `elegido` evita que al elegir se dispare una búsqueda
+ *  nueva con ese mismo texto y la lista vuelva a aparecer sola. */
+function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'localidad', provincia?: string) {
+  const [sugerencias, setSugerencias] = useState<T[]>([]);
   const elegido = useRef<string | null>(null);
+  const minimo = tipo === 'localidad' ? 3 : 4;
 
   useEffect(() => {
     const texto = valor.trim();
     if (texto === elegido.current) return;
-    if (texto.length < MINIMO) { setSugerencias([]); return; }
+    if (texto.length < minimo) { setSugerencias([]); return; }
 
     let vivo = true;
     const reloj = setTimeout(async () => {
       try {
-        const url = `${apiKumo}/api/lugares?q=${encodeURIComponent(texto)}${provincia ? `&provincia=${encodeURIComponent(provincia)}` : ''}`;
-        const r = await fetch(url);
+        const params = new URLSearchParams({ q: texto });
+        if (tipo === 'localidad') params.set('tipo', 'localidad');
+        if (provincia) params.set('provincia', provincia);
+        const r = await fetch(`${apiKumo}/api/lugares?${params}`);
         if (!r.ok || !vivo) return;
-        const { sugerencias: lista } = (await r.json()) as { sugerencias: Sugerencia[] };
+        const { sugerencias: lista } = (await r.json()) as { sugerencias: T[] };
         if (vivo) setSugerencias(lista);
       } catch {
         // Sin red o sin servicio: el campo sigue siendo un input de texto.
@@ -72,14 +66,27 @@ export function CampoDomicilio({
     }, ESPERA_MS);
 
     return () => { vivo = false; clearTimeout(reloj); };
-  }, [valor, provincia]);
+  }, [valor, provincia, tipo, minimo]);
 
-  const elegir = (s: Sugerencia) => {
-    elegido.current = s.domicilio;
+  const cerrar = (textoElegido: string) => {
+    elegido.current = textoElegido;
     setSugerencias([]);
-    onElegir({ domicilio: s.domicilio, localidad: s.localidad, provincia: s.provincia });
   };
 
+  return { sugerencias, cerrar };
+}
+
+function CampoConLista<T extends Fila>({
+  label, valor, onCambio, onElegir, sugerencias, placeholder, ayuda,
+}: {
+  label: string;
+  valor: string;
+  onCambio: (t: string) => void;
+  onElegir: (fila: T) => void;
+  sugerencias: T[];
+  placeholder?: string;
+  ayuda?: string;
+}) {
   return (
     <View style={{ marginBottom: 12 }}>
       <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 6 }}>{label.toUpperCase()}</Text>
@@ -91,12 +98,13 @@ export function CampoDomicilio({
         autoCapitalize="words"
         style={estiloInput}
       />
+      {ayuda ? <Text style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{ayuda}</Text> : null}
       {sugerencias.length > 0 && (
         <View style={{ marginTop: 6, borderWidth: 1, borderColor: colors.violet[200], borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
           {sugerencias.map((s, i) => (
             <TouchableOpacity
               key={s.id}
-              onPress={() => elegir(s)}
+              onPress={() => onElegir(s)}
               style={{
                 paddingHorizontal: 13, paddingVertical: 11,
                 borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.violet[100],
@@ -108,5 +116,62 @@ export function CampoDomicilio({
         </View>
       )}
     </View>
+  );
+}
+
+export function CampoDomicilio({
+  label = 'Domicilio', valor, provincia, onCambio, onElegir, placeholder = 'Calle y número', ayuda,
+}: {
+  label?: string;
+  valor: string;
+  /** La provincia ya elegida, si hay: acota la búsqueda muchísimo. */
+  provincia?: string;
+  onCambio: (texto: string) => void;
+  onElegir: (lugar: LugarElegido) => void;
+  placeholder?: string;
+  ayuda?: string;
+}) {
+  const { sugerencias, cerrar } = useSugerencias<Fila & LugarElegido>(valor, 'direccion', provincia);
+  return (
+    <CampoConLista
+      label={label}
+      valor={valor}
+      onCambio={onCambio}
+      sugerencias={sugerencias}
+      placeholder={placeholder}
+      ayuda={ayuda}
+      onElegir={(f) => {
+        cerrar(f.domicilio);
+        onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
+      }}
+    />
+  );
+}
+
+export function CampoZona({
+  label = 'Zona', valor, provincia, onCambio, onElegir, placeholder = 'Palermo, CABA', ayuda,
+}: {
+  label?: string;
+  valor: string;
+  provincia?: string;
+  onCambio: (texto: string) => void;
+  onElegir: (zona: ZonaElegida) => void;
+  placeholder?: string;
+  ayuda?: string;
+}) {
+  const { sugerencias, cerrar } = useSugerencias<Fila & ZonaElegida>(valor, 'localidad', provincia);
+  return (
+    <CampoConLista
+      label={label}
+      valor={valor}
+      onCambio={onCambio}
+      sugerencias={sugerencias}
+      placeholder={placeholder}
+      ayuda={ayuda}
+      onElegir={(f) => {
+        cerrar(f.zona);
+        onElegir({ zona: f.zona, localidad: f.localidad, provincia: f.provincia });
+      }}
+    />
   );
 }

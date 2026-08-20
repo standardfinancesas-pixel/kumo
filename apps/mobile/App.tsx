@@ -23,7 +23,7 @@ import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
 import { recalcularUbicacion, ubicarNegocio } from './lib/api';
-import { CampoDomicilio } from './components/ui/CampoDomicilio';
+import { CampoDomicilio, CampoZona } from './components/ui/CampoDomicilio';
 import { Selector } from './components/ui/Controles';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
@@ -2132,20 +2132,19 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
       <SheetLabel>Nombre o empresa</SheetLabel>
       <TextInput value={nombre} onChangeText={(v) => { setNombre(v); setError(''); }} placeholder="Ej: Paseos Palermo / Lucas M." placeholderTextColor={colors.violet[400]} style={{ ...input, marginBottom: 12 }} />
 
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-        <View style={{ flex: 1 }}>
-          <SheetLabel>Zona</SheetLabel>
-          <TextInput value={zona} onChangeText={(v) => { setZona(v); setError(''); }} placeholder="Palermo, CABA" placeholderTextColor={colors.violet[400]} style={input} />
-        </View>
-        <View style={{ flex: 1 }}>
-          <SheetLabel>WhatsApp</SheetLabel>
-          <TextInput value={tel} onChangeText={setTel} placeholder="+54 11 ..." placeholderTextColor={colors.violet[400]} style={input} />
-        </View>
+      {/* La zona sale de la lista de localidades y barrios: el filtro de prestadores
+          compara texto, así que "Palermo" y "Palermo, CABA" eran dos zonas distintas. */}
+      <CampoZona valor={zona} onCambio={(v) => { setZona(v); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} />
+      <View style={{ marginBottom: 12 }}>
+        <SheetLabel>WhatsApp</SheetLabel>
+        <TextInput value={tel} onChangeText={setTel} placeholder="+54 11 ..." placeholderTextColor={colors.violet[400]} style={input} />
       </View>
 
-      <SheetLabel>Dirección (opcional)</SheetLabel>
-      <TextInput value={direccion} onChangeText={setDireccion} placeholder="Av. Santa Fe 3200" placeholderTextColor={colors.violet[400]} style={input} />
-      <Text style={{ fontSize: 12, color: MUTED, marginTop: 6, marginBottom: 12, lineHeight: 17 }}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</Text>
+      <CampoDomicilio
+        label="Dirección (opcional)" valor={direccion}
+        onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)}
+        ayuda="Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona."
+      />
 
       <SheetLabel>Contanos sobre tu servicio</SheetLabel>
       <TextInput value={about} onChangeText={setAbout} multiline numberOfLines={3} placeholder="Experiencia, disponibilidad, precios de referencia…" placeholderTextColor={colors.violet[400]} style={{ ...input, height: 90, textAlignVertical: 'top', marginBottom: 16 }} />
@@ -2617,8 +2616,8 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
                   </TouchableOpacity>
                 ))}
               </View>
-              <TextInput value={zona} onChangeText={(t) => { setZona(t); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" placeholderTextColor={colors.violet[400]} style={field} />
-              <TextInput value={direccion} onChangeText={setDireccion} placeholder="Dirección del local (opcional)" placeholderTextColor={colors.violet[400]} style={field} />
+              <CampoZona label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
+              <CampoDomicilio label="Dirección (opcional)" valor={direccion} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
               <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
               {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
                   aparece en la lista pero sin distancia ni pin. */}
@@ -2674,10 +2673,10 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
       {editOpen && (
         <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], borderRadius: 20, padding: 18, marginBottom: 18, gap: 10 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>Editar datos</Text>
+          <CampoZona label="Zona" valor={ed.zone} onCambio={(v) => { setEd({ ...ed, zone: v }); setError(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setError(''); }} />
+          <CampoDomicilio label="Dirección (opcional)" valor={ed.address} onCambio={(v) => setEd({ ...ed, address: v })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} ayuda="Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona." />
           {[
             ['Nombre del negocio', ed.name, (v: string) => setEd({ ...ed, name: v }), {}],
-            ['Zona', ed.zone, (v: string) => setEd({ ...ed, zone: v }), {}],
-            ['Dirección (opcional, te ubica en el mapa)', ed.address, (v: string) => setEd({ ...ed, address: v }), {}],
             ['Teléfono', ed.phone, (v: string) => setEd({ ...ed, phone: v }), { keyboardType: 'phone-pad' as const }],
             ['Instagram', ed.instagram, (v: string) => setEd({ ...ed, instagram: v }), { autoCapitalize: 'none' as const }],
             ['Sitio web', ed.website, (v: string) => setEd({ ...ed, website: v }), { autoCapitalize: 'none' as const }],
@@ -3368,8 +3367,10 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
         <SheetLabel>Contanos más</SheetLabel>
         <TextInput value={body} onChangeText={setBody} multiline placeholder="Escribí tu consulta o experiencia…" placeholderTextColor={colors.violet[400]} style={{ ...field, height: 120, textAlignVertical: 'top', marginBottom: 12 }} />
 
-        <SheetLabel>Zona · opcional</SheetLabel>
-        <TextInput value={zona} onChangeText={setZona} placeholder="Palermo, CABA" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 16 }} />
+      {/* La zona del posteo alimenta el filtro de la lista, que compara texto: sin
+          elegirla de una lista, cada persona escribía su barrio distinto y el filtro
+          se llenaba de zonas de una sola publicación. */}
+      <CampoZona label="Zona · opcional" valor={zona} onCambio={setZona} onElegir={(z) => setZona(z.zona)} />
 
         {/* La fila de foto del prototipo: miniatura, texto y el "+". */}
         <TouchableOpacity disabled={fotoBusy} onPress={elegirFoto} style={{ flexDirection: 'row', alignItems: 'center', gap: 9, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingVertical: 11, paddingHorizontal: 14, marginBottom: 18 }}>
