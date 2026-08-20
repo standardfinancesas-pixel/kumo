@@ -215,6 +215,13 @@ create table if not exists benefits (
   description      text not null default '',
   valid_until      date,
   zone             text not null default '',
+  -- La dirección del comercio y su punto en el mapa. La dirección la carga el
+  -- club en el panel y el servidor la geocodifica (Nominatim/OpenStreetMap); es
+  -- opcional, y sin ella el beneficio se ve en la lista sin distancia — resolver
+  -- la zona pondría a todos los de Palermo en el mismo punto, tapándose entre sí.
+  address          text,
+  lat              double precision,
+  lng              double precision,
   days             text[] not null default '{}',
   hours            text not null default ''
 );

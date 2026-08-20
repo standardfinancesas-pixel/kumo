@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
-import { geocodificarPrestador } from '@/lib/geocodificar';
+import { geocodificarComercio } from '@/lib/geocodificar';
 
 /**
  * Pone al prestador en el mapa: de su dirección a un punto.
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     ? await svc.from('profiles').select('city, province').eq('id', negocio.owner_id).single()
     : { data: null };
 
-  const ubicacion = await geocodificarPrestador({
+  const ubicacion = await geocodificarComercio({
     address: negocio.address,
     zone: negocio.zone,
     city: dueno?.city,

@@ -1157,10 +1157,16 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
         </View>
       </View>
 
-      {b.zone ? (
+      {/* El lugar: la dirección si el club la cargó, la zona si no, y a cuánto le
+          queda al socio. */}
+      {b.zone || b.address ? (
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#f7f6fa', borderRadius: 14, padding: 14, marginBottom: 12 }}>
           <Ic d="pin" size={18} />
-          <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#4a4560', flex: 1 }}>{b.zone}</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 13.5, fontWeight: '600', color: '#4a4560' }}>{b.address || b.zone}</Text>
+            {b.address && b.zone ? <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{b.zone}</Text> : null}
+          </View>
+          {b.km != null ? <Text style={{ color: BRAND, fontWeight: '700', fontSize: 11.5 }}>{b.km} km {b.kmDesde}</Text> : null}
         </View>
       ) : null}
 
@@ -1279,7 +1285,7 @@ function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (t: Screen) =
               <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={20} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{b.name}</Text>
-                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{b.cat}{b.zone ? ` · ${b.zone}` : ''}</Text>
+                <Text style={{ fontSize: 12, color: colors.violet[400] }}>{b.cat}{b.zone ? ` · ${b.zone}` : ''}{b.km != null ? ` · ${b.km} km` : ''}</Text>
               </View>
               <View style={{ backgroundColor: LIME, borderRadius: 9, paddingVertical: 6, paddingHorizontal: 12 }}><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{b.disc}</Text></View>
             </TouchableOpacity>

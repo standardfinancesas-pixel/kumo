@@ -106,7 +106,7 @@ export default async function Page() {
       .in('status', ['acreditado', 'rechazado'])
       .order('requested_on', { ascending: false })
       .limit(20),
-    supabase.from('benefits').select('id, name, category, discount, plan_requirement, status, description, zone, hours, valid_until, days'),
+    supabase.from('benefits').select('id, name, category, discount, plan_requirement, status, description, zone, address, hours, valid_until, days'),
     // Por precio: da AMIGO → FAMILIA → VIP. Sin orden explícito, editar un plan lo
     // manda al final de la lista (Postgres reubica la fila al hacer update).
     supabase.from('plans').select('id, name, tagline, base_price, perks, featured').order('base_price'),
@@ -268,7 +268,7 @@ export default async function Page() {
 
   const benefits: BenefitAdminVM[] = (benefitRows ?? []).map((b) => ({
     id: b.id, name: b.name, category: b.category, discount: b.discount, planRequirement: b.plan_requirement, status: b.status,
-    description: b.description ?? '', zone: b.zone ?? '', hours: b.hours ?? '', validUntil: b.valid_until, days: b.days ?? [],
+    description: b.description ?? '', zone: b.zone ?? '', address: b.address, hours: b.hours ?? '', validUntil: b.valid_until, days: b.days ?? [],
   }));
 
   const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perks: p.perks ?? [], featured: p.featured }));

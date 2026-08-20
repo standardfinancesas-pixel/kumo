@@ -52,6 +52,9 @@ export type ProviderVM = {
 export type BenefitVM = {
   id: string; name: string; cat: string; disc: string; icon: 'hospital' | 'store' | 'pill' | 'droplet';
   description: string; zone: string; days: string[]; hours: string; validUntil: string | null; planRequirement: string;
+  /** La dirección del comercio y a qué distancia le queda al socio. `km` es null
+   *  cuando el club no cargó dirección: ahí no se muestra distancia. */
+  address: string | null; km: number | null; kmDesde: string;
 };
 /** El detalle necesita bastante más que la tarjeta del historial: el seguimiento,
  *  el comprobante y los datos de acreditación. */
@@ -190,7 +193,7 @@ export function useKumoData(userId: string | null) {
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
-      supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
+      supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
       supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
@@ -326,6 +329,9 @@ export function useKumoData(userId: string | null) {
       id: b.id, name: b.name, cat: b.category, disc: b.discount, icon: benefitIcon(b.category),
       description: b.description ?? '', zone: b.zone ?? '', days: b.days ?? [], hours: b.hours ?? '',
       validUntil: b.valid_until, planRequirement: b.plan_requirement,
+      address: b.address,
+      km: b.lat != null && b.lng != null ? distanciaKm(desde, { lat: b.lat, lng: b.lng }) : null,
+      kmDesde,
     }));
 
     const reintegros: ReintVM[] = (reintRes.data ?? []).map((r) => {

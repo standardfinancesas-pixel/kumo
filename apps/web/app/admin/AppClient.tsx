@@ -35,7 +35,9 @@ export type ColaRow = {
   mascota: { nombre: string; info: string; vacunas: { nombre: string; estado: string; cuando: string }[] } | null;
 };
 export type HistRow = { socio: string; prestador: string; concepto: string; gastado: number; reintegro: number; estado: string };
-export type BenefitAdminVM = { id: string; name: string; category: string; discount: string; planRequirement: string; status: string; description: string; zone: string; hours: string; validUntil: string | null; days: string[] };
+export type BenefitAdminVM = {
+  /** La dirección del comercio, opcional: es lo que le da distancia al beneficio. */
+  address: string | null; id: string; name: string; category: string; discount: string; planRequirement: string; status: string; description: string; zone: string; hours: string; validUntil: string | null; days: string[] };
 export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perks: string[]; featured: boolean };
 export type FaqVM = { id: string; question: string; answer: string };
 export type SettingsVM = { whatsapp: string; email: string };
@@ -1218,6 +1220,9 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
   const [planRequirement, setPlanRequirement] = useState(benefit?.planRequirement ?? BENEFIT_PLANES[0]!);
   const [description, setDescription] = useState(benefit?.description ?? '');
   const [zone, setZone] = useState(benefit?.zone ?? '');
+  /** La dirección del comercio: es lo que le da distancia al beneficio en la app.
+   *  Opcional — ver el aviso debajo del campo. */
+  const [address, setAddress] = useState(benefit?.address ?? '');
   const [hours, setHours] = useState(benefit?.hours ?? '');
   const [validUntil, setValidUntil] = useState(benefit?.validUntil ?? '');
   const [days, setDays] = useState<string[]>(benefit?.days ?? []);
@@ -1232,15 +1237,21 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
     setBusy(true); setError('');
     const fila = {
       name: name.trim(), category, discount: discount.trim(), plan_requirement: planRequirement,
-      description: description.trim(), zone: zone.trim(), hours: hours.trim(),
+      description: description.trim(), zone: zone.trim(), address: address.trim() || null, hours: hours.trim(),
       // Los días se guardan en el orden de la semana y no en el que se tocaron.
       days: BENEFIT_DIAS.filter((d) => days.includes(d)),
       valid_until: validUntil || null,
     };
-    const { error: e } = editando
-      ? await supabase.from('benefits').update(fila).eq('id', benefit!.id)
-      : await supabase.from('benefits').insert({ ...fila, status: 'activo' });
+    const { data: guardado, error: e } = editando
+      ? await supabase.from('benefits').update(fila).eq('id', benefit!.id).select('id').single()
+      : await supabase.from('benefits').insert({ ...fila, status: 'activo' }).select('id').single();
     if (e) { setError('No pudimos guardarlo. Probá de nuevo.'); setBusy(false); return; }
+    /* El punto en el mapa: lo resuelve el servidor a partir de la dirección y no se
+       espera. Se pide siempre que la dirección cambió —incluso si quedó vacía, para
+       que el beneficio salga del mapa cuando el comercio se mudó o cerró. */
+    if (guardado?.id && address.trim() !== (benefit?.address ?? '')) {
+      void fetch('/api/beneficios/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: guardado.id }) });
+    }
     onSaved();
     onClose();
   };
@@ -1277,6 +1288,11 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
         <div>
           <label style={fieldLabel}>ZONA</label>
           <input value={zone} onChange={(e) => setZone(e.target.value)} style={inp} placeholder="Palermo" />
+        </div>
+        <div>
+          <label style={fieldLabel}>DIRECCIÓN (OPCIONAL)</label>
+          <input value={address} onChange={(e) => setAddress(e.target.value)} style={inp} placeholder="Av. Santa Fe 3200" />
+          <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Con la dirección, el socio ve a cuántos kilómetros le queda. Sin ella, el beneficio se ve igual pero sin distancia.</div>
         </div>
         {/* Los tres que faltaban. La ficha del socio los muestra, así que sin
             esto el beneficio salía a la app incompleto. */}

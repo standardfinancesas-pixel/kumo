@@ -49,20 +49,6 @@ const sinTildes = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, 
 const ES_CABA = /^(caba|c\.?a\.?b\.?a\.?|capital federal|ciudad de buenos aires|ciudad autonoma de buenos aires|capital)$/;
 const CABA = 'Ciudad Autónoma de Buenos Aires';
 
-/**
- * Lo que se le pregunta a Nominatim, en orden: de lo más preciso a lo más general.
- *
- * Las tres limpiezas salen de los domicilios reales que había cargados:
- *
- *  · **El piso y el departamento se van.** "luis maria campos 405, 1" no lo
- *    resolvía; sin el ", 1", cae exacto en Las Cañitas. Nominatim busca portales,
- *    no timbres.
- *  · **CABA se escribe completo**, y sin provincia: "caba, Buenos Aires" es además
- *    contradictorio (la ciudad no está en la provincia).
- *  · **Si la localidad se llama igual que la provincia**, se pide "Ciudad de X":
- *    con "mendoza, Mendoza" contestaba un pueblo a 40 km del centro; con "Ciudad de
- *    Mendoza" cae en el centro.
- */
 /** Del domicilio, solo la calle y la altura: lo que sigue a la primera coma es el
  *  piso, el departamento o una aclaración para el cartero. */
 function limpiarCalle(address?: string | null): string {
@@ -88,6 +74,20 @@ function normalizarLugar(city?: string | null, province?: string | null): { loca
 
 const armarConsulta = (...t: string[]) => [...t.filter(Boolean), 'Argentina'].join(', ');
 
+/**
+ * El domicilio de un socio, preguntado de lo más preciso a lo más general.
+ *
+ * Las tres limpiezas salen de los domicilios reales que había cargados:
+ *
+ *  · **El piso y el departamento se van.** "luis maria campos 405, 1" no lo
+ *    resolvía; sin el ", 1", cae exacto en Las Cañitas. Nominatim busca portales,
+ *    no timbres.
+ *  · **CABA se escribe completo**, y sin provincia: "caba, Buenos Aires" es además
+ *    contradictorio (la ciudad no está en la provincia).
+ *  · **Si la localidad se llama igual que la provincia**, se pide "Ciudad de X":
+ *    con "mendoza, Mendoza" contestaba un pueblo a 40 km del centro; con "Ciudad de
+ *    Mendoza" cae en el centro.
+ */
 export function consultasDeDomicilio(partes: {
   address?: string | null;
   city?: string | null;
@@ -103,21 +103,23 @@ export function consultasDeDomicilio(partes: {
 }
 
 /**
- * Lo que se pregunta por un prestador.
+ * Lo que se pregunta por el local de un comercio: un prestador o el comercio de un beneficio.
  *
  * Dos diferencias con el domicilio de un socio:
  *
- *  · **Sin dirección no hay consulta.** Un prestador tiene `zone` ("Palermo") pero
- *    no siempre dirección, y resolver la zona pondría a todos los de Palermo
+ *  · **Sin dirección no hay consulta.** Un comercio tiene `zone` ("Palermo") pero no
+ *    siempre dirección, y resolver la zona pondría a todos los de Palermo
  *    exactamente en el mismo punto: tres pines apilados, dos invisibles debajo del
  *    de arriba. Un pin es una afirmación sobre un lugar; sin dirección no la hay, y
- *    el prestador aparece igual en la lista, sin distancia (así lo trata la
- *    pantalla). La zona ya se muestra escrita en su tarjeta.
- *  · **La ciudad la aporta el dueño.** La tabla de prestadores no tiene localidad ni
- *    provincia, así que el contexto sale del perfil del socio que lo dio de alta.
- *    Sin eso, "Rivadavia 5100" tiene candidatos en veinte ciudades del país.
+ *    el comercio aparece igual en la lista, sin distancia (así lo tratan las
+ *    pantallas). La zona ya se muestra escrita en su tarjeta.
+ *  · **La zona hace de ciudad.** Ni `providers` ni `benefits` tienen localidad, y
+ *    "Rivadavia 5100" tiene candidatos en veinte ciudades del país. El barrio
+ *    alcanza para desambiguar —los cinco prestadores reales resolvieron así, sin
+ *    ciudad— y cuando el comercio es de un socio se agrega además la localidad de su
+ *    perfil, que es el único contexto disponible.
  */
-export function consultasDePrestador(partes: {
+export function consultasDeComercio(partes: {
   address?: string | null;
   zone?: string | null;
   city?: string | null;
@@ -186,18 +188,20 @@ export async function geocodificarDomicilio(partes: {
 }
 
 /**
- * El local de un prestador. Null si no cargó dirección: ver `consultasDePrestador`.
+ * El local de un comercio —un prestador, o el negocio de un beneficio—.
+ *
+ * Null si no cargó dirección: ver `consultasDeComercio`.
  *
  * `city`/`province` son del socio dueño del negocio, no del prestador — son el
  * contexto que le falta a la tabla para saber en qué ciudad buscar la calle.
  */
-export async function geocodificarPrestador(partes: {
+export async function geocodificarComercio(partes: {
   address?: string | null;
   zone?: string | null;
   city?: string | null;
   province?: string | null;
 }): Promise<Ubicacion | null> {
-  return correr(consultasDePrestador(partes));
+  return correr(consultasDeComercio(partes));
 }
 
 /** Prueba las consultas en orden y devuelve la primera que contesta. */

@@ -116,6 +116,10 @@ export type ProviderVM = { id: string; name: string; category: string; zone: str
 export type BenefitVM = {
   id: string; name: string; category: string; discount: string; icon: 'cross' | 'store' | 'tag' | 'droplet';
   description: string; zone: string; days: string[]; hours: string; validUntil: string | null; planRequirement: string;
+  /** La dirección del comercio y a qué distancia le queda al socio. `km` es null
+   *  cuando el club no cargó dirección: ahí no se muestra distancia, igual que con
+   *  los prestadores. */
+  address: string | null; km: number | null; kmDesde: string;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
@@ -1700,10 +1704,16 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
         </div>
       </div>
 
-      {b.zone && (
+{/* El lugar: la zona, la dirección si el club la cargó, y a cuánto le queda al
+          socio. La distancia sale del domicilio del socio, igual que en Servicios. */}
+      {(b.zone || b.address) && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(247,246,250)', borderRadius: 14, padding: 14, marginBottom: 12 }}>
           <span style={{ color: '#5D5491', flex: 'none' }}>{ic(pinDropPath, false, 18)}</span>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(74,69,96)' }}>{b.zone}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 600, color: 'rgb(74,69,96)' }}>{b.address || b.zone}</div>
+            {b.address && b.zone && <div style={{ fontSize: 12, color: 'rgb(135,129,160)', marginTop: 2 }}>{b.zone}</div>}
+          </div>
+          {b.km != null && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11.5, padding: '5px 11px', borderRadius: 100, flex: 'none' }}>{b.km} km {b.kmDesde}</span>}
         </div>
       )}
 
@@ -1824,7 +1834,7 @@ function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (s: Screen) =
             </div>
             <div style={{ flex: '1 1 0%', minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 14, color: 'rgb(33,30,51)' }}>{b.name}</div>
-              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{b.category}{b.zone ? ` · ${b.zone}` : ''}</div>
+              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{b.category}{b.zone ? ` · ${b.zone}` : ''}{b.km != null && <> · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{b.km} km</span></>}</div>
             </div>
             <span style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', fontWeight: 700, fontSize: 14, padding: '6px 12px', borderRadius: 9, flex: '0 0 auto' }}>{b.discount}</span>
           </button>

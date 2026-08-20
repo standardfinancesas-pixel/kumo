@@ -103,12 +103,16 @@ function benefitIcon(category: string): BenefitVM['icon'] {
   if (/consulta|cirug/.test(c)) return 'cross';
   return 'tag';
 }
-type BenefitRow = { id: string; name: string; category: string; discount: string; description: string; zone: string; days: string[]; hours: string; valid_until: string | null; plan_requirement: string };
-function mapBenefit(row: BenefitRow): BenefitVM {
+type BenefitRow = { id: string; name: string; category: string; discount: string; description: string; zone: string; address: string | null; lat: number | null; lng: number | null; days: string[]; hours: string; valid_until: string | null; plan_requirement: string };
+function mapBenefit(row: BenefitRow, desde: Punto & { origen: OrigenDistancia }): BenefitVM {
   return {
     id: row.id, name: row.name, category: row.category, discount: row.discount, icon: benefitIcon(row.category),
     description: row.description ?? '', zone: row.zone ?? '', days: row.days ?? [], hours: row.hours ?? '',
     validUntil: row.valid_until, planRequirement: row.plan_requirement,
+    address: row.address,
+    // Sin dirección cargada no hay distancia: el comercio se muestra con su zona.
+    km: row.lat != null && row.lng != null ? distanciaKm(desde, { lat: row.lat, lng: row.lng }) : null,
+    kmDesde: textoDistancia(desde.origen),
   };
 }
 
@@ -238,7 +242,7 @@ export default async function Page() {
       .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
       .eq('owner_id', auth.user.id)
       .maybeSingle(),
-    supabase.from('benefits').select('id, name, category, discount, description, zone, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
+    supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
     supabase
       .from('community_posts')
       .select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
@@ -379,7 +383,7 @@ export default async function Page() {
       }
     : null;
 
-  const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow));
+  const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow, desde));
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
   const misLikes = {
     posts: (postLikeRows ?? []).map((l) => l.post_id),
