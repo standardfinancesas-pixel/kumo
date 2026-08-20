@@ -508,22 +508,26 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
  */
 function DialogoBorrarSocio({ socio, onCerrar, onBorrar, busy }: { socio: SocioRow; onCerrar: () => void; onBorrar: () => void; busy: boolean }) {
   const [palabra, setPalabra] = useState('');
-  const [cuentas, setCuentas] = useState<{ mascotas: number; reintegros: number; pagos: number; publicaciones: number; negocios: number } | null>(null);
+  const [cuentas, setCuentas] = useState<{ mascotas: number; reintegros: number; pagos: number; publicaciones: number; negocios: number; conDebito: boolean } | null>(null);
 
   useEffect(() => {
     let vivo = true;
     (async () => {
-      const [mascotas, reintegros, pagos, publicaciones, negocios] = await Promise.all([
+      const [mascotas, reintegros, pagos, publicaciones, negocios, perfil] = await Promise.all([
         supabase.from('pets').select('id', { count: 'exact', head: true }).eq('owner_id', socio.id),
         supabase.from('reimbursements').select('id', { count: 'exact', head: true }).eq('member_id', socio.id),
         supabase.from('payments').select('id', { count: 'exact', head: true }).eq('member_id', socio.id),
         supabase.from('community_posts').select('id', { count: 'exact', head: true }).eq('author_id', socio.id),
         supabase.from('providers').select('id', { count: 'exact', head: true }).eq('owner_id', socio.id),
+        // El débito vivo, para no prometer que se cancela algo que no existe: casi
+        // todos los socios de prueba pagaron a mano y no tienen suscripción.
+        supabase.from('profiles').select('mp_subscription_status').eq('id', socio.id).maybeSingle(),
       ]);
       if (!vivo) return;
       setCuentas({
         mascotas: mascotas.count ?? 0, reintegros: reintegros.count ?? 0, pagos: pagos.count ?? 0,
         publicaciones: publicaciones.count ?? 0, negocios: negocios.count ?? 0,
+        conDebito: perfil.data?.mp_subscription_status === 'authorized' || perfil.data?.mp_subscription_status === 'pending',
       });
     })();
     return () => { vivo = false; };
@@ -555,7 +559,7 @@ function DialogoBorrarSocio({ socio, onCerrar, onBorrar, busy }: { socio: SocioR
             </>
           ) : <div style={{ fontSize: 13, color: '#8781a0' }}>Contando lo que tiene cargado…</div>}
           <div style={{ fontSize: 12.5, color: '#8781a0', marginTop: 8, lineHeight: 1.5 }}>
-            {socio.cuotaAlDia
+            {cuentas?.conDebito
               ? 'Su débito automático se cancela primero, así que Mercado Pago deja de cobrarle. '
               : ''}
             También se borra su usuario de acceso, así que ese mail queda libre para un alta nueva.

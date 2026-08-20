@@ -958,23 +958,14 @@ comment on function public.borrar_socio(uuid) is
 revoke all on function public.borrar_socio(uuid) from public, anon, authenticated;
 
 /* ── Borrar un cobro ────────────────────────────────────────── */
--- El club registró un pago que no era, o hay que limpiar los de prueba.
---
--- Lo delicado no es borrar la fila: es que un pago APROBADO le sumó un mes a
--- `paid_until` cuando se acreditó (`acreditar_cuota` suma exactamente uno). Si se
--- borra la fila y no se devuelve el mes, el socio se queda con acceso que nadie
--- pagó y el panel deja de poder explicar de dónde salió esa fecha. Así que se
--- descuenta un mes, que es el inverso exacto de lo que se hizo al acreditar.
---
--- `kumo.acreditando` es el flag que abre el trigger de `profiles`: `paid_until` no
--- lo puede escribir nadie sin él, ni la service-role.
 create or replace function public.borrar_pago(p_pago_id uuid)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  pago  record;
-  antes date;
-  nueva date;
+  pago   record;
+  antes  date;
+  nueva  date;
+  quedan integer;
 begin
   select id, member_id, amount, status, method, mp_payment_id
     into pago
@@ -986,16 +977,22 @@ begin
 
   select paid_until into antes from public.profiles where id = pago.member_id for update;
 
+  delete from public.payments where id = p_pago_id;
+
   if pago.status = 'aprobado' and antes is not null then
-    nueva := (antes - interval '1 month')::date;
+    -- Se cuenta DESPUÉS de borrar: la pregunta es qué le queda, no qué tenía.
+    select count(*) into quedan
+      from public.payments
+     where member_id = pago.member_id and status = 'aprobado';
+
+    nueva := case when quedan = 0 then null else (antes - interval '1 month')::date end;
+
     perform set_config('kumo.acreditando', 'on', true);
     update public.profiles set paid_until = nueva where id = pago.member_id;
     perform set_config('kumo.acreditando', 'off', true);
   else
     nueva := antes;
   end if;
-
-  delete from public.payments where id = p_pago_id;
 
   return jsonb_build_object(
     'socio', pago.member_id,
@@ -1007,6 +1004,7 @@ begin
 end $$;
 
 comment on function public.borrar_pago(uuid) is
-  'Borra un cobro y, si estaba aprobado, le descuenta al socio el mes que ese cobro le habia sumado: es el inverso exacto de acreditar_cuota. Solo la service-role.';
+  'Borra un cobro y le descuenta al socio el mes que ese cobro le habia sumado. Si no le queda ningun cobro acreditado, `paid_until` vuelve a null: nunca pago. Solo la service-role.';
 
 revoke all on function public.borrar_pago(uuid) from public, anon, authenticated;
+
