@@ -405,3 +405,27 @@ export function conArranque(
     eleccion: plan ? { modo: 'pago', plan, aceptaCuota: true } : b.eleccion,
   };
 }
+
+/**
+ * La tarjeta del plan gratuito, para el paso del plan.
+ *
+ * Sale de acá y no de la tabla `plans` porque el gratuito NO es un plan: no tiene
+ * fila, no tiene precio y `profiles.plan_id` queda en null. Pero en el paso del alta
+ * se muestra como una tarjeta más —arriba y con el mismo diseño que las otras— así
+ * que necesita las mismas partes que un plan para poder dibujarse igual.
+ *
+ * `falta` es la parte honesta: una tarjeta que solo enumera lo que incluye deja al
+ * socio descubriendo en el peor momento —cuando va a pedir un reintegro— que eso no
+ * estaba. Decirlo acá cuesta una línea y evita un reclamo.
+ */
+export const PLAN_GRATUITO = {
+  nombre: 'GRATUITO',
+  precio: 0,
+  tagline: 'Entrá y usá el club sin pagar nada.',
+  incluye: [
+    'Carnet digital de salud de tus mascotas',
+    'Recordatorios de vacunas',
+    'Prestadores y foros de la comunidad',
+  ],
+  falta: 'Sin reintegros ni beneficios (se activan con un plan, cuando quieras)',
+} as const;

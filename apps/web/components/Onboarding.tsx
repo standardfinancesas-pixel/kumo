@@ -7,7 +7,7 @@ import {
   data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, pasoOk, payloadAlta,
   borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
-  MAX_MASCOTAS_ALTA, type BorradorAlta, type MascotaBorrador,
+  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
@@ -419,6 +419,40 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
             <h2 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, margin: '0 0 4px' }}>Elegí tu plan</h2>
             <p style={{ color: '#8781a0', fontSize: 15, margin: '0 0 22px' }}>Podés cambiarlo o cancelarlo cuando quieras.</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {/*
+                * El gratuito va PRIMERO y con el mismo diseño que los planes.
+                *
+                * Estaba abajo y con menos jerarquía para que el formulario no pareciera
+                * vender cuatro planes. Flor decidió lo contrario, y tiene sentido: entrar
+                * gratis ES la propuesta de Kumo, no la letra chica. Esconderlo hace que la
+                * persona crea que hay que pagar para probar.
+                *
+                * No sale de `plans` porque no es un plan: no tiene fila en la tabla ni
+                * precio, y `plan_id` queda en null. El contenido está en `PLAN_GRATUITO`.
+                */}
+              <div
+                onClick={() => setB({ ...b, eleccion: { modo: 'gratis' }, odonto: false })}
+                style={{ position: 'relative', border: '2px solid ' + (gratis ? '#5D5491' : '#e6e3f0'), background: gratis ? '#faf9fd' : '#fff', borderRadius: 18, padding: 20, cursor: 'pointer', transition: '0.15s' }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18, color: '#5D5491' }}>{PLAN_GRATUITO.nombre}</span>
+                  <Radio on={gratis} />
+                </div>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginTop: 6 }}>{money(PLAN_GRATUITO.precio)}<span style={{ fontSize: 13, color: '#8781a0', fontWeight: 500 }}>/mes</span></div>
+                <div style={{ fontSize: 13.5, color: '#5b5670', margin: '4px 0 12px' }}>{PLAN_GRATUITO.tagline}</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 4 }}>
+                  {PLAN_GRATUITO.incluye.map((item) => (
+                    <div key={item} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13.5, color: '#4a4560' }}>
+                      <span style={{ color: '#5D5491', fontWeight: 700, flex: '0 0 auto' }}>✓</span><span>{item}</span>
+                    </div>
+                  ))}
+                  {/* Lo que NO incluye, dicho acá: enterarse al ir a pedir un reintegro es
+                      peor que leerlo ahora. */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13.5, color: '#8781a0' }}>
+                    <span style={{ flex: '0 0 auto' }}>—</span><span>{PLAN_GRATUITO.falta}</span>
+                  </div>
+                </div>
+              </div>
               {plans.map((p) => {
                 const on = plan === p.name;
                 return (
@@ -455,28 +489,7 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
               </label>
             ) : null}
 
-            {/*
-              * Entrar gratis.
-              *
-              * Va abajo y con menos jerarquía que las tarjetas, a propósito: la web
-              * pública vende tres planes, y si esto compitiera visualmente el formulario
-              * vendería cuatro. Es la salida para quien duda, no una opción más.
-              */}
-            <div style={{ borderTop: '1px solid #e6e3f0', marginTop: 22, paddingTop: 18 }}>
-              <button
-                type="button"
-                onClick={() => setB({ ...b, eleccion: { modo: 'gratis' }, odonto: false })}
-                style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, border: '1.5px solid ' + (gratis ? '#5D5491' : '#e6e3f0'), background: gratis ? '#faf9fd' : '#fff', borderRadius: 14, padding: '15px 16px', cursor: 'pointer', fontFamily: '"DM Sans"' }}
-              >
-                <span style={{ flex: 1 }}>
-                  <span style={{ display: 'block', fontWeight: 700, fontSize: 15, color: '#211E33' }}>Continuar gratis</span>
-                  <span style={{ display: 'block', fontSize: 13, color: '#8781a0', marginTop: 2, lineHeight: 1.45 }}>
-                    Tenés el carnet de tus mascotas, las vacunas, los prestadores y los foros. Los reintegros y los beneficios se activan con un plan, cuando quieras.
-                  </span>
-                </span>
-                <Radio on={gratis} />
-              </button>
-            </div>
+
           </div>
         )}
 

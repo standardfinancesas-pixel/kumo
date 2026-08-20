@@ -1,5 +1,5 @@
 import { TouchableOpacity, View } from 'react-native';
-import { colors, cuotaMensual, ODONTO_PRECIO, esGratis, planElegido, type EleccionPlan } from '@kumo/shared';
+import { colors, cuotaMensual, ODONTO_PRECIO, esGratis, planElegido, PLAN_GRATUITO, type EleccionPlan } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, LIME, MUTED } from '../ui/Texto';
 import { Punto, Tilde } from '../ui/Controles';
 
@@ -14,9 +14,11 @@ const plata = (n: number) => '$' + n.toLocaleString('es-AR');
  * La bajada y los beneficios salen de la tabla `plans`, que es lo que el club edita
  * desde el panel.
  *
- * "Continuar gratis" va abajo y con menos jerarquía que las tarjetas, a propósito: la
- * web pública vende tres planes, y si esto compitiera visualmente el formulario
- * vendería cuatro. Es la salida para quien duda, no una opción más.
+ * El gratuito va PRIMERO y con el mismo diseño que los planes. Estaba abajo y con
+ * menos jerarquía para que el formulario no pareciera vender cuatro planes; Flor
+ * decidió lo contrario y tiene sentido: entrar gratis ES la propuesta de Kumo, no la
+ * letra chica. No sale de `plans` porque no es un plan (no tiene fila ni precio): el
+ * contenido está en `PLAN_GRATUITO` de shared, el mismo que usa la web.
  *
  * La cobertura odontológica va UNA sola vez y solo con un plan elegido: es una
  * columna del socio (`addon_odonto`), no del plan, y sin cuota no hay dónde cobrarla.
@@ -39,6 +41,32 @@ export default function Paso3Plan({
       <Text style={{ fontSize: 14, color: MUTED, marginBottom: 18 }}>Podés cambiarlo o cancelarlo cuando quieras.</Text>
 
       <View style={{ gap: 14 }}>
+        <TouchableOpacity
+          onPress={() => onEleccion({ modo: 'gratis' })}
+          style={{ borderWidth: 2, borderColor: gratis ? BRAND : colors.violet[200], backgroundColor: gratis ? colors.violet[50] : '#fff', borderRadius: 18, padding: 18 }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Text style={{ fontFamily: 'Baloo2_800ExtraBold', fontSize: 18, color: BRAND }}>{PLAN_GRATUITO.nombre}</Text>
+            <Punto on={gratis} />
+          </View>
+          <Text style={{ fontFamily: 'Baloo2_800ExtraBold', fontSize: 22, color: INK, marginTop: 4 }}>
+            {plata(PLAN_GRATUITO.precio)}<Text style={{ fontSize: 13, color: MUTED, fontWeight: '500' }}>/mes</Text>
+          </Text>
+          <Text style={{ fontSize: 13.5, color: '#5b5670', marginTop: 4 }}>{PLAN_GRATUITO.tagline}</Text>
+          <View style={{ gap: 6, marginTop: 12 }}>
+            {PLAN_GRATUITO.incluye.map((item) => (
+              <View key={item} style={{ flexDirection: 'row', gap: 8 }}>
+                <Text style={{ color: BRAND, fontWeight: '800', fontSize: 13 }}>✓</Text>
+                <Text style={{ fontSize: 13, color: '#4a4560', flex: 1 }}>{item}</Text>
+              </View>
+            ))}
+            {/* Lo que NO incluye: enterarse al ir a pedir un reintegro es peor. */}
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <Text style={{ color: MUTED, fontSize: 13 }}>—</Text>
+              <Text style={{ fontSize: 13, color: MUTED, flex: 1 }}>{PLAN_GRATUITO.falta}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
         {planes.map((p) => {
           const on = elegido === p.name;
           return (
@@ -92,20 +120,7 @@ export default function Paso3Plan({
         </View>
       ) : null}
 
-      <View style={{ borderTopWidth: 1, borderTopColor: colors.violet[200], marginTop: 22, paddingTop: 18 }}>
-        <TouchableOpacity
-          onPress={() => onEleccion({ modo: 'gratis' })}
-          style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: gratis ? BRAND : colors.violet[200], backgroundColor: gratis ? colors.violet[50] : '#fff', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 15 }}
-        >
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>Continuar gratis</Text>
-            <Text style={{ fontSize: 13, color: MUTED, marginTop: 2, lineHeight: 19 }}>
-              Tenés el carnet de tus mascotas, las vacunas, los prestadores y los foros. Los reintegros y los beneficios se activan con un plan, cuando quieras.
-            </Text>
-          </View>
-          <Punto on={gratis} />
-        </TouchableOpacity>
-      </View>
+
     </View>
   );
 }
