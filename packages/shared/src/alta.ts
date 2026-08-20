@@ -1,3 +1,4 @@
+import { claveValida } from './clave';
 import { HEALTH_Q, SANITARIO_Q, armarDeclaracion, type RespuestaDeclarada } from './declaracion';
 
 /**
@@ -189,7 +190,9 @@ export function validarSocio(socio: SocioAlta, conGoogle = false): ValidacionSoc
   const tel = socio.tel.replace(/\D/g, '').length === 10;
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(socio.email);
   // Con Google no hay contraseña que validar: la identidad ya está resuelta.
-  const password = conGoogle || socio.password.length >= 6;
+  // La regla de la clave vive en : se elige una contraseña en cuatro
+  // lugares y cada uno tenía su propio mínimo escrito a mano.
+  const password = conGoogle || claveValida(socio.password);
   return {
     nombre, dni, fnac, tel, email, password,
     ok: nombre && dni && fnac && tel && email && password

@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ScrollView, TouchableOpacity } from 'react-native';
-import { colors } from '@kumo/shared';
+import { colors, claveValida } from '@kumo/shared';
 import { supabase } from '../lib/supabase';
 import { Texto as Text, BRAND, INK, MUTED } from './ui/Texto';
-import { Campo } from './ui/Controles';
+import { CampoClave } from './ui/Controles';
 
 /**
  * Elegir la contraseña nueva, dentro de la app.
@@ -24,7 +24,9 @@ export default function NuevaClave({
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState('');
 
-  const cortaOk = clave.length >= 6;
+  // La regla es la de shared, la misma que el alta y que la web: antes acá se
+  // pedían 6 caracteres y en otras pantallas otra cosa.
+  const cortaOk = claveValida(clave);
   const coinciden = clave.length > 0 && clave === repetida;
 
   const guardar = async () => {
@@ -60,15 +62,15 @@ export default function NuevaClave({
         Con esta contraseña vas a entrar de ahora en más, en la app y en la web.
       </Text>
 
-      <Campo
-        label="Contraseña nueva" valor={clave} onCambio={setClave} placeholder="Mínimo 6 caracteres"
-        secureTextEntry mal={clave.length > 0 && !cortaOk}
+      <CampoClave
+        label="Contraseña nueva" valor={clave} onCambio={setClave}
+        mal={clave.length > 0 && !cortaOk} autoComplete="new-password"
       />
-      <Campo
+      <CampoClave
         label="Repetila" valor={repetida} onCambio={setRepetida} placeholder="Otra vez, para no equivocarte"
-        secureTextEntry mal={repetida.length > 0 && !coinciden}
-        ayuda={repetida.length > 0 && !coinciden ? 'Las dos contraseñas tienen que ser iguales.' : undefined}
+        requisitos={false} mal={repetida.length > 0 && !coinciden} autoComplete="new-password"
       />
+      {repetida.length > 0 && !coinciden ? <Text style={{ fontSize: 11.5, color: MUTED, marginTop: -6, marginBottom: 10 }}>Las dos contraseñas tienen que ser iguales.</Text> : null}
 
       {error ? <Text style={{ fontSize: 13, color: colors.danger.fg, fontWeight: '600', marginTop: 4 }}>{error}</Text> : null}
 

@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, type SocioAlta } from '@kumo/shared';
 import { Texto as Text, INK, MUTED } from '../ui/Texto';
-import { Campo, Selector } from '../ui/Controles';
+import { Campo, CampoClave, Selector } from '../ui/Controles';
 
 /**
  * Paso 2 · Los datos del socio.
@@ -76,9 +76,9 @@ export default function Paso2Socio({
       />
 
       {conGoogle ? null : (
-        <Campo
-          label="Contraseña" valor={socio.password} onCambio={(t) => set({ password: t })}
-          mal={socio.password.length > 0 && !v.password} placeholder="Mínimo 6 caracteres" secureTextEntry
+        <CampoClave
+          valor={socio.password} onCambio={(t) => set({ password: t })}
+          mal={socio.password.length > 0 && !v.password} autoComplete="new-password"
         />
       )}
     </View>

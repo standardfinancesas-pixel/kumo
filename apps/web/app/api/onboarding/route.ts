@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
 import { quienPide } from '@/lib/quien-pide';
-import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta } from '@kumo/shared';
+import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta, claveValida, CLAVE_MINIMA } from '@kumo/shared';
 import { sendBienvenida } from '@/lib/mail';
 
 /**
@@ -83,8 +83,19 @@ export async function POST(req: Request) {
   if (mascotas.length > MAX_MASCOTAS_ALTA) {
     return NextResponse.json({ error: 'Son demasiadas mascotas para un alta. Cargá las demás desde tu cuenta.' }, { status: 400 });
   }
-  if (!conGoogle && (!socio?.email || socio.password.length < 6)) {
+  if (!conGoogle && !socio?.email) {
     return NextResponse.json({ error: 'Faltan datos obligatorios.' }, { status: 400 });
+  }
+  /*
+   * La clave se valida ACÁ además de en la pantalla, con la misma regla de shared:
+   * una regla que solo vive en el formulario no es una regla, porque este endpoint es
+   * público y recibe lo que le manden. El mensaje dice qué falta en vez de "faltan
+   * datos" porque hay APKs instalados que todavía mandan claves de 6 caracteres.
+   */
+  if (!conGoogle && !claveValida(socio.password)) {
+    return NextResponse.json({
+      error: `La contraseña necesita al menos ${CLAVE_MINIMA} caracteres y una mayúscula.`,
+    }, { status: 400 });
   }
   /*
    * `null` es "sin plan" (alta gratuita) y es válido. `undefined` o vacío es otra

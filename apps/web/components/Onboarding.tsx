@@ -10,6 +10,7 @@ import {
   MAX_MASCOTAS_ALTA, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
+import { CampoClave } from '@/components/CampoClave';
 
 /*
  * Alta de socio — el formulario, presentado como WEB y no dentro de un marco de
@@ -374,7 +375,14 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
               </p>
             ) : (
               <>
-                {field('Contraseña', <input type="password" autoComplete="new-password" value={socio.password} onChange={(e) => setB({ ...b, socio: { ...socio, password: e.target.value } })} placeholder="Mínimo 6 caracteres" style={{ ...input, borderColor: socio.password && !v.password ? '#c14d7a' : '#e6e3f0' }} />)}
+                {field('Contraseña', (
+                  <CampoClave
+                    value={socio.password}
+                    onChange={(clave) => setB({ ...b, socio: { ...socio, password: clave } })}
+                    mal={!!socio.password && !v.password}
+                    style={input}
+                  />
+                ))}
                 <p style={{ fontSize: 12.5, color: '#a29dba', margin: '-8px 0 0' }}>La vas a usar para entrar a la app cuando quieras.</p>
               </>
             )}

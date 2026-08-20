@@ -1,7 +1,8 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { urls } from '@kumo/shared';
+import { urls, claveValida } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
+import { CampoClave } from '@/components/CampoClave';
 
 /**
  * Elegir una contraseña nueva, al final del link del mail.
@@ -17,7 +18,6 @@ import { supabase } from '@/lib/supabase-browser';
 export default function NuevaClave() {
   const [clave, setClave] = useState('');
   const [repetida, setRepetida] = useState('');
-  const [ver, setVer] = useState(false);
   const [estado, setEstado] = useState<'cargando' | 'lista' | 'sin-sesion' | 'guardando' | 'ok'>('cargando');
   const [error, setError] = useState('');
 
@@ -30,9 +30,9 @@ export default function NuevaClave() {
     supabase.auth.getSession().then(({ data }) => setEstado(data.session ? 'lista' : 'sin-sesion'));
   }, []);
 
-  const corta = clave.length > 0 && clave.length < 6;
+  const corta = clave.length > 0 && !claveValida(clave);
   const distintas = repetida.length > 0 && clave !== repetida;
-  const puede = clave.length >= 6 && clave === repetida;
+  const puede = claveValida(clave) && clave === repetida;
 
   const guardar = async () => {
     if (!puede) return;
@@ -86,28 +86,21 @@ export default function NuevaClave() {
         {(estado === 'lista' || estado === 'guardando') && (
           <>
             <h1 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 23, color: 'rgb(33,30,51)', margin: '0 0 6px' }}>Elegí tu contraseña nueva</h1>
-            <p style={{ fontSize: 14, lineHeight: 1.5, color: '#8781a0', margin: '0 0 20px' }}>Al menos 6 caracteres. Con esta vas a entrar a la app y a la web.</p>
+            <p style={{ fontSize: 14, lineHeight: 1.5, color: '#8781a0', margin: '0 0 20px' }}>Con esta vas a entrar a la app y a la web.</p>
 
             <label style={label} htmlFor="clave">CONTRASEÑA NUEVA</label>
-            <input
-              id="clave" type={ver ? 'text' : 'password'} value={clave} autoComplete="new-password"
-              onChange={(e) => setClave(e.target.value)}
-              style={{ ...inp, marginBottom: corta ? 6 : 14, borderColor: corta ? 'rgb(224,150,150)' : 'rgb(217,208,238)' }}
-            />
-            {corta && <div style={{ fontSize: 12.5, color: 'rgb(176,58,58)', marginBottom: 12 }}>Te faltan {6 - clave.length} caracteres.</div>}
+            {/* El ojito y los requisitos los pone `CampoClave`: es el mismo campo que
+                el del alta, y la regla es la misma (`chequeosClave` de shared). Antes
+                acá se pedían 6 caracteres y en el alta otra cosa. */}
+            <div style={{ marginBottom: 14 }}>
+              <CampoClave id="clave" value={clave} onChange={setClave} style={inp} mal={corta} />
+            </div>
 
             <label style={label} htmlFor="repetida">REPETILA</label>
-            <input
-              id="repetida" type={ver ? 'text' : 'password'} value={repetida} autoComplete="new-password"
-              onChange={(e) => setRepetida(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') guardar(); }}
-              style={{ ...inp, marginBottom: distintas ? 6 : 12, borderColor: distintas ? 'rgb(224,150,150)' : 'rgb(217,208,238)' }}
-            />
+            <div style={{ marginBottom: distintas ? 6 : 14 }}>
+              <CampoClave id="repetida" value={repetida} onChange={setRepetida} requisitos={false} style={inp} mal={distintas} />
+            </div>
             {distintas && <div style={{ fontSize: 12.5, color: 'rgb(176,58,58)', marginBottom: 10 }}>Las dos no coinciden.</div>}
-
-            <button onClick={() => setVer((v) => !v)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontSize: 13, fontWeight: 600, cursor: 'pointer', padding: 0, marginBottom: 18 }}>
-              {ver ? 'Ocultar' : 'Ver lo que escribo'}
-            </button>
 
             {!!error && (
               <div style={{ background: 'rgb(253,242,242)', color: 'rgb(176,58,58)', border: '1px solid rgb(245,214,214)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, marginBottom: 14 }}>{error}</div>

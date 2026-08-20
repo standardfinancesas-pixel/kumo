@@ -4,6 +4,7 @@ import { colors } from '@kumo/shared';
 import { supabase } from '../lib/supabase';
 import { Texto as Text, FH, FREG, BRAND, LIME, INK, MUTED } from './ui/Texto';
 import BotonGoogle from './BotonGoogle';
+import { CampoClave } from './ui/Controles';
 
 const HERO: ImageSourcePropType = require('../assets/happy-dog.webp');
 
@@ -56,10 +57,13 @@ export default function Login({ onAlta, onRecuperar }: { onAlta: () => void; onR
         value={email} onChangeText={setEmail} placeholder="vos@email.com" placeholderTextColor={colors.violet[400]}
         autoCapitalize="none" keyboardType="email-address" autoComplete="email" style={[input, { marginBottom: 14 }]}
       />
-      <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 7 }}>CONTRASEÑA</Text>
-      <TextInput
-        value={pass} onChangeText={setPass} placeholder="••••••••" placeholderTextColor={colors.violet[400]}
-        secureTextEntry autoComplete="current-password" style={input}
+      {/* Sin requisitos: acá no se elige una clave, se escribe la que ya se tiene, y
+          mostrarle "al menos 8 caracteres" a un socio que se registró con la regla
+          vieja lo haría dudar de su propia cuenta. El ojito sí, que en un teclado
+          táctil es lo que evita la mitad de los "mi contraseña no funciona". */}
+      <CampoClave
+        label="Contraseña" valor={pass} onCambio={setPass}
+        requisitos={false} autoComplete="current-password"
       />
 
       <TouchableOpacity onPress={onRecuperar} style={{ alignSelf: 'flex-end', paddingVertical: 10 }}>

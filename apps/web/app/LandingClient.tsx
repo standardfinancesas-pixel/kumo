@@ -7,6 +7,7 @@ import type { Faq, Plan } from '@kumo/shared';
 import { Onboarding } from '@/components/Onboarding';
 import { PrestadoresPage } from '@/components/PrestadoresPage';
 import { supabase } from '@/lib/supabase-browser';
+import { CampoClave } from '@/components/CampoClave';
 
 /*
  * Landing de Kumo — reproducción 1:1 del prototipo (reference/kumo-prototype.html).
@@ -194,7 +195,10 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
           </div>
           <div style={{ marginBottom: 8 }}>
             <label style={authLabel}>Contraseña</label>
-            <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={authInput} />
+            {/* Sin requisitos: acá no se elige una clave, se escribe la que ya se
+                tiene. Mostrarle "al menos 8 caracteres" a un socio que se registró
+                con la regla vieja lo haría dudar de su propia cuenta. */}
+            <CampoClave value={password} onChange={setPassword} requisitos={false} autoComplete="current-password" style={authInput} />
           </div>
           {/* Era `href="#"`: no hacía nada, y un socio que olvidaba la contraseña
               tenía que escribir por WhatsApp para que se la cambiaran a mano. */}

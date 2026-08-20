@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, TextInput, TouchableOpacity, View, type TextInputProps } from 'react-native';
-import { colors } from '@kumo/shared';
+import Svg, { Path, Circle } from 'react-native-svg';
+import { colors, chequeosClave } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, MUTED } from './Texto';
 
 /**
@@ -143,6 +144,70 @@ export function Selector({
           </View>
         </View>
       </Modal>
+    </View>
+  );
+}
+
+/**
+ * Un campo de contraseña con el ojito y, si se está eligiendo una, los requisitos
+ * tildándose mientras se escribe.
+ *
+ * El ojito importa más en el teléfono que en la web: escribir una clave a ciegas en
+ * un teclado táctil es la causa número uno de "mi contraseña no funciona" cuando en
+ * realidad se tipeó mal. Y los requisitos van a la vista desde el principio, no como
+ * error después de tocar el botón, que obliga a adivinar qué falta.
+ *
+ * `requisitos` se apaga en el login: ahí no se elige una clave, se escribe la que ya
+ * se tiene, y mostrarle "al menos 8 caracteres" a un socio que se registró con la
+ * regla vieja (6) lo haría dudar de su propia cuenta.
+ */
+export function CampoClave({
+  label = 'Contraseña', valor, onCambio, mal = false, requisitos = true, placeholder = '••••••••', ...resto
+}: {
+  label?: string; valor: string; onCambio: (v: string) => void; mal?: boolean; requisitos?: boolean;
+} & Omit<TextInputProps, 'value' | 'onChangeText' | 'style' | 'secureTextEntry'>) {
+  const [ver, setVer] = useState(false);
+  const checks = chequeosClave(valor);
+
+  return (
+    <View style={{ marginBottom: 12 }}>
+      <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 6 }}>{label.toUpperCase()}</Text>
+      <View style={{ position: 'relative', justifyContent: 'center' }}>
+        <TextInput
+          value={valor}
+          onChangeText={onCambio}
+          secureTextEntry={!ver}
+          placeholder={placeholder}
+          placeholderTextColor={colors.violet[400]}
+          style={[estiloInput, { paddingRight: 48 }, mal ? { borderColor: bordeError } : null]}
+          {...resto}
+        />
+        <TouchableOpacity
+          onPress={() => setVer((x) => !x)}
+          accessibilityLabel={ver ? 'Ocultar la contraseña' : 'Ver la contraseña'}
+          accessibilityRole="button"
+          hitSlop={10}
+          style={{ position: 'absolute', right: 10, padding: 6 }}
+        >
+          <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+            <Path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+            <Circle cx={12} cy={12} r={3.2} />
+            {ver ? <Path d="M4 20L20 4" /> : null}
+          </Svg>
+        </TouchableOpacity>
+      </View>
+      {requisitos ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
+          {checks.map((c) => (
+            <View key={c.texto} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Svg width={13} height={13} viewBox="0 0 24 24" fill="none" stroke={c.ok ? colors.success.fg : MUTED} strokeWidth={c.ok ? 3 : 2} strokeLinecap="round" strokeLinejoin="round">
+                {c.ok ? <Path d="M4 12l5 5L20 6" /> : <Circle cx={12} cy={12} r={8} />}
+              </Svg>
+              <Text style={{ fontSize: 12.5, color: c.ok ? colors.success.fg : MUTED }}>{c.texto}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
