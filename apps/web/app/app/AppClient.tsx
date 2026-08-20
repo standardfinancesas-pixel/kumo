@@ -11,6 +11,7 @@ import {
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN,
+  FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO, FORO_FILTROS,
   type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -1772,7 +1773,10 @@ const catCfg: Record<string, { iconBg: string; icon: ReactNode; tagBg: string; t
   // de Salud, así que un post de esa categoría se veía con el color equivocado.
   Alimentación: { iconBg: 'rgb(95,125,16)', icon: storeIcon, tagBg: 'rgb(238,247,214)', tagFg: 'rgb(95,125,16)' },
 };
-const foroChips = ['Todos', 'Paseadores', 'Salud', 'Guarderías', 'Adiestramiento', 'Alimentación', 'Cruzas', 'Razas'];
+/* La lista vive en `@kumo/shared`: estaba escrita acá y otra vez en la app, y la
+   categoría es texto libre en la base — dos listas que se separan no dan un error,
+   dan publicaciones que no se encuentran desde la otra superficie. */
+const foroChips = FORO_FILTROS;
 
 const sendIcon = <><line x1="12" y1="19" x2="12" y2="5" /><path d="M5 12l7-7 7 7" /></>;
 
@@ -2011,8 +2015,8 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
  *  del listado, y la categoría salía del filtro activo. */
 function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => void }) {
   const router = useRouter();
-  const cats = foroChips.filter((c) => c !== 'Todos');
-  const [cat, setCat] = useState(cats[0]!);
+  const cats = FORO_CATEGORIAS;
+  const [cat, setCat] = useState<string>(FORO_CATEGORIA_DEFECTO);
   const [titulo, setTitulo] = useState('');
   const [cuerpo, setCuerpo] = useState('');
   // La zona del post es la localidad, no la calle: antes prefijaba el domicilio

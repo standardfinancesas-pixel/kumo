@@ -14,6 +14,7 @@ import {
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, etiquetaPlan,
+  FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO,
   type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
@@ -2892,7 +2893,9 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
 /* ── Sub-pantalla: Foros ───────────────────────────────────────── */
 /** Las mismas categorías que la webapp: antes mobile tenía cuatro y la web ocho,
  *  así que un post publicado en una podía quedar sin chip en la otra. */
-const FORO_CATS = ['Paseadores', 'Salud', 'Guarderías', 'Adiestramiento', 'Alimentación', 'Cruzas', 'Razas'];
+/* Ver `FORO_CATEGORIAS` en @kumo/shared: la lista es una sola para las dos
+   superficies, porque el chip filtra por igualdad exacta. */
+const FORO_CATS = FORO_CATEGORIAS;
 const CAT_TONE: Record<string, { bg: string; fg: string }> = {
   Paseadores: { bg: colors.success.bg, fg: colors.success.fg },
   Salud: { bg: colors.violet[100], fg: BRAND },
@@ -3153,7 +3156,7 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState('Todos');
   // Compose
-  const [cat, setCat] = useState(FORO_CATS[0]!);
+  const [cat, setCat] = useState<string>(FORO_CATEGORIA_DEFECTO);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [zona, setZona] = useState('');
