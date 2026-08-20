@@ -1,3 +1,4 @@
+import { hoyISO } from '@kumo/shared';
 import { getServiceClient } from './supabase-service';
 
 /**
@@ -103,6 +104,24 @@ export async function tokensDeAudiencia(audiencia: string): Promise<string[]> {
     const { data: planRow } = await svc.from('plans').select('id').eq('name', plan).single();
     if (!planRow) return [];
     const { data } = await svc.from('profiles').select('id').eq('role', 'socio').eq('status', 'activo').eq('plan_id', planRow.id);
+    return tokensDe(svc, (data ?? []).map((p) => p.id));
+  }
+
+  /*
+   * Socios gratuitos → los que no tienen la cuota paga.
+   *
+   * Es por `paid_until` y NO por `plan_id is null`, igual que el predicado de la
+   * base: el que eligió un plan y abandonó Mercado Pago tiene plan escrito y no
+   * paga, así que por plan se escaparía justo de la audiencia a la que hay que
+   * hablarle.
+   */
+  if (audiencia === 'Socios gratuitos') {
+    const { data } = await svc
+      .from('profiles')
+      .select('id')
+      .eq('role', 'socio')
+      .in('status', CON_ACCESO)
+      .or(`paid_until.is.null,paid_until.lt.${hoyISO()}`);
     return tokensDe(svc, (data ?? []).map((p) => p.id));
   }
 

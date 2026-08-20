@@ -2432,7 +2432,7 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
  *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
  *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
  *  "Cambiar" plan te sacaba a la landing. */
-function Perfil({ go, profile, pets, reintegradoTotal, planes, negocio, cuota, pago, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; planes: PlanVM[]; negocio: MiNegocio | null; cuota: CuotaVM; pago: boolean; onPlan: () => void }) {
+function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocio: MiNegocio | null; cuota: CuotaVM; pago: boolean; onPlan: () => void }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -3332,7 +3332,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {pantalla === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
-          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} planes={planes} negocio={negocio} cuota={cuota} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocio={negocio} cuota={cuota} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>

@@ -137,7 +137,7 @@ export default async function Page() {
      */
     supabase
       .from('payments')
-      .select('id, amount, status, method, covers_until, detail, created_at, paid_at, plan_name, profiles!payments_member_id_fkey(full_name, member_no)')
+      .select('id, member_id, amount, status, method, covers_until, detail, created_at, paid_at, plan_name, profiles!payments_member_id_fkey(full_name, member_no)')
       .order('created_at', { ascending: false })
       .limit(200),
   ]);
@@ -151,29 +151,72 @@ export default async function Page() {
   // de las 21:00 de Buenos Aires el servidor todavía cree que es el mes anterior.
   const inicioDeMes = mesActualISO();
   const nuevosEsteMes = socioList.filter((s) => s.joined_on && s.joined_on >= inicioDeMes).length;
-  // La cuota que cada socio ACEPTÓ, no el precio de lista del plan: con la
-  // cobertura odontológica paga $12.000 más, y sumando `base_price` el panel
-  // mostraba menos ingresos de los que el club factura.
-  const mrr = socioList
-    .filter((s) => s.status === 'activo')
-    .reduce((acc, s) => acc + (s.monthly_fee_agreed ?? planOf(s)?.base_price ?? 0), 0);
+  /*
+   * El ingreso mensual: solo de los que TIENEN LA CUOTA PAGA.
+   *
+   * Antes sumaba a todos los activos, y eso pasó de un detalle a un problema: quien
+   * elige un plan y abandona el checkout de Mercado Pago queda con
+   * `monthly_fee_agreed` escrito (lo escribe `/api/pagos/crear` antes de mandarlo a
+   * pagar) y nunca pagó un peso. Con el alta gratuita esa población pasa de "casi
+   * nadie" a una parte de todos los meses, así que el número que el club mira todos
+   * los días estaría inflado.
+   *
+   * Es la cuota que cada socio ACEPTÓ y no el precio de lista: con la cobertura
+   * odontológica paga $12.000 más, y sumando `base_price` mostraba de menos.
+   */
+  const alDia = (s: { paid_until: string | null }) => !!s.paid_until && s.paid_until >= hoyISO();
+  const pagantes = socioList.filter((s) => s.status === 'activo' && alDia(s));
+  /*
+   * Lo último que se le cobró a cada socio, para los que pagan sin plan.
+   *
+   * Un socio gratuito al que el club le cobra en efectivo no tiene cuota acordada ni
+   * plan, así que sumaba $0 al ingreso mientras contaba como pagante: el panel decía
+   * "20 de 20 pagan" y se comía la plata de varios de ellos. La cuota acordada sigue
+   * teniendo prioridad —es el compromiso, y es lo que Mercado Pago debita todos los
+   * meses—; esto es el último recurso.
+   */
+  const ultimoCobro = new Map<string, number>();
+  // `cobroRows` viene ordenado del más nuevo al más viejo, así que el primero que
+  // aparece por socio es el último que se le cobró.
+  for (const p of (cobroRows ?? []).filter((c) => c.status === 'aprobado')) {
+    if (p.member_id && !ultimoCobro.has(p.member_id)) ultimoCobro.set(p.member_id, p.amount);
+  }
+  const mrr = pagantes.reduce((acc, s) => acc + (s.monthly_fee_agreed ?? planOf(s)?.base_price ?? ultimoCobro.get(s.id) ?? 0), 0);
   const churnPct = totalSocios > 0 ? Math.round((bajas / totalSocios) * 1000) / 10 : 0;
 
   const reintPendCount = reintPend?.length ?? 0;
   const reintPendSum = (reintPend ?? []).reduce((a, r) => a + r.refund, 0);
 
-  const kpi: KpiVM = { totalSocios, activos, nuevosEsteMes, mrr, reintPendCount, reintPendSum, churnPct, bajas };
+  const kpi: KpiVM = { totalSocios, activos, nuevosEsteMes, mrr, reintPendCount, reintPendSum, churnPct, bajas, pagantes: pagantes.length, gratuitos: activos - pagantes.length };
 
-  const PLAN_ORDER = ['AMIGO', 'FAMILIA', 'VIP'];
+  const PLAN_ORDER = ['AMIGO', 'FAMILIA', 'VIP', 'Sin plan', 'Gratuito'];
+  /*
+   * La distribución por plan, contando por CUOTA PAGA y con una fila para los
+   * gratuitos.
+   *
+   * Antes ignoraba a quien no tiene plan, así que las barras dejaban de sumar 100 y
+   * el gráfico mentía por omisión — no decía "hay gratuitos", simplemente no los
+   * mostraba. Y contaba por plan elegido, con lo cual el que abandonó Mercado Pago
+   * aparecía como FAMILIA sin haber pagado nada.
+   */
   const distMap = new Map<string, number>();
-  for (const s of socioList) { const n = planOf(s)?.name; if (n) distMap.set(n, (distMap.get(n) ?? 0) + 1); }
+  for (const s of socioList) {
+    // Tres casos y no dos: paga un plan · paga sin plan (le cobra el club a mano) ·
+    // no paga. Metiendo al segundo en "Gratuito" el gráfico contradecía a la tabla,
+    // que lo muestra con la cuota paga hasta una fecha.
+    const clave = alDia(s) ? (planOf(s)?.name ?? 'Sin plan') : 'Gratuito';
+    distMap.set(clave, (distMap.get(clave) ?? 0) + 1);
+  }
   const dist: DistRow[] = [...distMap.entries()]
     .map(([plan, n]) => ({ plan, socios: n, pct: totalSocios ? Math.round((n / totalSocios) * 100) : 0 }))
     .sort((a, b) => PLAN_ORDER.indexOf(a.plan) - PLAN_ORDER.indexOf(b.plan));
 
   const socios: SocioRow[] = socioList.map((s) => ({
     id: s.id, n: `#${s.member_no}`, nombre: s.full_name, mascota: (s.pets ?? []).map((p: { name: string }) => p.name).join(' + ') || '—',
-    plan: planOf(s)?.name ?? '—', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
+    plan: planOf(s)?.name ?? 'Gratuito', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
+    // Sin plan no es un dato faltante: es un socio gratuito, que ahora es un estado
+    // normal. El guion de antes hacía parecer que faltaba cargar algo.
+    sinPlan: !planOf(s),
     // El estado crudo, para que la acción sepa si toca suspender o reactivar.
     estadoRaw: s.status,
     // La cuota es aparte del estado: el estado lo decide el club, la cuota la
@@ -181,6 +224,9 @@ export default async function Page() {
     // que apagar con un cron y mentiría hasta que corriera.
     cuotaHasta: s.paid_until ?? null,
     cuotaAlDia: !!s.paid_until && s.paid_until >= hoyISO(),
+    // Cuánto cobrarle, para prellenar el diálogo del cobro a mano. Un gratuito no
+    // tiene ninguna de las dos y queda en null: ahí el monto lo pone el club.
+    cuotaSugerida: s.monthly_fee_agreed ?? planOf(s)?.base_price ?? null,
   }));
 
   const cola: ColaRow[] = (colaRows ?? []).map((r) => {
@@ -252,9 +298,18 @@ export default async function Page() {
     motivo: r.report_reason?.trim() || 'Reportado por la comunidad',
   }));
 
+  /*
+   * Las audiencias de push.
+   *
+   * Ojo con la fila de gratuitos de la distribución: mapeada como "Plan Gratuito"
+   * el envío no le llegaría a NADIE — `tokensDeAudiencia` busca un plan con ese
+   * nombre, no lo encuentra, devuelve una lista vacía, y el push queda registrado
+   * como enviado sin haber salido. Se etiqueta aparte y tiene su propia rama.
+   */
   const audiences: AudienceVM[] = [
     { label: 'Todos los socios', n: totalSocios },
-    ...dist.map((d) => ({ label: `Plan ${d.plan}`, n: d.socios })),
+    ...dist.filter((d) => d.plan !== 'Gratuito' && d.plan !== 'Sin plan').map((d) => ({ label: `Plan ${d.plan}`, n: d.socios })),
+    ...(kpi.gratuitos > 0 ? [{ label: 'Socios gratuitos', n: kpi.gratuitos }] : []),
     { label: 'Vacunas pendientes', n: new Set((pendVaxPets ?? []).map((v) => v.pet_id)).size },
   ];
   const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ id: s.id, title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—' }));

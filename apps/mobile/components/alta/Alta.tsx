@@ -7,7 +7,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { postAlta, crearSuscripcion } from '../../lib/api';
 import type { FotoElegida } from '../../lib/subirFoto';
-import { Texto as Text, BRAND, INK, MUTED } from '../ui/Texto';
+import { Texto as Text, BRAND, MUTED } from '../ui/Texto';
 import PasoMascotas from './PasoMascotas';
 import Paso2Socio from './Paso2Socio';
 import Paso3Plan, { type PlanAlta } from './Paso3Plan';

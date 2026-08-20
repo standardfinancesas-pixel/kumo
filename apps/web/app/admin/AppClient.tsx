@@ -15,9 +15,11 @@ const money = (n: number) => '$' + n.toLocaleString('es-AR');
 
 /* ── Tipos de las vistas (mapeados desde Supabase en page.tsx) ──── */
 export type AdminProfile = { id: string; fullName: string };
-export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number };
+/** `pagantes` y `gratuitos` son la pregunta nueva del negocio: cuántos de los que
+ *  entraron están pagando. */
+export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number; pagantes: number; gratuitos: number };
 export type DistRow = { plan: string; socios: number; pct: number };
-export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string; cuotaHasta: string | null; cuotaAlDia: boolean };
+export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string; cuotaHasta: string | null; cuotaAlDia: boolean; sinPlan: boolean; cuotaSugerida: number | null };
 /**
  * Una solicitud en la cola. Trae todo lo que el club necesita para resolverla sin
  * salir de la pantalla: antes había que ir a Socios, buscar a la persona y abrir
@@ -207,7 +209,10 @@ function Modal({ title, sub: subtitle, onClose, children, width = 520 }: { title
 function Dashboard({ go, kpi, dist }: { go: (s: Screen) => void; kpi: KpiVM; dist: DistRow[] }) {
   const kpis = [
     { label: 'Socios activos', value: kpi.activos.toLocaleString('es-AR'), delta: `+${kpi.nuevosEsteMes} este mes`, pos: true },
-    { label: 'Ingresos mensuales', value: money(kpi.mrr), delta: `${kpi.activos} socios pagantes`, pos: true },
+    /* Decía "N socios pagantes" con el total de activos, y con socios gratuitos eso
+       es directamente falso. Este número contesta la pregunta nueva del negocio: de
+       los que entraron, cuántos pagan. */
+    { label: 'Ingresos mensuales', value: money(kpi.mrr), delta: `${kpi.pagantes} de ${kpi.activos} pagan`, pos: true },
     { label: 'Reintegros pendientes', value: String(kpi.reintPendCount), delta: `${money(kpi.reintPendSum)} por acreditar`, pos: false },
     { label: 'Bajas', value: `${kpi.churnPct}%`, delta: `${kpi.bajas} socios de baja`, pos: kpi.churnPct < 5 },
   ];
@@ -260,6 +265,9 @@ type FichaData = {
   // Lo que contrató en el alta: la cuota que aceptó puede no ser el precio de
   // lista de hoy, y con la cobertura odontológica paga $12.000 más.
   addonOdonto: boolean; monthlyFeeAgreed: number | null; payMethod: string | null;
+  /** El estado de la suscripción de Mercado Pago, que es como paga hoy el que paga:
+   *  las columnas de tarjeta y CBU quedaron de cuando el alta las pedía. */
+  mpStatus: string | null;
   // A dónde transferirle los reintegros, y con qué se le cobra la cuota.
   bank: { holder: string | null; holderDni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
   card: { brand: string | null; last4: string | null; exp: string | null; holder: string | null };
@@ -289,7 +297,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
     let vivo = true;
     (async () => {
       const [perfil, mascotas, reint, declas, negocios] = await Promise.all([
-        supabase.from('profiles').select('email, phone, address, city, province, dni, joined_on, addon_odonto, monthly_fee_agreed, pay_method, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, card_exp, card_holder, plans(name, base_price)').eq('id', socio.id).single(),
+        supabase.from('profiles').select('email, phone, address, city, province, dni, joined_on, addon_odonto, monthly_fee_agreed, pay_method, mp_subscription_status, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, card_exp, card_holder, plans(name, base_price)').eq('id', socio.id).single(),
         supabase.from('pets').select('id, name, type, breed, age_years, microchip').eq('owner_id', socio.id),
         supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status').eq('member_id', socio.id).order('requested_on', { ascending: false }),
         supabase.from('health_declarations').select('id, pet_name, signature, signed_at, answers, sanitary').eq('member_id', socio.id).order('signed_at', { ascending: false }),
@@ -304,6 +312,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
         dni: p.dni, joinedOn: p.joined_on,
         planName: plan?.name ?? null, planPrice: plan?.base_price ?? null,
         addonOdonto: p.addon_odonto ?? false, monthlyFeeAgreed: p.monthly_fee_agreed, payMethod: p.pay_method,
+        mpStatus: p.mp_subscription_status ?? null,
         bank: { holder: p.bank_holder, holderDni: p.bank_holder_dni, cuit: p.bank_cuit, name: p.bank_name, cbu: p.bank_cbu, alias: p.bank_alias },
         card: { brand: p.card_brand, last4: p.card_last4, exp: p.card_exp, holder: p.card_holder },
         declaraciones: (declas.data ?? []).map((d) => ({
@@ -330,7 +339,13 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             <span style={estadoBadge(socio.estado)}>{socio.estado}</span>
-            {data.planName && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>Plan {data.planName}{data.monthlyFeeAgreed ? ` · ${money(data.monthlyFeeAgreed)}/mes` : data.planPrice ? ` · ${money(data.planPrice)}/mes` : ''}</span>}
+            {/* El badge del plan solo si la cuota está paga. Un gratuito antes no tenía
+                badge ninguno —la ficha no decía nada de su plan— y el que eligió un plan
+                sin pagarlo mostraba "Plan FAMILIA · $44.000/mes", que es exactamente lo
+                que NO está pasando. */}
+            {socio.cuotaAlDia && data.planName && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>Plan {data.planName}{data.monthlyFeeAgreed ? ` · ${money(data.monthlyFeeAgreed)}/mes` : data.planPrice ? ` · ${money(data.planPrice)}/mes` : ''}</span>}
+            {!socio.cuotaAlDia && <span style={badge('#f0eef7', '#8781a0')}>Gratuito</span>}
+            {socio.cuotaAlDia && !data.planName && <span style={badge('#f4f2f9', '#5b5670')}>Sin plan · le cobra el club</span>}
             {data.addonOdonto && <span style={badge('rgb(226,245,234)', 'rgb(47,143,91)')}>+ Odontológica</span>}
           </div>
           <div>
@@ -360,12 +375,32 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
               )
               : <div style={{ fontSize: 13.5, color: '#8781a0' }}>Todavía no cargó una cuenta. Se le pide al aprobar el primer reintegro.</div>}
           </div>
+          {/* Cómo paga, o por qué no paga.
+
+              Con un socio gratuito este bloque eran cuatro guiones seguidos, que se lee
+              como una ficha incompleta —algo que al club le falta cargar— cuando en
+              realidad no hay nada que cargar: no paga cuota y está todo bien. Ahora cada
+              caso dice qué pasa, y de paso el que abandonó el checkout queda identificado
+              con el plan que quiso, que es la lista de a quién llamar. */}
           <div>
             <div style={fieldLabel}>CÓMO PAGA LA CUOTA</div>
-            {dato('Medio', data.payMethod === 'cbu' ? 'Débito de CBU/CVU' : data.payMethod === 'tarjeta' ? 'Tarjeta' : '—')}
-            {data.card.last4 && dato('Tarjeta', `${data.card.brand ?? 'Tarjeta'} ···· ${data.card.last4}${data.card.exp ? ` · vence ${data.card.exp}` : ''}`)}
-            {data.card.holder && dato('Titular', data.card.holder)}
-            {data.monthlyFeeAgreed != null && dato('Cuota aceptada', `${money(data.monthlyFeeAgreed)}/mes`)}
+            {socio.cuotaAlDia ? (
+              <>
+                {dato('Medio', data.mpStatus
+                  ? 'Débito automático por Mercado Pago'
+                  : data.payMethod === 'cbu' ? 'Débito de CBU/CVU'
+                  : data.payMethod === 'tarjeta' ? 'Tarjeta'
+                  : 'Lo registra el club a mano')}
+                {data.card.last4 && dato('Tarjeta', `${data.card.brand ?? 'Tarjeta'} ···· ${data.card.last4}${data.card.exp ? ` · vence ${data.card.exp}` : ''}`)}
+                {data.card.holder && dato('Titular', data.card.holder)}
+                {data.monthlyFeeAgreed != null && dato('Cuota aceptada', `${money(data.monthlyFeeAgreed)}/mes`)}
+                {socio.cuotaHasta && dato('Paga hasta', fmtFechaCorta(socio.cuotaHasta))}
+              </>
+            ) : <div style={{ fontSize: 13.5, color: '#8781a0' }}>
+              {socio.cuotaHasta
+                ? <>Tenía el plan <b>{data.planName}</b> y se le venció el {fmtFechaCorta(socio.cuotaHasta)}. Hasta que lo pague de nuevo tiene el acceso gratuito: sin reintegros ni beneficios.</>
+                : <>No paga cuota: tiene el acceso gratuito. Le quedan el carnet, las vacunas, los prestadores y los foros; reintegros y beneficios no.</>}
+            </div>}
           </div>
           <div>
             <div style={fieldLabel}>MASCOTAS ({data.pets.length})</div>
@@ -458,8 +493,111 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
   );
 }
 
-function Socios({ socios }: { socios: SocioRow[] }) {
+/**
+ * Registrar a mano un mes que el club cobró por fuera (efectivo, transferencia).
+ *
+ * Es un diálogo y no un `confirm()` porque hay dos datos que preguntar.
+ *
+ * El PLAN, porque cobrar en efectivo es cómo un club de barrio vende un plan: si el
+ * socio pagó FAMILIA, tiene FAMILIA, y sin elegirlo quedaba pagando "sin plan" —un
+ * estado raro que no le sirve a nadie. Se puede no elegir ninguno y queda el mes
+ * pago sin plan, para el caso suelto.
+ *
+ * Y el MONTO, porque con un socio gratuito no hay de dónde calcularlo —no tiene
+ * cuota acordada ni plan— y la ruta contestaba 409 "no pudimos determinar el monto".
+ * Se prellena con el plan elegido y se puede cambiar, que es lo que pasa cuando el
+ * club hace un descuento.
+ */
+function DialogoCobro({ socio, planes, onCerrar, onRegistrar }: { socio: SocioRow; planes: PlanAdminVM[]; onCerrar: () => void; onRegistrar: (monto: number, detalle: string, plan: string | null) => void }) {
+  const [plan, setPlan] = useState<string | null>(socio.sinPlan ? null : socio.plan);
+  const [monto, setMonto] = useState(socio.cuotaSugerida ? String(socio.cuotaSugerida) : '');
+  const [detalle, setDetalle] = useState('');
+  const limpio = Number(monto.replace(/\D/g, ''));
+  /** Elegir un plan trae su precio: es el monto que el club va a cobrar el 99% de las veces. */
+  const elegirPlan = (nombre: string | null) => {
+    setPlan(nombre);
+    const p = planes.find((x) => x.name === nombre);
+    if (p) setMonto(String(p.basePrice));
+  };
+  const input: CSSProperties = { width: '100%', padding: '12px 13px', borderRadius: 11, border: '1px solid #e0dcec', fontFamily: '"DM Sans"', fontSize: 14.5, color: '#3f3a55', background: '#fff' };
+  return (
+    <Modal title="Registrar un pago" sub={`${socio.nombre} · ${socio.n}`} onClose={onCerrar} width={430}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontSize: 13.5, color: '#8781a0', lineHeight: 1.5 }}>
+          Usalo cuando cobraste por fuera de la app. Le suma un mes a la cuota y le
+          habilita los reintegros y los beneficios hasta esa fecha.
+        </div>
+        <div>
+          <span style={fieldLabel}>QUÉ PLAN LE COBRASTE</span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {planes.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => elegirPlan(p.name)}
+                style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '8px 14px', borderRadius: 100, background: plan === p.name ? 'rgb(93,84,145)' : '#fff', color: plan === p.name ? '#fff' : '#5b5670', boxShadow: plan === p.name ? 'none' : '0 0 0 1px #e6e3f0' }}
+              >
+                {p.name}
+              </button>
+            ))}
+            <button
+              onClick={() => elegirPlan(null)}
+              style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '8px 14px', borderRadius: 100, background: plan === null ? 'rgb(93,84,145)' : '#fff', color: plan === null ? '#fff' : '#5b5670', boxShadow: plan === null ? 'none' : '0 0 0 1px #e6e3f0' }}
+            >
+              Ninguno
+            </button>
+          </div>
+          <div style={{ fontSize: 12.5, color: '#a29dba', marginTop: 6 }}>
+            {plan
+              ? `Le queda el plan ${plan} y pasa a tener reintegros y beneficios.`
+              : 'Sin plan: le suma el mes pago pero no le asigna ninguno.'}
+          </div>
+        </div>
+        <div>
+          <label style={fieldLabel} htmlFor="cobro-monto">CUÁNTO COBRASTE</label>
+          <input
+            id="cobro-monto"
+            style={input}
+            inputMode="numeric"
+            autoFocus
+            placeholder={socio.cuotaSugerida ? undefined : 'Por ejemplo, 18000'}
+            value={monto}
+            onChange={(e) => setMonto(e.target.value)}
+          />
+          <div style={{ fontSize: 12.5, color: '#a29dba', marginTop: 6 }}>
+            Cambialo si cobraste otra cifra: queda registrado el monto que pusiste acá.
+          </div>
+        </div>
+        <div>
+          <label style={fieldLabel} htmlFor="cobro-detalle">CÓMO TE PAGÓ (OPCIONAL)</label>
+          <input id="cobro-detalle" style={input} placeholder="Efectivo, transferencia…" value={detalle} onChange={(e) => setDetalle(e.target.value)} />
+        </div>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <button style={btnGhost} onClick={onCerrar}>Cancelar</button>
+          <button
+            style={{ ...btnPrimary, opacity: limpio > 0 ? 1 : 0.5, cursor: limpio > 0 ? 'pointer' : 'default' }}
+            disabled={limpio <= 0}
+            onClick={() => onRegistrar(limpio, detalle, plan)}
+          >
+            Registrar {limpio > 0 ? money(limpio) : 'el pago'}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] }) {
   const router = useRouter();
+  /*
+   * Los chips de plan. "Sin plan" solo aparece si hay alguno: es el socio al que el
+   * club le cobra a mano sin plan asignado, y en la mayoría de los clubes no hay
+   * ninguno — un chip que nunca devuelve nada es ruido. Con esto cada socio entra en
+   * exactamente un chip, igual que en el gráfico del dashboard.
+   */
+  const PLANES_FILTRO = ['Todos', 'AMIGO', 'FAMILIA', 'VIP', 'Gratuito',
+    ...(socios.some((s) => s.sinPlan && s.cuotaAlDia) ? ['Sin plan'] : [])];
+  /** El socio al que se le está registrando un pago a mano, o null. */
+  const [cobro, setCobro] = useState<SocioRow | null>(null);
   const [plan, setPlan] = useState('Todos');
   const [estado, setEstado] = useState('Todos');
   const [cuotaF, setCuotaF] = useState('Todas');
@@ -497,17 +635,21 @@ function Socios({ socios }: { socios: SocioRow[] }) {
    * idempotencia. Dos caminos para sumar un mes es la forma segura de que uno de
    * los dos quede mal.
    */
-  const registrarPago = async (s: SocioRow) => {
+  /** El monto llega del diálogo: ver `DialogoCobro` para por qué se pregunta. */
+  const registrarPago = async (s: SocioRow, monto: number, detalle: string, plan: string | null) => {
+    setCobro(null);
     setBusyId(s.id); setAviso('');
     try {
       const res = await fetch('/api/pagos/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId: s.id }),
+        body: JSON.stringify({ memberId: s.id, monto, detalle, plan }),
       });
       const data = await res.json();
       if (!res.ok) setAviso(data.error ?? 'No pudimos registrar el pago.');
-      else setAviso(`Pago registrado: ${s.nombre} tiene la cuota paga hasta el ${fmtFechaCorta(data.hasta)}.`);
+      else setAviso(data.plan
+        ? `Pago registrado: ${s.nombre} queda en el plan ${data.plan} con la cuota paga hasta el ${fmtFechaCorta(data.hasta)}.`
+        : `Pago registrado: ${s.nombre} tiene la cuota paga hasta el ${fmtFechaCorta(data.hasta)}, sin plan asignado.`);
     } catch {
       setAviso('No pudimos registrar el pago. Revisá la conexión.');
     }
@@ -519,20 +661,32 @@ function Socios({ socios }: { socios: SocioRow[] }) {
    * distintas y antes estaban mezcladas en una sola lista de chips, donde "En
    * mora" nunca devolvía nada porque ningún socio tenía ese estado.
    */
+  /*
+   * Los chips de PLAN parten a los socios igual que la distribución del dashboard:
+   * por cuota paga. "Gratuito" es todo el que no está pagando —incluido el que eligió
+   * un plan y abandonó Mercado Pago— y un plan con nombre lista solo a los que lo
+   * están pagando. Filtrando por `s.plan` a secas los dos números se contradecían:
+   * el gráfico contaba a ese socio como gratuito y el filtro lo escondía en FAMILIA,
+   * así que el club veía "1 gratuito" arriba y una tabla vacía al buscarlo.
+   */
   const list = socios.filter((s) =>
-    (plan === 'Todos' || s.plan === plan)
+    (plan === 'Todos'
+      || (plan === 'Gratuito' ? !s.cuotaAlDia
+        : plan === 'Sin plan' ? s.sinPlan && s.cuotaAlDia
+        : s.plan === plan && s.cuotaAlDia))
     && (estado === 'Todos' || s.estado === estado)
     && (cuotaF === 'Todas' || (cuotaF === 'Al día' ? s.cuotaAlDia : !s.cuotaAlDia)));
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
     <div>
       {ficha && <FichaSocioModal socio={ficha} onClose={() => setFicha(null)} />}
+      {cobro && <DialogoCobro socio={cobro} planes={planes} onCerrar={() => setCobro(null)} onRegistrar={(monto, detalle, plan) => registrarPago(cobro, monto, detalle, plan)} />}
       <h1 className="adm-h1" style={h1}>Socios</h1>
       <p style={sub}>{socios.length.toLocaleString('es-AR')} socios · hacé clic en un socio para ver su ficha</p>
       <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>PLAN</div>
-          <div style={{ display: 'flex', gap: 8 }}>{['Todos', 'AMIGO', 'FAMILIA', 'VIP'].map((p) => <button key={p} onClick={() => setPlan(p)} style={chip(plan === p)}>{p}</button>)}</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{PLANES_FILTRO.map((p) => <button key={p} onClick={() => setPlan(p)} style={chip(plan === p)}>{p}</button>)}</div>
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>ESTADO</div>
@@ -556,7 +710,21 @@ function Socios({ socios }: { socios: SocioRow[] }) {
                 <td style={{ ...td, color: '#8781a0', fontWeight: 600 }}>{s.n}</td>
                 <td style={{ ...td, fontWeight: 600 }}>{s.nombre}</td>
                 <td style={td}>{s.mascota}</td>
-                <td style={td}>{s.plan}</td>
+                {/* Gratuito = no está pagando, y punto. El plan que eligió sin pagar no
+                    se muestra: si es gratis, es gratis — mostrarlo hacía parecer que
+                    tiene un plan que no tiene. */}
+                <td style={td}>
+                  {s.cuotaAlDia ? (
+                    // Paga, pero sin plan: le cobra el club a mano. Decirle "Gratuito"
+                    // acá se contradice con la columna de al lado, que dice hasta cuándo
+                    // tiene la cuota paga.
+                    s.sinPlan ? <span style={{ fontSize: 11.5, fontWeight: 700, color: '#5b5670', background: '#f4f2f9', padding: '3px 9px', borderRadius: 100 }}>Sin plan</span> : s.plan
+                  ) : (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, color: '#8781a0', background: '#f0eef7', padding: '3px 9px', borderRadius: 100 }}>Gratuito</span>
+                    </span>
+                  )}
+                </td>
                 <td style={{ ...td, color: '#8781a0' }}>{s.desde}</td>
                 {/* La cuota, que no es lo mismo que el estado: el estado lo decide
                     el club y la cuota la decide el pago. Un socio puede estar
@@ -572,11 +740,9 @@ function Socios({ socios }: { socios: SocioRow[] }) {
                     disabled={busyId === s.id}
                     acciones={[
                       { label: 'Ver ficha', onClick: () => setFicha(s) },
-                      {
-                        label: 'Registrar pago de un mes',
-                        confirmar: `¿Registrar un mes pagado para ${s.nombre}? Usalo cuando cobraste por fuera de la app (efectivo o transferencia).`,
-                        onClick: () => registrarPago(s),
-                      },
+                      // Sin `confirmar`: el diálogo del cobro ya es la confirmación, y
+                      // encima pide el dato que falta.
+                      { label: 'Registrar pago de un mes', onClick: () => setCobro(s) },
                       s.estadoRaw === 'activo' || s.estadoRaw === 'moroso'
                         ? {
                             label: 'Suspender el acceso',
@@ -1797,7 +1963,7 @@ export default function AppClient({
       <div style={{ flex: '1 1 0%', minWidth: 0 }}>
         <div className="adm-main" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 40px 60px' }}>
           {screen === 'dashboard' && <Dashboard go={go} kpi={kpi} dist={dist} />}
-          {screen === 'socios' && <Socios socios={socios} />}
+          {screen === 'socios' && <Socios socios={socios} planes={plans} />}
           {screen === 'reintegros' && <Reintegros cola={cola} hist={hist} />}
           {screen === 'beneficios' && <Beneficios benefits={benefits} />}
           {screen === 'planes' && <Planes plans={plans} />}
