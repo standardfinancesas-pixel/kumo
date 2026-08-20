@@ -109,6 +109,31 @@ export const INVITACION_PLAN = {
 } as const;
 
 /**
+ * Lo que el socio suma si contrata un plan, para el banner de Inicio.
+ *
+ * Son SOLO las cosas que el plan habilita de verdad. Los perks guardados en
+ * `plans.perks` no sirven para esto: siguen listando el carnet digital, los
+ * recordatorios de vacunas y la comunidad como beneficios del plan, y desde que
+ * entrar es gratis esas tres las tiene cualquiera. Un banner que ofrece lo que la
+ * persona ya tiene no vende nada y encima enseña a ignorar los banners.
+ *
+ * Los porcentajes y los topes salen de los planes cargados (AMIGO 30%, FAMILIA 50%
+ * y 40%, VIP 60%): si el club los cambia en el panel, hay que cambiarlos acá.
+ */
+export const BANNER_PLAN = {
+  titulo: 'Con un plan recuperás parte de lo que gastás',
+  puntos: [
+    'Reintegros del 30% al 60% en consultas, vacunas, estudios y cirugías',
+    'Descuentos en las veterinarias y pet shops de la red',
+    'Consulta veterinaria online, desde el plan FAMILIA',
+  ],
+  cta: 'Ver los planes',
+  /** El precio sale de los planes que el club tiene cargados, no de acá: un número
+   *  escrito a mano en el banner es el que queda viejo cuando suben la cuota. */
+  pie: 'Cambiás o cancelás cuando quieras.',
+} as const;
+
+/**
  * Cuánto se espera el aviso de Mercado Pago antes de decir que está tardando.
  *
  * Medido el 19/08 con una suscripción real: el socio autorizó 13:16:34, MP debitó

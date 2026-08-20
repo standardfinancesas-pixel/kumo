@@ -10,7 +10,7 @@ import {
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
-  FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN,
+  FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO, FORO_FILTROS,
   type FeaturePaga,
 } from '@kumo/shared';
@@ -388,6 +388,42 @@ function SelloCarnet({ sello }: { sello: SelloVM }) {
   return <span style={{ ...tonos[sello.tono], fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100, whiteSpace: 'nowrap' }}>{sello.texto}</span>;
 }
 
+/**
+ * El banner de Inicio que cuenta qué suma un plan.
+ *
+ * Solo lo ve el socio que no está pagando, y no bloquea nada: es la explicación que
+ * antes no existía en ninguna parte de la app. La tarjeta de Beneficios invita, pero
+ * no dice QUÉ se gana, y esperar que la persona salga a la web pública a averiguarlo
+ * es perderla.
+ *
+ * El precio sale de los planes que el club tiene cargados —no escrito acá— porque un
+ * número a mano en un banner es el que queda viejo cuando suben la cuota.
+ */
+function BannerPlan({ desde, onPlan }: { desde: number; onPlan: () => void }) {
+  return (
+    <div style={{ background: 'rgb(93,84,145)', borderRadius: 18, padding: '18px 20px', marginBottom: 22, color: '#fff', position: 'relative', overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', top: -40, right: -30, width: 150, height: 150, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18, lineHeight: 1.2, marginBottom: 10, maxWidth: 420 }}>{BANNER_PLAN.titulo}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 14 }}>
+          {BANNER_PLAN.puntos.map((p) => (
+            <div key={p} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13.5, lineHeight: 1.4, color: 'rgba(255,255,255,0.92)' }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgb(225,251,98)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto', marginTop: 2 }}><path d="M4 12l5 5L20 6" /></svg>
+              {p}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <button onClick={onPlan} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 14.5, padding: '12px 20px', borderRadius: 12, cursor: 'pointer' }}>
+            {BANNER_PLAN.cta} →
+          </button>
+          <span style={{ fontSize: 12.5, color: 'rgba(255,255,255,0.75)' }}>Desde ${desde.toLocaleString('es-AR')}/mes. {BANNER_PLAN.pie}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => void; pets: Pet[] }) {
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
@@ -399,7 +435,7 @@ function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => v
 }
 
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
-function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, onPlan }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; noLeidas: number; pago: boolean; onPlan: () => void }) {
+function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, desdePlan, onPlan }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; noLeidas: number; pago: boolean; desdePlan: number; onPlan: () => void }) {
   const [promoIdx, setPromoIdx] = useState(0);
   const pet = pets[petIdx] ?? pets[0];
   const promo = promos[promoIdx] ?? promos[0]!;
@@ -470,6 +506,10 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, onPlan }
           </button>
         ))}
       </div>
+
+      {/* Qué suma un plan. Solo para el que no está pagando: al que paga, ofrecerle lo
+          que ya tiene lo único que le enseña es a ignorar los banners. */}
+      {!pago && desdePlan > 0 ? <BannerPlan desde={desdePlan} onPlan={onPlan} /> : null}
 
       {/* El banner, igual que en reference/kumo-prototype.html: la foto va en
           82x82 con `contain` —entera, no recortada— apoyada abajo a la derecha
@@ -3322,6 +3362,9 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
 
   /** ¿Tiene la cuota paga? Es la misma verdad que mira la RLS en la base. */
   const pago = tieneFeaturesPagas(cuota.debePagar);
+  /** El plan más barato que el club tiene cargado, para el "desde" del banner. En 0
+   *  si no hay planes: ahí el banner no se muestra en vez de decir "desde $0". */
+  const desdePlan = planes.length ? Math.min(...planes.map((p) => p.price)) : 0;
   const NAV = navDe(pago);
   /*
    * La pantalla se DERIVA, no se corrige con un efecto.
@@ -3372,7 +3415,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
       </div>
       <div className="wa-content" style={{ flex: '1 1 0%', overflowY: 'auto', maxHeight: '100vh' }}>
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
-          {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} desdePlan={desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}

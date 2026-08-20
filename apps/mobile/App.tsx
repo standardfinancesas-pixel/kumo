@@ -13,7 +13,7 @@ import {
   ratingLabel, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
   type CalCell, type VaccineKind, type Review,
-  FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, etiquetaPlan,
+  FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO,
   type FeaturePaga,
 } from '@kumo/shared';
@@ -207,7 +207,42 @@ const BackLink = ({ label, onPress }: { label: string; onPress: () => void }) =>
 );
 
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
-function Inicio({ pets, petIdx, setPetIdx, go, pago, onPlan }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void; pago: boolean; onPlan: () => void }) {
+/**
+ * El banner de Inicio que cuenta qué suma un plan. Mismo texto que la web
+ * (`BANNER_PLAN` de shared): es una oferta, y una oferta que cambia de una pantalla a
+ * la otra hace dudar del precio.
+ *
+ * Solo lo ve quien no está pagando, y no bloquea nada.
+ */
+function BannerPlan({ desde, onPlan }: { desde: number; onPlan: () => void }) {
+  return (
+    <View style={{ backgroundColor: BRAND, borderRadius: 18, padding: 18, marginBottom: 22 }}>
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: '#fff', marginBottom: 10, lineHeight: 23 }}>{BANNER_PLAN.titulo}</Text>
+      <View style={{ gap: 7, marginBottom: 14 }}>
+        {BANNER_PLAN.puntos.map((p) => (
+          <View key={p} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+            <Svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke={LIME} strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" style={{ marginTop: 2 }}>
+              <Path d="M4 12l5 5L20 6" />
+            </Svg>
+            <Text style={{ flex: 1, fontSize: 13.5, lineHeight: 19, color: 'rgba(255,255,255,0.92)' }}>{p}</Text>
+          </View>
+        ))}
+      </View>
+      <TouchableOpacity
+        onPress={onPlan}
+        activeOpacity={0.85}
+        style={{ backgroundColor: LIME, borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}
+      >
+        <Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>{BANNER_PLAN.cta} →</Text>
+      </TouchableOpacity>
+      <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', marginTop: 10, textAlign: 'center' }}>
+        Desde ${desde.toLocaleString('es-AR')}/mes. {BANNER_PLAN.pie}
+      </Text>
+    </View>
+  );
+}
+
+function Inicio({ pets, petIdx, setPetIdx, go, pago, desdePlan, onPlan }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void; pago: boolean; desdePlan: number; onPlan: () => void }) {
   const pet = pets[petIdx];
   const [promoIdx, setPromoIdx] = useState(0);
   useEffect(() => {
@@ -235,6 +270,10 @@ function Inicio({ pets, petIdx, setPetIdx, go, pago, onPlan }: { pets: Pet[]; pe
           </TouchableOpacity>
         ))}
       </View>
+      {/* Qué suma un plan. Solo para el que no paga: al que ya paga, ofrecerle lo que
+          tiene solo le enseña a ignorar los banners. */}
+      {!pago && desdePlan > 0 ? <BannerPlan desde={desdePlan} onPlan={onPlan} /> : null}
+
       {/* Banner de promo rotativo (color + foto según variante) */}
       <TouchableOpacity onPress={() => go('servicios')} style={{ backgroundColor: promo.bg, borderRadius: 18, marginBottom: 22, overflow: 'hidden', minHeight: 78, flexDirection: 'row', alignItems: 'center' }}>
         <View style={{ flex: 1, paddingVertical: 16, paddingLeft: 18, paddingRight: 8 }}>
@@ -3522,6 +3561,9 @@ export default function App() {
   /** ¿Tiene la cuota paga? Es la misma verdad que mira la RLS en la base. */
   const pago = tieneFeaturesPagas(data?.profile?.debePagar ?? false);
   const TABS = tabsDe(pago);
+  /** El plan más barato que el club tiene cargado, para el "desde" del banner. En 0
+   *  si no hay planes: ahí el banner no aparece en vez de decir "desde $0". */
+  const desdePlan = data?.planes?.length ? Math.min(...data.planes.map((x) => x.basePrice)) : 0;
   /*
    * La pantalla se DERIVA, no se corrige con un efecto.
    *
@@ -3635,7 +3677,7 @@ export default function App() {
           </View>
         </View>
         <View style={{ flex: 1 }}>
-          {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} desdePlan={desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
           {pantalla === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
