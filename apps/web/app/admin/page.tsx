@@ -348,6 +348,9 @@ export default async function Page() {
 
   return (
     <AppClient
+      // El momento de la consulta viaja con los datos: la pantalla lo muestra ("datos
+      // de hace 20 minutos") y decide con eso si vale la pena volver a pedir.
+      traidoEn={new Date().toISOString()}
       profile={profile} kpi={kpi} dist={dist} socios={socios} cola={cola} hist={hist}
       benefits={benefits} plans={plans} faqs={faqs} settings={settings}
       providers={providers} reports={reports} audiences={audiences} sent={sent}

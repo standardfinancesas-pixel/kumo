@@ -1,7 +1,7 @@
 'use client';
 import type { CSSProperties, ReactNode } from 'react';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { subscribeTable, urls, fmtFechaCorta, mesActualISO } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -207,8 +207,14 @@ function Modal({ title, sub: subtitle, onClose, children, width = 520 }: { title
 
 /* ── Dashboard ─────────────────────────────────────────────────── */
 function Dashboard({ go, kpi, dist }: { go: (s: Screen) => void; kpi: KpiVM; dist: DistRow[] }) {
+  /* Cuántos entraron gratis, escrito con todas las letras.
+     Estaba en el panel pero casi invisible: solo como "N de M pagan" abajo de los
+     ingresos y como una barra del gráfico. Quien mira las tarjetas de arriba leía
+     "Socios activos: 4" y no tenía de dónde deducir que uno no paga, que con el alta
+     gratuita es la mitad de la pregunta. */
+  const gratis = kpi.gratuitos === 1 ? '1 gratuito' : `${kpi.gratuitos} gratuitos`;
   const kpis = [
-    { label: 'Socios activos', value: kpi.activos.toLocaleString('es-AR'), delta: `+${kpi.nuevosEsteMes} este mes`, pos: true },
+    { label: 'Socios activos', value: kpi.activos.toLocaleString('es-AR'), delta: `${gratis} · +${kpi.nuevosEsteMes} este mes`, pos: true },
     /* Decía "N socios pagantes" con el total de activos, y con socios gratuitos eso
        es directamente falso. Este número contesta la pregunta nueva del negocio: de
        los que entraron, cuántos pagan. */
@@ -2112,10 +2118,98 @@ function Moderacion({ reports }: { reports: ReportRow[] }) {
   );
 }
 
+/* ── Frescura de los datos ─────────────────────────────────────── */
+/*
+ * De cuándo es lo que se está mirando, y cómo pedir lo de ahora.
+ *
+ * El panel se arma en el servidor UNA sola vez, cuando se abre la página: no hay
+ * ninguna consulta que se repita sola. Eso ya causó una confusión real — el club
+ * miró el dashboard en una pestaña abierta desde hacía una hora y no encontró a un
+ * socio que se había dado de alta en el medio. Los números no estaban mal: estaban
+ * viejos, y nada en la pantalla lo decía.
+ *
+ * Lo que más arregla eso es la línea de texto, no el refresco: un panel que dice de
+ * cuándo son sus datos deja de parecer un vivo.
+ *
+ * El refresco automático es a propósito parcial:
+ *  · al volver a la pestaña, en cualquier pantalla menos Reintegros — esa tiene su
+ *    aviso en vivo y ya decidió no reordenarse sola (ver el comentario del canal);
+ *  · cada dos minutos SOLO en el dashboard, que no tiene nada para clickear. En una
+ *    lista con botones de "Aprobar" o "Suspender", un refresco espontáneo puede
+ *    correr la fila justo antes del clic.
+ *
+ * No hay ciclo posible: los dos caminos los dispara un evento de afuera (el foco, un
+ * timer) y nunca el resultado del refresco anterior.
+ */
+function Frescura({ traidoEn, conPoll, autoAlVolver }: { traidoEn: string; conPoll: boolean; autoAlVolver: boolean }) {
+  const router = useRouter();
+  const [pidiendo, iniciar] = useTransition();
+  /* `null` hasta que monta: el texto es relativo al reloj de quien mira, y armarlo
+     también en el servidor haría que React se queje de que el HTML no coincide. */
+  const [ahora, setAhora] = useState<number | null>(null);
+  const refrescar = useCallback(() => { iniciar(() => router.refresh()); }, [router]);
+
+  useEffect(() => {
+    setAhora(Date.now());
+    const t = setInterval(() => setAhora(Date.now()), 20000);
+    return () => clearInterval(t);
+  }, [traidoEn]);
+
+  useEffect(() => {
+    if (!autoAlVolver) return;
+    const alVolver = () => {
+      if (document.visibilityState !== 'visible') return;
+      // Si los datos son de hace un rato nomás, no se pide nada: alt-tab es un gesto
+      // demasiado común para gatillar catorce consultas cada vez.
+      if (Date.now() - new Date(traidoEn).getTime() < 60000) return;
+      refrescar();
+    };
+    document.addEventListener('visibilitychange', alVolver);
+    window.addEventListener('focus', alVolver);
+    return () => {
+      document.removeEventListener('visibilitychange', alVolver);
+      window.removeEventListener('focus', alVolver);
+    };
+  }, [traidoEn, autoAlVolver, refrescar]);
+
+  useEffect(() => {
+    if (!conPoll) return;
+    // Solo con la pestaña a la vista: una pestaña olvidada no tiene por qué seguir
+    // consultando la base toda la tarde.
+    const t = setInterval(() => { if (document.visibilityState === 'visible') refrescar(); }, 120000);
+    return () => clearInterval(t);
+  }, [conPoll, refrescar]);
+
+  const minutos = ahora === null ? null : Math.max(0, Math.round((ahora - new Date(traidoEn).getTime()) / 60000));
+  const texto = minutos === null ? ''
+    : minutos < 1 ? 'Datos de ahora'
+    : minutos === 1 ? 'Datos de hace 1 minuto'
+    : minutos < 60 ? `Datos de hace ${minutos} minutos`
+    : `Datos de hace ${Math.round(minutos / 60)} h`;
+  const viejo = minutos !== null && minutos >= 5;
+
+  return (
+    <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10, marginBottom: 6, fontSize: 12.5 }}>
+      <span style={{ color: viejo ? 'rgb(184,134,11)' : '#8781a0', fontWeight: viejo ? 600 : 400 }}>
+        {pidiendo ? 'Actualizando…' : texto}
+      </span>
+      <button
+        onClick={refrescar}
+        disabled={pidiendo}
+        style={{ background: '#fff', border: '1px solid #e6e3f0', borderRadius: 9, padding: '5px 11px', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 12.5, color: '#5b5670', cursor: pidiendo ? 'default' : 'pointer', opacity: pidiendo ? 0.6 : 1 }}
+      >
+        Actualizar
+      </button>
+    </div>
+  );
+}
+
 /* ── Shell ─────────────────────────────────────────────────────── */
 export default function AppClient({
-  profile, kpi, dist, socios, cola, hist, benefits, plans, faqs, settings, providers, reports, audiences, sent, cobros,
+  profile, kpi, dist, socios, cola, hist, benefits, plans, faqs, settings, providers, reports, audiences, sent, cobros, traidoEn,
 }: {
+  /** Cuándo el servidor trajo todo esto. Lo manda la página, que es la que consulta. */
+  traidoEn: string;
   profile: AdminProfile; kpi: KpiVM; dist: DistRow[]; socios: SocioRow[]; cola: ColaRow[]; hist: HistRow[];
   benefits: BenefitAdminVM[]; plans: PlanAdminVM[]; faqs: FaqVM[]; settings: SettingsVM;
   providers: ProviderAdminRow[]; reports: ReportRow[]; audiences: AudienceVM[]; sent: SentPushVM[]; cobros: CobroRow[];
@@ -2162,6 +2256,7 @@ export default function AppClient({
       {/* Main */}
       <div style={{ flex: '1 1 0%', minWidth: 0 }}>
         <div className="adm-main" style={{ maxWidth: 1080, margin: '0 auto', padding: '40px 40px 60px' }}>
+          <Frescura traidoEn={traidoEn} conPoll={screen === 'dashboard'} autoAlVolver={screen !== 'reintegros'} />
           {screen === 'dashboard' && <Dashboard go={go} kpi={kpi} dist={dist} />}
           {screen === 'socios' && <Socios socios={socios} planes={plans} />}
           {screen === 'reintegros' && <Reintegros cola={cola} hist={hist} />}
