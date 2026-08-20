@@ -29,6 +29,8 @@ import { useEffect, useRef, useState } from 'react';
 export type LugarElegido = { domicilio: string; localidad: string; provincia: string };
 export type ZonaElegida = { zona: string; localidad: string; provincia: string };
 type Fila = { id: string; etiqueta: string };
+/** La sugerencia de dirección trae el punto: hace falta para preguntar el barrio. */
+type FilaDireccion = Fila & LugarElegido & { lat: number; lng: number };
 
 /** Cuánto se espera después de la última tecla. 350 ms es el tiempo en el que una
  *  persona termina de escribir una palabra: con menos, se consulta por cada letra. */
@@ -177,7 +179,7 @@ export function CampoDomicilio({
   placeholder?: string;
   style?: CSSProperties;
 }) {
-  const busqueda = useSugerencias<Fila & LugarElegido>(valor, 'direccion', provincia);
+  const busqueda = useSugerencias<FilaDireccion>(valor, 'direccion', provincia);
   return (
     <CampoConLista
       {...busqueda}
@@ -186,6 +188,18 @@ export function CampoDomicilio({
       onElegir={(f) => {
         busqueda.cerrar(f.domicilio);
         onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
+        /* En CABA el callejero oficial devuelve la comuna, y nadie dice que vive en la
+           Comuna 13: dice Belgrano. El barrio se pregunta aparte —una consulta, recién
+           cuando ya eligió— y llega un instante después. El campo se llena primero con
+           la comuna para no quedarse esperando a un servicio de terceros. */
+        if (f.provincia === 'CABA') {
+          fetch(`/api/lugares/barrio?lat=${f.lat}&lng=${f.lng}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d: { barrio?: string } | null) => {
+              if (d?.barrio) onElegir({ domicilio: f.domicilio, localidad: d.barrio, provincia: f.provincia });
+            })
+            .catch(() => {});
+        }
       }}
       id={id}
       placeholder={placeholder}

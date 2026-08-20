@@ -23,6 +23,8 @@ import { PROVINCIAS } from '@kumo/shared';
  * bloquea nada.
  */
 const GEOREF = 'https://apis.datos.gob.ar/georef/api/direcciones';
+/* Quién consulta, que es lo que exige la política de Nominatim (ver `barrioDe`). */
+const IDENTIDAD_NOMINATIM = 'Kumo/1.0 (https://www.kumo.pet; hola@kumo.pet)';
 
 export type Sugerencia = {
   /** Para la key de la lista, no se guarda. */
@@ -220,5 +222,50 @@ export async function buscarLocalidades(consulta: string, provincia?: string): P
     return salida;
   } catch {
     return [];
+  }
+}
+
+/* ── El barrio, para las direcciones de CABA ───────────────────────── */
+
+/**
+ * En qué barrio cae un punto.
+ *
+ * Existe por una limitación concreta: para una dirección de CABA, el callejero
+ * oficial devuelve la **comuna** ("Comuna 13") y no el barrio, porque el barrio no
+ * es una unidad censal. Y nadie dice que vive en la Comuna 13: dice Belgrano. Se
+ * probó todo lo que ofrece Georef —`campos=completo`, `/localidades` por
+ * coordenadas— y el barrio no está por ningún lado.
+ *
+ * Así que el barrio lo contesta Nominatim, que lo tiene como `suburb`. Es geocodifi-
+ * cación inversa y NO autocompletado: se llama **una vez, cuando la persona ya
+ * eligió su dirección**, así que entra sin problemas en la política de uso (a
+ * diferencia del autocompletado, que está prohibido contra su servidor público).
+ *
+ * Devuelve null si no lo sabe, y ahí la pantalla se queda con la comuna: es mejor un
+ * dato administrativo cierto que un barrio inventado.
+ */
+export async function barrioDe(lat: number, lng: number): Promise<string | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?${new URLSearchParams({
+      lat: String(lat),
+      lon: String(lng),
+      format: 'jsonv2',
+      // 16 es escala de barrio: con más zoom contesta la calle, con menos la ciudad.
+      zoom: '16',
+      addressdetails: '1',
+    })}`;
+    const r = await fetch(url, {
+      headers: { 'User-Agent': IDENTIDAD_NOMINATIM, 'Accept-Language': 'es' },
+      signal: AbortSignal.timeout(5000),
+      cache: 'no-store',
+    });
+    if (!r.ok) return null;
+    const { address } = (await r.json()) as { address?: { suburb?: string; quarter?: string; neighbourhood?: string } };
+    // `suburb` es el barrio; `quarter` es más chico ("Barrio Norte", "Las Cañitas") y
+    // sirve de respaldo cuando el barrio no está mapeado.
+    const barrio = address?.suburb ?? address?.neighbourhood ?? address?.quarter ?? null;
+    return barrio ? barrio.trim() : null;
+  } catch {
+    return null;
   }
 }

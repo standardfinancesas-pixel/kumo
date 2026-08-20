@@ -24,6 +24,8 @@ import { apiKumo } from '../../lib/api';
 export type LugarElegido = { domicilio: string; localidad: string; provincia: string };
 export type ZonaElegida = { zona: string; localidad: string; provincia: string };
 type Fila = { id: string; etiqueta: string };
+/** La sugerencia de dirección trae el punto: hace falta para preguntar el barrio. */
+type FilaDireccion = Fila & LugarElegido & { lat: number; lng: number };
 
 const ESPERA_MS = 350;
 
@@ -131,7 +133,7 @@ export function CampoDomicilio({
   placeholder?: string;
   ayuda?: string;
 }) {
-  const { sugerencias, cerrar } = useSugerencias<Fila & LugarElegido>(valor, 'direccion', provincia);
+  const { sugerencias, cerrar } = useSugerencias<FilaDireccion>(valor, 'direccion', provincia);
   return (
     <CampoConLista
       label={label}
@@ -143,6 +145,18 @@ export function CampoDomicilio({
       onElegir={(f) => {
         cerrar(f.domicilio);
         onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
+        /* En CABA el callejero oficial devuelve la comuna, y nadie dice que vive en la
+           Comuna 13: dice Belgrano. El barrio se pregunta aparte —una consulta, recién
+           cuando ya eligió— y llega un instante después. El campo se llena primero con
+           la comuna para no quedarse esperando a un servicio de terceros. */
+        if (f.provincia === 'CABA') {
+          fetch(`${apiKumo}/api/lugares/barrio?lat=${f.lat}&lng=${f.lng}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d: { barrio?: string } | null) => {
+              if (d?.barrio) onElegir({ domicilio: f.domicilio, localidad: d.barrio, provincia: f.provincia });
+            })
+            .catch(() => {});
+        }
       }}
     />
   );

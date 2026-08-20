@@ -207,7 +207,13 @@ export async function geocodificarDomicilio(partes: {
    */
   const calle = limpiarCalle(partes.address);
   if (calle) {
-    const conLocalidad = await buscarDirecciones(calle, partes.province ?? undefined, partes.city ?? undefined);
+    /* En CABA la localidad guardada es el BARRIO ("Belgrano"), y el callejero no
+       conoce barrios como localidad: mandarlo filtra de más y no encuentra nada. La
+       ciudad ahí no aporta, porque hay una sola. */
+    const enCABA = ES_CABA.test(sinTildes(partes.province ?? ''));
+    const conLocalidad = enCABA
+      ? await buscarDirecciones(calle, partes.province ?? undefined)
+      : await buscarDirecciones(calle, partes.province ?? undefined, partes.city ?? undefined);
     // Sin la localidad también, porque a veces está escrita como no figura en el
     // callejero ("caba" para una dirección de Palermo) y filtra de más.
     const [mejor] = conLocalidad.length ? conLocalidad : await buscarDirecciones(calle, partes.province ?? undefined);
