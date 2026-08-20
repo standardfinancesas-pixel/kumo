@@ -36,6 +36,10 @@ export type PinMapa = {
   categoria: string;
   lat: number;
   lng: number;
+  /** Texto corto dentro de la gota, en vez del ícono del rubro. Lo usa el mapa de
+   *  Beneficios para mostrar el descuento ("-20%"), que es el dato por el que uno
+   *  mira ese mapa. */
+  etiqueta?: string;
 };
 
 /*
@@ -59,13 +63,20 @@ const VIOLETA = '#5D5491';
 const LIMA = '#E1FB62';
 const TINTA = '#211E33';
 
-/** El pin: una gota violeta con el ícono del rubro adentro. */
-function pinHtml(categoria: string): string {
-  const icono = ICONOS[categoria] ?? PATITA;
+/** Escapar lo que va adentro del SVG: el texto sale de la base (el descuento lo
+ *  escribe el club a mano) y un "<" suelto rompería el marcador entero. */
+const escapar = (t: string) => t.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c] ?? c));
+
+/** El pin: una gota violeta con el ícono del rubro —o un texto corto— adentro. */
+function pinHtml(pin: PinMapa): string {
+  const adentro = pin.etiqueta
+    // Cinco caracteres es lo que entra en 34 px sin salirse de la gota.
+    ? `<text x="17" y="20" text-anchor="middle" font-family="DM Sans, sans-serif" font-size="10.5" font-weight="700" fill="#ffffff">${escapar(pin.etiqueta.slice(0, 5))}</text>`
+    : `<g transform="translate(17 16) scale(0.63) translate(-12 -12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">${ICONOS[pin.categoria] ?? PATITA}</g>`;
   return `<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg">
     <path d="M17 0C7.6 0 0 7.6 0 17c0 10.6 13.3 22.8 15.7 24.8a2 2 0 0 0 2.6 0C20.7 39.8 34 27.6 34 17 34 7.6 26.4 0 17 0z" fill="${VIOLETA}"/>
     <circle cx="17" cy="16" r="11.5" fill="#ffffff" fill-opacity="0.16"/>
-    <g transform="translate(17 16) scale(0.63) translate(-12 -12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">${icono}</g>
+    ${adentro}
   </svg>`;
 }
 
@@ -85,8 +96,10 @@ export function MapaPrestadores({
    *  mapa ("Tu casa", "Tu zona") y es null cuando no sabemos dónde vive y el centro
    *  es el de CABA — ahí no se dibuja ninguna casa, porque no es la de nadie. */
   centro: { lat: number; lng: number; etiqueta: string | null };
-  /** El radio de búsqueda que el socio eligió con el slider, en km. */
-  radioKm: number;
+  /** El radio de búsqueda que el socio eligió con el slider, en km. Sin radio no se
+   *  dibuja círculo y el encuadre lo deciden los pines: Beneficios no filtra por
+   *  distancia (un descuento sirve aunque quede lejos), así que ahí no hay slider. */
+  radioKm?: number;
   onPin?: (id: string) => void;
   style?: CSSProperties;
 }) {
@@ -170,7 +183,7 @@ export function MapaPrestadores({
         const marca = L.marker([p.lat, p.lng], {
           icon: L.divIcon({
             className: 'kumo-pin',
-            html: pinHtml(p.categoria),
+            html: pinHtml(p),
             iconSize: [34, 42],
             // La punta de la gota es el lugar, no el centro del dibujo.
             iconAnchor: [17, 42],
@@ -198,6 +211,20 @@ export function MapaPrestadores({
     (async () => {
       const L = (await import('leaflet')).default;
       if (!vivo || !mapa.current) return;
+
+      /* Sin radio (Beneficios) el encuadre lo dan la casa y los pines, con el mismo
+         tope de zoom: un beneficio en otra provincia no tiene que convertir el mapa
+         en un planisferio. */
+      if (radioKm == null) {
+        circulo.current?.remove();
+        circulo.current = null;
+        const puntos: [number, number][] = [[centro.lat, centro.lng], ...pins.map((p) => [p.lat, p.lng] as [number, number])];
+        const caja = L.latLngBounds(puntos).pad(0.15);
+        const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(caja, false, L.point(8, 8))));
+        mapa.current.setView(caja.getCenter(), zoom, { animate: true });
+        return;
+      }
+
       if (!circulo.current) {
         circulo.current = L.circle([centro.lat, centro.lng], {
           radius: radioKm * 1000,
@@ -214,7 +241,7 @@ export function MapaPrestadores({
       mapa.current.setView([centro.lat, centro.lng], zoom, { animate: true });
     })();
     return () => { vivo = false; };
-  }, [radioKm, centro.lat, centro.lng]);
+  }, [radioKm, centro.lat, centro.lng, pins]);
 
   // Al desmontar hay que destruir el mapa: si no, Leaflet deja el contenedor
   // marcado como usado y al volver a la pantalla tira "Map container is already

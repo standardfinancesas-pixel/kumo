@@ -113,6 +113,7 @@ function mapBenefit(row: BenefitRow, desde: Punto & { origen: OrigenDistancia })
     // Sin dirección cargada no hay distancia: el comercio se muestra con su zona.
     km: row.lat != null && row.lng != null ? distanciaKm(desde, { lat: row.lat, lng: row.lng }) : null,
     kmDesde: textoDistancia(desde.origen),
+    lat: row.lat, lng: row.lng,
   };
 }
 

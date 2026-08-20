@@ -120,6 +120,8 @@ export type BenefitVM = {
    *  cuando el club no cargó dirección: ahí no se muestra distancia, igual que con
    *  los prestadores. */
   address: string | null; km: number | null; kmDesde: string;
+  /** Para el pin en el mapa. Null cuando no hay dirección cargada. */
+  lat: number | null; lng: number | null;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
@@ -844,15 +846,6 @@ const chips = [
 ];
 /* `catPin` (el icono por rubro del mapa dibujado) se fue con ese mapa: en el de
    OpenStreetMap el pin es la inicial del prestador, que se lee mejor a 30 px. */
-/** Posición del pin en el mapa DIBUJADO, que ahora usa solo Beneficios: sus filas
- *  no tienen lat/lng, así que ese mapa no puede ser real todavía. La posición se
- *  deriva del id
- *  para que sea estable entre renders en vez de saltar en cada filtrado. */
-function pinPos(id: string): { left: string; top: string } {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 100000;
-  return { left: `${18 + (h % 64)}%`, top: `${24 + (Math.floor(h / 64) % 48)}%` };
-}
 const heartPath = <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1a5.5 5.5 0 0 0-7.8 7.7l1.1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" />;
 const globePath = <><circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" /></>;
 const igPath = <><rect x="2" y="2" width="20" height="20" rx="5.5" /><circle cx="12" cy="12" r="4" /><circle cx="17.5" cy="6.5" r="1.2" fill="#5D5491" stroke="none" /></>;
@@ -1759,7 +1752,7 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
   );
 }
 
-function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (s: Screen) => void }) {
+function Beneficios({ benefits, go, centro }: { benefits: BenefitVM[]; go: (s: Screen) => void; centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
   const [selId, setSelId] = useState<string | null>(null);
@@ -1772,33 +1765,29 @@ function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (s: Screen) =
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Beneficios</div>
       <div style={{ color: 'rgb(135,129,160)', fontSize: 14, marginBottom: 14 }}>Descuentos en la red de veterinarias y pet shops</div>
 
-      {/* Mapa con pins de % */}
-      <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', height: 200, marginBottom: 14, border: '1px solid rgb(230,227,240)', background: 'rgb(233,235,241)' }}>
-        <svg viewBox="0 0 320 200" preserveAspectRatio="xMidYMid slice" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          <rect width="320" height="200" fill="#e9ebf1" />
-          <rect x="26" y="18" width="80" height="48" rx="4" fill="#dfe2ea" /><rect x="128" y="14" width="70" height="54" rx="4" fill="#dfe2ea" /><rect x="220" y="22" width="74" height="44" rx="4" fill="#dfe2ea" />
-          <rect x="20" y="112" width="86" height="60" rx="4" fill="#dfe2ea" /><rect x="128" y="106" width="66" height="70" rx="4" fill="#dfe2ea" /><rect x="214" y="112" width="86" height="66" rx="4" fill="#dfe2ea" />
-          <path d="M0 90 H320 M0 98 H320" stroke="#cfd3de" strokeWidth="8" /><path d="M112 0 V200 M206 0 V200" stroke="#cfd3de" strokeWidth="8" /><path d="M0 94 H320" stroke="#fff" strokeWidth="1" strokeDasharray="6 6" />
-        </svg>
-        {/* Un pin por beneficio de la lista, tocable y con la pulsación del
-            prototipo. Antes eran cinco pines fijos que no representaban nada. */}
-        {list.map((b, i) => {
-          const pos = pinPos(b.id);
-          return (
-            <button key={b.id} onClick={() => setSelId(b.id)} title={`${b.name} · ${b.discount}`} style={{ position: 'absolute', left: pos.left, top: pos.top, transform: 'translate(-50%, -100%)', zIndex: 2, background: 'none', border: 'none', padding: 0, cursor: 'pointer', animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both', animationDelay: `${i * 0.08}s` } as CSSProperties}>
-              <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)', animation: 'kpulse 2.4s ease-in-out infinite', animationDelay: `${i * 0.08}s` } as CSSProperties}>
-                <span style={{ transform: 'rotate(-45deg)', color: 'rgb(225,251,98)', fontWeight: 800, fontSize: 13 }}>%</span>
-              </div>
-            </button>
-          );
-        })}
-        {/* El punto azul aparece recién cuando el socio buscó, como en el prototipo. */}
-        {buscado && (
-          <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)', zIndex: 3 }}>
-            <div style={{ width: 18, height: 18, borderRadius: '50%', background: 'rgb(42,120,214)', border: '3px solid #fff', boxShadow: '0 0 0 6px rgba(42,120,214,0.2)' }} />
-          </div>
-        )}
-      </div>
+      {/*
+        * El mapa de los beneficios, con geografía de verdad.
+        *
+        * Era el último dibujo que quedaba: calles inventadas y un pin por beneficio
+        * ubicado con un hash del id, "estable entre renders" pero sin relación con
+        * dónde queda el comercio. El punto azul del centro tampoco era el socio:
+        * aparecía al buscar y estaba siempre en el medio.
+        *
+        * Ahora los beneficios pueden tener dirección (la carga el club en el panel) y
+        * el mapa muestra los de la lista filtrada que la tengan, con el descuento
+        * adentro del pin —que es el dato por el que uno mira este mapa— y la casa del
+        * socio en el centro. Los de zona entera ("Todo CABA") no tienen dirección
+        * posible y por eso no tienen pin: siguen en la lista, con su zona.
+        *
+        * Sin radio: acá no hay slider de distancia, porque un descuento sirve igual
+        * aunque quede lejos. El encuadre lo dan la casa y los pines.
+        */}
+      <MapaPrestadores
+        pins={list.filter((b) => b.km != null).map((b) => ({ id: b.id, nombre: b.name, categoria: b.category, lat: b.lat as number, lng: b.lng as number, etiqueta: b.discount }))}
+        centro={centro}
+        onPin={(id) => setSelId(id)}
+        style={{ height: 200, marginBottom: 14 }}
+      />
 
       {/* Buscar dirección */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
@@ -3513,7 +3502,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
-          {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} />}
+          {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} />}
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {pantalla === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
