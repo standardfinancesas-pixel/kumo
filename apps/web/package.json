@@ -14,6 +14,7 @@
     "@kumo/shared": "workspace:*",
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.45.4",
+    "leaflet": "^1.9.4",
     "mercadopago": "^3.4.0",
     "next": "15.5.23",
     "react": "19.0.0",
@@ -23,6 +24,7 @@
   "devDependencies": {
     "@fontsource/baloo-2": "5",
     "@fontsource/dm-sans": "5",
+    "@types/leaflet": "^1.9.22",
     "@types/node": "^22.7.4",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

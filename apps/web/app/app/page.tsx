@@ -90,6 +90,7 @@ function mapProvider(row: ProviderRow): ProviderVM {
     id: row.id, name: row.name, category: row.category, zone: row.zone, address: row.address ?? '', phone: row.phone ?? '',
     instagram: row.instagram, website: row.website, about: row.about, rating: row.rating, reviews: row.reviews,
     price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: imgSrc(row.photo_url), km,
+    lat: row.lat, lng: row.lng,
     // El sello sale del estado que puso el admin, no del rating.
     verificado: row.status === 'verificado',
     badge: providerBadge(row.status, row.rating, row.reviews),

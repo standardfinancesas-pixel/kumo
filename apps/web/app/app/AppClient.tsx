@@ -16,12 +16,24 @@ import {
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { confirmarPago } from '@/lib/confirmarPago';
+import { MapaPrestadores } from '@/components/MapaPrestadores';
 
 /*
  * Webapp del socio — vista "App compu" del prototipo (reference/kumo-prototype.html).
  * Shell con sidebar + navegación entre pantallas. Reproducción 1:1, dinámica.
  * Pantallas listas: Inicio, Carnet. El resto se va completando.
  */
+
+/**
+ * El centro del mapa de prestadores.
+ *
+ * Es el Obelisco, y es provisorio a propósito: lo correcto es centrarlo en el
+ * domicilio del socio (`profiles.address`), pero para eso hay que geocodificar la
+ * dirección y todavía no se hace. Con el centro fijo el mapa ya contesta "quién hay
+ * en la ciudad"; centrado en el socio contestaría "quién hay cerca de mí", que es la
+ * pregunta de verdad.
+ */
+const CENTRO_MAPA = { lat: -34.6037, lng: -58.3816 };
 
 /** Landing: login, planes y destino al cerrar sesión. */
 const LANDING = urls.landing;
@@ -101,7 +113,10 @@ export type SelloVM = { texto: string; tono: 'ok' | 'neutro' | 'alerta' };
  *  servidor —antes `odonto` y el sello estaban escritos fijos en la pantalla—. */
 export type Pet = { id: string; name: string; plan: string; socio: string; photo: string; breed: string; microchip: string; castrado: string; odonto: string; sello: SelloVM; vaccines: Vac[] };
 export type EmergencyContact = { id: string; name: string; phone: string; type: string; address: string; hours: string };
-export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; verificado: boolean; badge?: string };
+/** `lat`/`lng` viajan además de `km`: la distancia sirve para ordenar la lista, pero
+ *  para dibujar el pin en el mapa hace falta la coordenada. Pueden ser null — un
+ *  prestador cargado a mano por el club puede no tenerlas — y ahí no se dibuja. */
+export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
 /** La ficha del beneficio necesita todo lo que la tabla ya guardaba y no se usaba:
  *  descripción, zona, días, horario y vigencia. */
 export type BenefitVM = {
@@ -829,15 +844,11 @@ const chips = [
   { label: 'Adiestrador', cat: 'Adiestrador' },
   { label: 'Cuidador', cat: 'Cuidador' },
 ];
-const catPin = (cat: string) => {
-  if (cat === 'Paseador') return { inner: paw, filled: true };
-  if (cat === 'Guardería') return { inner: house, filled: false };
-  if (cat === 'Baño y estética') return { inner: <path d="M12 3s6 5.7 6 10a6 6 0 0 1-12 0c0-4.3 6-10 6-10z" />, filled: false };
-  if (cat === 'Adiestrador') return { inner: <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></>, filled: false };
-  return { inner: person, filled: false };
-};
-/** Posición del pin en el mapa. El mapa es decorativo (no es geografía real: eso
- *  es Google Maps, Fase 4), así que la posición se deriva del id del prestador
+/* `catPin` (el icono por rubro del mapa dibujado) se fue con ese mapa: en el de
+   OpenStreetMap el pin es la inicial del prestador, que se lee mejor a 30 px. */
+/** Posición del pin en el mapa DIBUJADO, que ahora usa solo Beneficios: sus filas
+ *  no tienen lat/lng, así que ese mapa no puede ser real todavía. La posición se
+ *  deriva del id
  *  para que sea estable entre renders en vez de saltar en cada filtrado. */
 function pinPos(id: string): { left: string; top: string } {
   let h = 0;
@@ -1057,7 +1068,6 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
     return true;
   });
   const pct = ((radio - 1) / 24) * 100;
-  const circle = Math.min(radio * 22, 240);
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
@@ -1104,37 +1114,25 @@ function Servicios({ go, providers, initialGuardados, profile, reviews }: { go: 
         </div>
       </div>
 
-      {/* Mapa */}
-      <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', height: 250, marginBottom: 14, border: '1px solid rgb(230,227,240)', background: 'rgb(233,235,241)' }}>
-        <svg viewBox="0 0 320 250" preserveAspectRatio="xMidYMid slice" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-          <rect width="320" height="250" fill="#e9ebf1" />
-          <rect x="26" y="24" width="80" height="58" rx="4" fill="#dfe2ea" /><rect x="128" y="18" width="70" height="66" rx="4" fill="#dfe2ea" /><rect x="220" y="30" width="74" height="52" rx="4" fill="#dfe2ea" />
-          <rect x="20" y="138" width="86" height="72" rx="4" fill="#dfe2ea" /><rect x="128" y="132" width="66" height="84" rx="4" fill="#dfe2ea" /><rect x="214" y="138" width="86" height="78" rx="4" fill="#dfe2ea" />
-          <path d="M0 112 H320 M0 120 H320" stroke="#cfd3de" strokeWidth="8" /><path d="M112 0 V250 M206 0 V250" stroke="#cfd3de" strokeWidth="8" /><path d="M0 116 H320" stroke="#fff" strokeWidth="1" strokeDasharray="6 6" />
-        </svg>
-        <div style={{ position: 'absolute', left: '50%', top: '52%', transform: 'translate(-50%, -50%)', width: circle, height: circle, borderRadius: '50%', background: 'rgba(93,84,145,0.1)', border: '1.5px dashed rgba(93,84,145,0.5)', zIndex: 1, transition: 'width 0.4s cubic-bezier(0.2,0.8,0.3,1), height 0.4s cubic-bezier(0.2,0.8,0.3,1)' }} />
-        {/* Un pin por prestador de la lista filtrada, y se toca para abrir su ficha.
-            Antes eran los tres primeros y no hacían nada. */}
-        {list.map((p, i) => {
-          const pin = catPin(p.category);
-          const pos = pinPos(p.id);
-          return (
-            <button key={p.id} onClick={() => setSelId(p.id)} title={p.name} style={{ position: 'absolute', left: pos.left, top: pos.top, transform: 'translate(-50%, -100%)', zIndex: 2, background: 'none', border: 'none', padding: 0, cursor: 'pointer', animation: 'kpin 0.6s cubic-bezier(0.2,0.8,0.3,1.5) both', animationDelay: `${i * 0.09}s` } as CSSProperties}>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                <div style={{ background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 10, padding: '3px 8px', borderRadius: 100, whiteSpace: 'nowrap', boxShadow: '0 3px 8px rgba(0,0,0,0.2)', marginBottom: 3 }}>{p.name}</div>
-                <div style={{ width: 30, height: 30, borderRadius: '50% 50% 50% 2px', background: 'rgb(93,84,145)', transform: 'rotate(45deg)', boxShadow: '0 3px 8px rgba(0,0,0,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(225,251,98)' }}>
-                  <span style={{ transform: 'rotate(-45deg)', display: 'flex' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill={pin.filled ? '#E1FB62' : 'none'} stroke={pin.filled ? 'none' : '#E1FB62'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{pin.inner}</svg>
-                  </span>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-        <div style={{ position: 'absolute', left: '50%', top: '52%', transform: 'translate(-50%, -50%)', zIndex: 3 }}>
-          <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'rgb(42,120,214)', border: '3px solid #fff', boxShadow: '0 0 0 6px rgba(42,120,214,0.18)' }} />
-        </div>
-      </div>
+      {/*
+        * El mapa, con geografía de verdad (Leaflet + OpenStreetMap).
+        *
+        * Antes era un dibujo: calles inventadas y los pines ubicados con un hash del
+        * id del prestador, "estable entre renders" pero sin relación con dónde queda
+        * cada uno. Se veía lindo y no servía para lo único que un mapa tiene que
+        * contestar: si esto me queda cerca.
+        *
+        * Se muestran solo los prestadores de la lista filtrada que tienen
+        * coordenadas: uno sin lat/lng no se puede dibujar, y ponerlo en el centro
+        * sería inventar de nuevo.
+        */}
+      <MapaPrestadores
+        pins={list.filter((x) => x.lat != null && x.lng != null).map((x) => ({ id: x.id, nombre: x.name, categoria: x.category, lat: x.lat as number, lng: x.lng as number }))}
+        centro={CENTRO_MAPA}
+        radioKm={radio}
+        onPin={(id) => setSelId(id)}
+        style={{ marginBottom: 14 }}
+      />
 
       {/* Guardados */}
       {guardadosList.length > 0 && (
