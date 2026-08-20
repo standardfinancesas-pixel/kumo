@@ -254,3 +254,38 @@ input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: 
   .adm-queue-actions { width: 100%; }
   .adm-queue-actions button { flex: 1 1 0; }
 }
+
+/* ── El mapa de Servicios ───────────────────────────────────────────
+   Leaflet trae su propio estilo de tooltips y de atribución, que al lado del
+   resto de la app se ve como un widget pegado. Estas reglas son solo para que
+   parezca parte de Kumo: la tipografía de la app, la sombra suave de las
+   tarjetas y la atribución (que es obligatoria) discreta en vez de un cartel
+   blanco. Van sin prefijo porque las clases las pone Leaflet. */
+.leaflet-container {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: rgb(238, 240, 244);
+}
+/* La gota del pin, con sombra: sin esto se apoya plana sobre el mapa. */
+.kumo-pin {
+  filter: drop-shadow(0 3px 5px rgba(33, 30, 51, 0.3));
+}
+.leaflet-tooltip {
+  border: none !important;
+  border-radius: 10px !important;
+  box-shadow: 0 5px 16px rgba(33, 30, 51, 0.16) !important;
+  font-family: 'DM Sans', system-ui, sans-serif !important;
+  font-size: 11.5px !important;
+  font-weight: 600 !important;
+  color: rgb(33, 30, 51) !important;
+  padding: 5px 9px !important;
+  white-space: nowrap;
+}
+.leaflet-tooltip-top::before { border-top-color: #fff !important; }
+.leaflet-control-attribution {
+  font-size: 9.5px !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  color: rgb(150, 145, 172) !important;
+  padding: 1px 6px !important;
+  border-radius: 8px 0 0 0 !important;
+}
+.leaflet-control-attribution a { color: rgb(120, 114, 145) !important; }

@@ -43,6 +43,21 @@ export function textoDistancia(origen: OrigenDistancia): string {
 }
 
 /**
+ * Cómo se llama el centro del mapa, cuando es un lugar del socio.
+ *
+ * Null cuando el centro es el punto fijo: ahí no se dibuja ninguna casa, porque el
+ * Obelisco no es la de nadie y un marcador ahí sería una invención.
+ */
+const CENTRO: Record<OrigenDistancia, string | null> = {
+  casa: 'Tu casa',
+  zona: 'Tu zona',
+  centro: null,
+};
+export function etiquetaCentro(origen: OrigenDistancia): string | null {
+  return CENTRO[origen];
+}
+
+/**
  * Desde dónde medirle a este socio.
  *
  * `geo_origen` guarda con qué precisión se resolvió el domicilio, y de ahí sale el

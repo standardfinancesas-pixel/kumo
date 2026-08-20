@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, distanciaKm, origenDelSocio, textoDistancia, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia } from '@kumo/shared';
+import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM } from './AppClient';
 
@@ -402,5 +402,5 @@ export default async function Page() {
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} centro={{ lat: desde.lat, lng: desde.lng }} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
 }

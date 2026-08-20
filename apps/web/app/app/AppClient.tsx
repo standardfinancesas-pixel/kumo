@@ -1030,7 +1030,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
 }
 const star = <svg width="12" height="12" viewBox="0 0 24 24" fill="#f5b301" style={{ display: 'inline', verticalAlign: -1 }}><path d="M12 3.4 14.6 9l6 .5-4.6 4 1.4 5.9L12 18l-5.4 3.2 1.4-5.9-4.6-4 6-.5z" /></svg>;
 
-function Servicios({ go, providers, initialGuardados, profile, reviews, centro }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; profile: Profile; reviews: Record<string, Review[]>; centro: { lat: number; lng: number } }) {
+function Servicios({ go, providers, initialGuardados, profile, reviews, centro }: { go: (s: Screen) => void; providers: ProviderVM[]; initialGuardados: string[]; profile: Profile; reviews: Record<string, Review[]>; centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const memberId = profile.id;
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
@@ -3399,7 +3399,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver. */ centro: { lat: number; lng: number } }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);

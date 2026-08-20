@@ -5,24 +5,30 @@ import { useEffect, useRef } from 'react';
 import 'leaflet/dist/leaflet.css';
 
 /**
- * El mapa de prestadores, con geografía de verdad.
+ * El mapa de prestadores.
  *
- * Es **Leaflet con teselas de OpenStreetMap**, no Google Maps. Por qué:
+ * Es **Leaflet** con teselas de **CARTO Positron**, no Google Maps. Por qué:
  *
  *  · No hay que cargar una tarjeta ni administrar una clave de API. Google Maps
  *    JavaScript exige facturación activa aunque el uso entre en el tramo gratis, y
  *    eso convierte "mostrar cinco veterinarias" en un trámite del cliente.
  *  · Leaflet son ~42 kB y no manda nada a Google desde el navegador del socio.
  *
+ * **Por qué Positron y no las teselas de openstreetmap.org**: el estilo default de
+ * OSM es un mapa de ruta —autopistas amarillas, cada comercio con su ícono, verde
+ * saturado— y compite con lo único que este mapa tiene que mostrar, que son los
+ * pines. Positron es gris pálido, casi sin color: los pines violetas se leen de
+ * lejos y el mapa se parece al resto de la app. Es gratis y sin clave, igual que
+ * antes, y la atribución (obligatoria) va puesta abajo.
+ *
+ * SI ESTO CRECE: tanto Positron como el servidor de OSM son servicios comunitarios
+ * con expectativa de uso razonable, no CDNs contratadas. Para un club chico están
+ * bien; el día que haga falta, lo único que cambia es la URL de las teselas por una
+ * de MapTiler, Stadia o Carto con cuenta.
+ *
  * Se usa `leaflet` pelado y NO `react-leaflet` a propósito: el wrapper arrastra su
  * propia compatibilidad con la versión de React, y `apps/web` está en React 19 por
- * exigencia del App Router. Un `useEffect` de veinte líneas no necesita wrapper.
- *
- * OJO CON LAS TESELAS EN PRODUCCIÓN: `tile.openstreetmap.org` es el servidor
- * comunitario y su política pide uso moderado — sirve para probar y para un club
- * chico, pero no es una CDN. Si esto crece, la única línea que hay que cambiar es la
- * URL de las teselas por una de MapTiler, Stadia o Carto (tienen tramo gratis con
- * clave). La atribución es obligatoria y va puesta.
+ * exigencia del App Router. Un par de `useEffect` no necesitan wrapper.
  */
 export type PinMapa = {
   id: string;
@@ -32,23 +38,65 @@ export type PinMapa = {
   lng: number;
 };
 
+/*
+ * Los íconos de los pines, en markup crudo.
+ *
+ * Son los mismos dibujos que los chips de rubro de la pantalla (`RUBRO_ICONS` en
+ * AppClient), repetidos acá como texto porque un pin de Leaflet es un `divIcon`:
+ * recibe HTML, no JSX. Si se agrega un rubro nuevo y no está en esta lista, el pin
+ * sale con la patita, que es el genérico de Kumo.
+ */
+const ICONOS: Record<string, string> = {
+  Paseador: '<circle cx="5.5" cy="10" r="1.7"/><circle cx="9.7" cy="6.4" r="1.8"/><circle cx="14.3" cy="6.4" r="1.8"/><circle cx="18.5" cy="10" r="1.7"/><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z"/>',
+  'Guardería': '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>',
+  Adiestrador: '<path d="M22 9 12 5 2 9l10 4 10-4z"/><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5"/>',
+  'Baño y estética': '<path d="M12 3s6 5.7 6 10a6 6 0 0 1-12 0c0-4.3 6-10 6-10z"/>',
+  Cuidador: '<circle cx="12" cy="8" r="3.4"/><path d="M5.5 20c.7-3.4 3.3-5.4 6.5-5.4s5.8 2 6.5 5.4"/>',
+};
+const PATITA = ICONOS.Paseador!;
+
+const VIOLETA = '#5D5491';
+const LIMA = '#E1FB62';
+const TINTA = '#211E33';
+
+/** El pin: una gota violeta con el ícono del rubro adentro. */
+function pinHtml(categoria: string): string {
+  const icono = ICONOS[categoria] ?? PATITA;
+  return `<svg width="34" height="42" viewBox="0 0 34 42" xmlns="http://www.w3.org/2000/svg">
+    <path d="M17 0C7.6 0 0 7.6 0 17c0 10.6 13.3 22.8 15.7 24.8a2 2 0 0 0 2.6 0C20.7 39.8 34 27.6 34 17 34 7.6 26.4 0 17 0z" fill="${VIOLETA}"/>
+    <circle cx="17" cy="16" r="11.5" fill="#ffffff" fill-opacity="0.16"/>
+    <g transform="translate(17 16) scale(0.63) translate(-12 -12)" fill="none" stroke="#ffffff" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">${icono}</g>
+  </svg>`;
+}
+
+/** El centro: la casa del socio, en lima para que no se confunda con un prestador. */
+const CASA_HTML = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="14" cy="14" r="12" fill="${LIMA}" stroke="#ffffff" stroke-width="3"/>
+  <g transform="translate(14 14) scale(0.52) translate(-12 -12)" fill="none" stroke="${TINTA}" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/>
+  </g>
+</svg>`;
+
 export function MapaPrestadores({
   pins, centro, radioKm, onPin, style,
 }: {
   pins: PinMapa[];
-  /** El centro del mapa: hoy la zona del socio. */
-  centro: { lat: number; lng: number };
+  /** El centro del mapa: el domicilio del socio. `etiqueta` es cómo se llama en el
+   *  mapa ("Tu casa", "Tu zona") y es null cuando no sabemos dónde vive y el centro
+   *  es el de CABA — ahí no se dibuja ninguna casa, porque no es la de nadie. */
+  centro: { lat: number; lng: number; etiqueta: string | null };
   /** El radio de búsqueda que el socio eligió con el slider, en km. */
   radioKm: number;
   onPin?: (id: string) => void;
   style?: CSSProperties;
 }) {
   const nodo = useRef<HTMLDivElement | null>(null);
-  /* El mapa, el círculo y los pines viven en refs y no en estado: son objetos de
-     Leaflet, no datos de React. Metidos en estado, cada render los recrearía y el
-     mapa parpadearía volviendo al centro. */
+  /* El mapa, el círculo, la casa y los pines viven en refs y no en estado: son
+     objetos de Leaflet, no datos de React. Metidos en estado, cada render los
+     recrearía y el mapa parpadearía volviendo al centro. */
   const mapa = useRef<import('leaflet').Map | null>(null);
   const circulo = useRef<import('leaflet').Circle | null>(null);
+  const casa = useRef<import('leaflet').Marker | null>(null);
   const marcas = useRef<import('leaflet').Marker[]>([]);
 
   useEffect(() => {
@@ -62,18 +110,49 @@ export function MapaPrestadores({
       mapa.current = L.map(nodo.current, {
         center: [centro.lat, centro.lng],
         zoom: 13,
-        // Sin el control de zoom de Leaflet: el mapa es chico y los botones tapaban
-        // un pin. Se sigue haciendo zoom con la rueda y con dos dedos.
+        // Sin los botones de zoom: el mapa es chico y tapaban un pin. El zoom lo
+        // maneja el slider del radio (más abajo se encuadra el círculo), y en el
+        // teléfono se hace con dos dedos.
         zoomControl: false,
+        // La rueda NO hace zoom: este mapa vive en medio de una pantalla que se
+        // scrollea, y con el zoom activado pasar el mouse por encima secuestra el
+        // scroll de la página. Doble clic y pinch siguen funcionando.
+        scrollWheelZoom: false,
         attributionControl: true,
       });
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        subdomains: 'abcd',
+        maxZoom: 20,
+        // En pantallas retina pide las teselas @2x: sin esto el mapa se ve borroso
+        // justo en los teléfonos, que es donde más se usa.
+        detectRetina: true,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       }).addTo(mapa.current);
+      // "Leaflet" no hace falta en la esquina; la atribución de los datos sí, y es
+      // la que queda.
+      mapa.current.attributionControl.setPrefix('');
     })();
     return () => { vivo = false; };
   }, [centro.lat, centro.lng]);
+
+  /* La casa del socio, en el centro. */
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const L = (await import('leaflet')).default;
+      if (!vivo || !mapa.current) return;
+      casa.current?.remove();
+      casa.current = null;
+      if (!centro.etiqueta) return;
+      casa.current = L.marker([centro.lat, centro.lng], {
+        icon: L.divIcon({ className: 'kumo-pin', html: CASA_HTML, iconSize: [28, 28], iconAnchor: [14, 14] }),
+        title: centro.etiqueta,
+        // Abajo de los pines: si dos coinciden, el que interesa tocar es el prestador.
+        zIndexOffset: -100,
+      }).addTo(mapa.current).bindTooltip(centro.etiqueta, { direction: 'top', offset: [0, -13] });
+    })();
+    return () => { vivo = false; };
+  }, [centro.lat, centro.lng, centro.etiqueta]);
 
   /* Los pines se redibujan cuando cambia la lista (el socio filtra por rubro o por
      radio). Se borran los viejos primero: sin eso, cada filtrado dejaba los
@@ -88,15 +167,18 @@ export function MapaPrestadores({
       marcas.current = [];
 
       for (const p of pins) {
-        const icono = L.divIcon({
-          className: '',
-          html: `<div style="width:30px;height:30px;border-radius:50%;background:#5D5491;border:2.5px solid #fff;box-shadow:0 3px 10px rgba(33,30,51,.35);display:flex;align-items:center;justify-content:center;color:#fff;font:700 12px 'DM Sans',sans-serif">${p.nombre.trim().charAt(0).toUpperCase()}</div>`,
-          iconSize: [30, 30],
-          iconAnchor: [15, 15],
-        });
-        const marca = L.marker([p.lat, p.lng], { icon: icono, title: p.nombre })
+        const marca = L.marker([p.lat, p.lng], {
+          icon: L.divIcon({
+            className: 'kumo-pin',
+            html: pinHtml(p.categoria),
+            iconSize: [34, 42],
+            // La punta de la gota es el lugar, no el centro del dibujo.
+            iconAnchor: [17, 42],
+          }),
+          title: p.nombre,
+        })
           .addTo(mapa.current)
-          .bindTooltip(`${p.nombre} · ${p.categoria}`, { direction: 'top', offset: [0, -14] });
+          .bindTooltip(`${p.nombre} · ${p.categoria}`, { direction: 'top', offset: [0, -40] });
         if (onPin) marca.on('click', () => onPin(p.id));
         marcas.current.push(marca);
       }
@@ -104,7 +186,13 @@ export function MapaPrestadores({
     return () => { vivo = false; };
   }, [pins, onPin]);
 
-  /* El círculo del radio: se mueve con el slider sin recrear el mapa. */
+  /* El círculo del radio, y el encuadre.
+     El zoom lo decide el círculo: así el slider además de filtrar acerca y aleja,
+     que es lo que uno espera al mover un radio. Pero acotado a los dos extremos —con
+     1 km el encuadre exacto quedaba a nivel vereda, y con 25 km caía a zoom 9, donde
+     Buenos Aires es una manchita y los cinco pines se apilan en el medio: el mapa
+     dejaba de contestar "quién hay cerca". Fuera de ese rango el círculo se sale un
+     poco del cuadro, y está bien: es un radio de búsqueda, no un marco. */
   useEffect(() => {
     let vivo = true;
     (async () => {
@@ -113,12 +201,17 @@ export function MapaPrestadores({
       if (!circulo.current) {
         circulo.current = L.circle([centro.lat, centro.lng], {
           radius: radioKm * 1000,
-          color: '#5D5491', weight: 1.5, dashArray: '5 5', fillColor: '#5D5491', fillOpacity: 0.08,
+          color: VIOLETA, weight: 1.25, opacity: 0.45, fillColor: VIOLETA, fillOpacity: 0.07,
         }).addTo(mapa.current);
       } else {
         circulo.current.setLatLng([centro.lat, centro.lng]);
         circulo.current.setRadius(radioKm * 1000);
       }
+      // `getBoundsZoom` en vez de `fitBounds` para poder acotar el zoom antes de
+      // moverse: con `fitBounds` animado, preguntar el zoom después devuelve el
+      // anterior y la corrección llegaba tarde.
+      const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(circulo.current.getBounds(), false, L.point(8, 8))));
+      mapa.current.setView([centro.lat, centro.lng], zoom, { animate: true });
     })();
     return () => { vivo = false; };
   }, [radioKm, centro.lat, centro.lng]);
@@ -128,5 +221,5 @@ export function MapaPrestadores({
   // initialized".
   useEffect(() => () => { mapa.current?.remove(); mapa.current = null; }, []);
 
-  return <div ref={nodo} style={{ height: 250, borderRadius: 20, overflow: 'hidden', border: '1px solid rgb(230,227,240)', background: 'rgb(233,235,241)', ...style }} />;
+  return <div ref={nodo} style={{ height: 250, borderRadius: 20, overflow: 'hidden', border: '1px solid rgb(230,227,240)', background: 'rgb(238,240,244)', ...style }} />;
 }
