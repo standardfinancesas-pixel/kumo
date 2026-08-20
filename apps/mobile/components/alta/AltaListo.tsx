@@ -68,9 +68,14 @@ export default function AltaListo({
 
   const etiqueta = etiquetaPlan(planName, debePagar);
   /* El sello decía ACTIVO escrito a mano, incluso para un socio gratuito. */
-  /* `null` porque un alta recién hecha nunca tuvo un vencimiento: si el pago no entró
-     todavía, la cuota está PENDIENTE y no vencida. */
-  const sello = selloCarnet(debePagar, !!planName && planName !== '—', null);
+  /* Sin `cuotaHasta` porque un alta recién hecha nunca tuvo un vencimiento, y con la
+     suscripción autorizada el sello dice ACTIVANDO en vez de acusar una deuda. `fueAMP`
+     alcanza como señal: si lo mandamos a pagar, la suscripción quedó creada. */
+  const sello = selloCarnet({
+    debePagar,
+    tienePlan: !!planName && planName !== '—',
+    suscripcion: fueAMP ? 'authorized' : null,
+  });
   const varias = mascotas.length > 1;
 
   return (

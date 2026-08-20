@@ -31,7 +31,7 @@ export type EstadoSuscripcion = 'pending' | 'authorized' | 'paused' | 'cancelled
  * la pantalla le decía "estamos confirmando tu pago" para siempre sobre un cobro
  * que ya falló. Son dos cosas distintas y ahora se dicen distinto.
  */
-export type EstadoCuota = 'gratuito' | 'vencido' | 'rebotado' | 'confirmando' | 'listo';
+export type EstadoCuota = 'gratuito' | 'vencido' | 'rebotado' | 'activando' | 'confirmando' | 'listo';
 
 export function estadoCuota(opts: {
   /** `paid_until`, o null si nunca pagó. */
@@ -45,8 +45,18 @@ export function estadoCuota(opts: {
   volviendoDeMP?: boolean;
 }): EstadoCuota {
   if (!opts.debePagar) return 'listo';
+  /*
+   * Débito vivo y nunca pagó: la suscripción quedó autorizada y el primer cobro está
+   * en camino. NO es "le rebotó" —no hay nada que le pudiera rebotar todavía— y no es
+   * "se le venció" —nunca tuvo un vencimiento—. Es el minuto siguiente al alta, y
+   * decirle cualquiera de las otras dos cosas es acusarlo de una deuda inventada.
+   *
+   * Va PRIMERO porque también aplica si cerró la pantalla y volvió después: el estado
+   * no depende de que venga del checkout, depende de la plata.
+   */
+  if (opts.suscripcion === 'authorized' && !opts.hasta) return 'activando';
   // Volver del checkout o tener un pago abierto es esperar; que el débito esté vivo
-  // y el mes sin acreditar, no: eso es un cobro que no salió.
+  // y el mes sin acreditar teniendo historial de pago, no: eso es un cobro que rebotó.
   if (opts.volviendoDeMP || opts.pagoPendiente) return 'confirmando';
   if (opts.suscripcion === 'authorized') return 'rebotado';
   return opts.hasta ? 'vencido' : 'gratuito';
@@ -85,6 +95,17 @@ export function copyCuota(estado: EstadoCuota, nombre: string, hasta?: string | 
         titulo: 'No pudimos cobrarte la cuota',
         cuerpo: 'Tu débito automático sigue activo y Mercado Pago va a volver a intentarlo. Si cambiaste de tarjeta o no tenía saldo, actualizala desde Mercado Pago. Mientras tanto, los reintegros y los beneficios quedan en pausa.',
         cta: 'Ver mi suscripción',
+      };
+    /*
+     * Autorizada y esperando el primer cobro. El título dice lo que YA pasó, porque
+     * es verdad y es lo que la persona quiere saber: su plan quedó activo. El cobro
+     * es un trámite entre Kumo y Mercado Pago, no algo que ella tenga que vigilar.
+     */
+    case 'activando':
+      return {
+        titulo: '¡Listo! Tu plan quedó activo',
+        cuerpo: 'Mercado Pago está haciendo el primer cobro; suele tardar un par de minutos. En cuanto entre, los reintegros y los beneficios aparecen solos en tu menú. No hace falta que hagas nada.',
+        cta: 'Entrar a la app',
       };
     case 'confirmando':
       return {
@@ -148,10 +169,13 @@ export const ESPERA_PAGO = { rapidos: 10, limite: 35, msRapido: 3000, msLento: 6
 
 /** Cómo se nombra el plan del socio en pantalla. `planName` llega '—' cuando no
  *  tiene ninguno, y "Plan —" no le dice nada a nadie. */
-export function etiquetaPlan(planName: string | null | undefined, debePagar: boolean): string {
+export function etiquetaPlan(planName: string | null | undefined, debePagar: boolean, activando = false): string {
   const limpio = planName && planName !== '—' ? planName : null;
   if (!limpio) return 'Plan gratuito';
-  return debePagar ? `Plan ${limpio} · cuota pendiente` : `Plan ${limpio}`;
+  // Mientras el primer cobro se acredita no se le cuelga "cuota pendiente": el plan
+  // está activo y lo pendiente es un trámite nuestro con Mercado Pago.
+  if (!debePagar || activando) return `Plan ${limpio}`;
+  return `Plan ${limpio} · cuota pendiente`;
 }
 
 /**
@@ -169,17 +193,31 @@ export function etiquetaPlan(planName: string | null | undefined, debePagar: boo
  * habilita la cuota paga, no haberla contratado alguna vez. Alguien con el add-on
  * y la cuota vencida no tiene cobertura, y el carnet no puede decir que sí.
  */
-export function selloCarnet(debePagar: boolean, tienePlan: boolean, cuotaHasta: string | null = null): { texto: string; tono: 'ok' | 'neutro' | 'alerta' } {
-  if (!debePagar) return { texto: 'ACTIVO', tono: 'ok' };
-  if (!tienePlan) return { texto: 'GRATUITO', tono: 'neutro' };
-  /*
-   * Eligió un plan y no lo está pagando. Son dos cosas distintas y el carnet no puede
-   * confundirlas: al que se le VENCIÓ hay una fecha que pasó, y al que recién se dio
-   * de alta y todavía no le entró el pago no se le venció nada. Decirle "CUOTA
-   * VENCIDA" al minuto de anotarse es acusarlo de una deuda que no existe — pasó de
-   * verdad probando el alta con el pago fallado.
-   */
-  return cuotaHasta
+/**
+ * El sello del carnet. Cinco casos, y los cinco importan porque es el documento que
+ * el socio le muestra al veterinario:
+ *
+ *  · paga           → ACTIVO
+ *  · sin plan       → GRATUITO
+ *  · recién se dio de alta y el cobro está en camino → ACTIVANDO
+ *  · pagó antes y ahora no → CUOTA VENCIDA (hay una fecha que pasó)
+ *  · eligió plan y nunca llegó a pagar → CUOTA PENDIENTE
+ *
+ * Antes eran dos y decía ACTIVO siempre. Los tres del medio se confundían entre sí, y
+ * cada confusión es una acusación: "CUOTA VENCIDA" al minuto de anotarse inventa una
+ * deuda, y "PENDIENTE" con la suscripción ya autorizada hace dudar de un pago que
+ * está saliendo bien.
+ */
+export function selloCarnet(opts: {
+  debePagar: boolean;
+  tienePlan: boolean;
+  cuotaHasta?: string | null;
+  suscripcion?: EstadoSuscripcion;
+}): { texto: string; tono: 'ok' | 'neutro' | 'alerta' } {
+  if (!opts.debePagar) return { texto: 'ACTIVO', tono: 'ok' };
+  if (!opts.tienePlan) return { texto: 'GRATUITO', tono: 'neutro' };
+  if (opts.suscripcion === 'authorized' && !opts.cuotaHasta) return { texto: 'ACTIVANDO', tono: 'neutro' };
+  return opts.cuotaHasta
     ? { texto: 'CUOTA VENCIDA', tono: 'alerta' }
     : { texto: 'CUOTA PENDIENTE', tono: 'neutro' };
 }

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-import { etiquetaPlan, hoyISO, urls, selloCarnet } from '@kumo/shared';
+import { etiquetaPlan, hoyISO, urls, selloCarnet, type EstadoSuscripcion } from '@kumo/shared';
 import { CarnetAlta } from '@/components/CarnetAlta';
 import { AltaListoClient } from './AltaListoClient';
 
@@ -34,7 +34,10 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
 
   const plan = Array.isArray(perfil.plans) ? perfil.plans[0] : perfil.plans;
   const debePagar = !perfil.paid_until || perfil.paid_until < hoyISO();
-  const etiqueta = etiquetaPlan(plan?.name ?? null, debePagar);
+  /** La suscripción quedó autorizada y el primer cobro está en camino: ni vencida ni
+   *  pendiente, se está acreditando. */
+  const activando = perfil.mp_subscription_status === 'authorized' && !perfil.paid_until;
+  const etiqueta = etiquetaPlan(plan?.name ?? null, debePagar, activando);
   /*
    * "Esperando" es solo un cartel. Se enciende si eligió un plan y todavía no está
    * acreditado; lo que decide de verdad es `paid_until`, que escribe el webhook.
@@ -74,7 +77,7 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
               microchip={m.microchip}
               fotoUrl={m.photo_url}
               etiqueta={etiqueta}
-              sello={selloCarnet(debePagar, !!plan?.name, perfil.paid_until ?? null)}
+              sello={selloCarnet({ debePagar, tienePlan: !!plan?.name, cuotaHasta: perfil.paid_until ?? null, suscripcion: perfil.mp_subscription_status as EstadoSuscripcion })}
               memberNo={perfil.member_no}
             />
           ))}
@@ -88,7 +91,7 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
           </div>
         ) : null}
 
-        <AltaListoClient esperando={esperando} pagoFallado={pagoFallado} />
+        <AltaListoClient esperando={esperando} pagoFallado={pagoFallado} activando={activando} />
 
         {!plan ? (
           <p style={{ fontSize: 12.5, color: '#8781a0', textAlign: 'center', margin: '14px 0 0', lineHeight: 1.5 }}>

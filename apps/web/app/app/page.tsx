@@ -342,12 +342,14 @@ export default async function Page() {
    * plan pasa por `etiquetaPlan` porque el gratuito tiene `planName` '—' y el carnet
    * mostraba "Plan —".
    */
+  /** Recién se dio de alta y el primer cobro está en camino: ver `estadoCuota`. */
+  const activando = cuota.suscripcion === 'authorized' && !cuota.hasta;
   const pets: Pet[] = (petsRows ?? []).map((r) => mapPet(
     r as PetRow,
     profile.memberNo ? `#${profile.memberNo}` : '—',
-    etiquetaPlan(cuota.planName, cuota.debePagar),
+    etiquetaPlan(cuota.planName, cuota.debePagar, activando),
     etiquetaOdonto(cuota.odonto, cuota.debePagar),
-    selloCarnet(cuota.debePagar, cuota.planName !== '—', cuota.hasta),
+    selloCarnet({ debePagar: cuota.debePagar, tienePlan: cuota.planName !== '—', cuotaHasta: cuota.hasta, suscripcion: cuota.suscripcion }),
   ));
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
   const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));

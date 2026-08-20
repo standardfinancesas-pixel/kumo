@@ -191,7 +191,14 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
     volviendoDeMP,
   });
   const copy = copyCuota(estado, nombre, cuota.hasta);
-  const esperando = estado === 'confirmando';
+  /*
+   * "Activando" se trata como esperar, no como elegir: el socio ya compró un plan y
+   * está entrando el primer cobro. Sin esto la hoja le mostraba otra vez la lista de
+   * planes con el título "tu plan quedó activo" arriba — le ofrecía comprar lo que
+   * acababa de comprar.
+   */
+  const activando = estado === 'activando';
+  const esperando = estado === 'confirmando' || activando;
 
   /*
    * Cada pasada le PREGUNTA a Mercado Pago cómo salió el cobro, en vez de esperar
@@ -291,7 +298,13 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
           </button>
         ) : esperando ? (
           <>
-            {intentos < ESPERA_PAGO.limite ? (
+            {activando ? (
+              /* Sin spinner: la suscripción ya quedó activa y el cobro es un trámite
+                 nuestro con Mercado Pago. Un spinner acá dice "no te vayas". */
+              <button onClick={onClose} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: 'pointer' }}>
+                {copy.cta} →
+              </button>
+            ) : intentos < ESPERA_PAGO.limite ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600 }}>
                 <span style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgb(93,84,145)', borderTopColor: 'transparent', animation: 'kspin 0.9s linear infinite', flex: '0 0 auto' }} />
                 Esperando la confirmación…
@@ -3380,6 +3393,9 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
   /** El plan más barato que el club tiene cargado, para el "desde" del banner. En 0
    *  si no hay planes: ahí el banner no se muestra en vez de decir "desde $0". */
   const desdePlan = planes.length ? Math.min(...planes.map((p) => p.price)) : 0;
+  /* Ya compró un plan y está entrando el cobro: ofrecerle uno sería venderle lo que
+     acaba de pagar. Se le esconde el banner hasta que se acredite. */
+  const acreditandose = cuota.suscripcion === 'authorized' && !cuota.hasta;
   const NAV = navDe(pago);
   /*
    * La pantalla se DERIVA, no se corrige con un efecto.
@@ -3430,7 +3446,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
       </div>
       <div className="wa-content" style={{ flex: '1 1 0%', overflowY: 'auto', maxHeight: '100vh' }}>
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
-          {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} desdePlan={desdePlan} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}

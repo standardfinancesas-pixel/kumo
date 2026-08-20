@@ -15,7 +15,7 @@ import { confirmarPago } from '@/lib/confirmarPago';
  * la URL de vuelta no dan acceso —los puede tipear cualquiera—, solo sirven para
  * saber a qué suscripción preguntarle.
  */
-export function AltaListoClient({ esperando, pagoFallado }: { esperando: boolean; pagoFallado: boolean }) {
+export function AltaListoClient({ esperando, pagoFallado, activando }: { esperando: boolean; pagoFallado: boolean; activando: boolean }) {
   const router = useRouter();
   const [intentos, setIntentos] = useState(0);
 
@@ -60,6 +60,20 @@ export function AltaListoClient({ esperando, pagoFallado }: { esperando: boolean
         seAgoto ? (
           <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, lineHeight: 1.5, marginBottom: 14 }}>
             Está tardando más de lo normal. Si ya autorizaste el pago, se activa solo en cuanto Mercado Pago lo cobre: <strong>no hace falta pagar de nuevo</strong>.
+          </div>
+        ) : activando ? (
+          /*
+           * La suscripción ya quedó autorizada, así que el cobro es un trámite entre Kumo
+           * y Mercado Pago y no algo que el socio tenga que vigilar. Acá había un spinner
+           * y "estamos confirmando tu pago", que se lee como "no entres todavía" — justo
+           * lo contrario de lo que está pasando.
+           */
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, background: 'rgb(240,247,241)', border: '1px solid rgb(214,235,220)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(47,143,91)', lineHeight: 1.5, marginBottom: 14 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto', marginTop: 2 }}><path d="M4 12l5 5L20 6" /></svg>
+            <span>
+              <strong>Tu plan quedó activo.</strong> El primer cobro se acredita en un par de
+              minutos y ahí aparecen los reintegros y los beneficios. No hace falta que hagas nada.
+            </span>
           </div>
         ) : (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: 'rgb(240,237,249)', borderRadius: 12, padding: '12px 14px', fontSize: 13.5, color: 'rgb(93,84,145)', fontWeight: 600, marginBottom: 14 }}>

@@ -289,7 +289,7 @@ export function useKumoData(userId: string | null) {
       ].filter(Boolean);
       const species = row.type === 'gato' ? 'Gato' : 'Perro';
       return {
-        id: row.id, name: row.name, species, plan: etiquetaPlan(planName, debePagar), socio: memberNo,
+        id: row.id, name: row.name, species, plan: etiquetaPlan(planName, debePagar, p?.mp_subscription_status === 'authorized' && !p?.paid_until), socio: memberNo,
         photo: row.photo_url ?? PET_FALLBACK[i % PET_FALLBACK.length]!,
         breed: breedParts.join(' · '),
         age: row.age_years != null ? `${species} · ${row.age_years} años` : species,
@@ -298,7 +298,7 @@ export function useKumoData(userId: string | null) {
         // La cobertura la habilita la cuota paga, no haberla contratado: misma regla
         // que los reintegros y los beneficios. Estaba fija en "No activo" para todos.
         odonto: etiquetaOdonto(p?.addon_odonto === true, debePagar),
-        sello: selloCarnet(debePagar, !!plan?.name, p?.paid_until ?? null),
+        sello: selloCarnet({ debePagar, tienePlan: !!plan?.name, cuotaHasta: p?.paid_until ?? null, suscripcion: (p?.mp_subscription_status ?? null) as EstadoSuscripcion }),
         next: upcoming ? `Próxima: ${fmtShort(upcoming.due_on)}` : 'Todo al día',
         vaccines: vacs,
       };

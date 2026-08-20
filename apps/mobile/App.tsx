@@ -2147,7 +2147,14 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
     volviendoDeMP,
   });
   const copy = copyCuota(estado, profile.firstName, profile.cuotaHasta ? fmtFechaCorta(profile.cuotaHasta) : null);
-  const esperando = estado === 'confirmando';
+  /*
+   * "Activando" se trata como esperar, no como elegir: el socio ya compró un plan y
+   * está entrando el primer cobro. Sin esto la hoja le mostraba otra vez la lista de
+   * planes con el título "tu plan quedó activo" arriba — le ofrecía comprar lo que
+   * acababa de comprar.
+   */
+  const activando = estado === 'activando';
+  const esperando = estado === 'confirmando' || activando;
   /* Mientras espera, le pregunta a Mercado Pago en vez de esperar su aviso: ver
      `lib/esperarPago.ts`. Antes la hoja solo se refrescaba si el socio tocaba el
      botón, así que el que volvía y esperaba quieto no veía nada cambiar. */
@@ -2232,6 +2239,12 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
       ) : null}
       {estado === 'listo' ? (
         <TouchableOpacity onPress={irABeneficios} activeOpacity={0.85} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{copy.cta} →</Text>
+        </TouchableOpacity>
+      ) : activando ? (
+        /* Sin spinner ni "volver a chequear": el plan ya quedó activo y el cobro es un
+           trámite nuestro con Mercado Pago. */
+        <TouchableOpacity onPress={onClose} activeOpacity={0.85} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{copy.cta} →</Text>
         </TouchableOpacity>
       ) : esperando ? (
@@ -3581,6 +3594,9 @@ export default function App() {
   /** El plan más barato que el club tiene cargado, para el "desde" del banner. En 0
    *  si no hay planes: ahí el banner no aparece en vez de decir "desde $0". */
   const desdePlan = data?.planes?.length ? Math.min(...data.planes.map((x) => x.basePrice)) : 0;
+  /* Ya compró un plan y está entrando el cobro: el banner que ofrece planes se
+     esconde hasta que se acredite. */
+  const acreditandose = data?.profile?.suscripcion === 'authorized' && !data?.profile?.cuotaHasta;
   /*
    * La pantalla se DERIVA, no se corrige con un efecto.
    *
@@ -3694,7 +3710,7 @@ export default function App() {
           </View>
         </View>
         <View style={{ flex: 1 }}>
-          {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} desdePlan={desdePlan} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
           {pantalla === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
