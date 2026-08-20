@@ -1,7 +1,6 @@
 import { View } from 'react-native';
 import { colors } from '@kumo/shared';
 import { Texto as Text, INK, LIME, MUTED, BRAND } from '../ui/Texto';
-import { Tilde } from '../ui/Controles';
 
 const plata = (n: number) => '$' + n.toLocaleString('es-AR');
 
@@ -16,16 +15,14 @@ const plata = (n: number) => '$' + n.toLocaleString('es-AR');
  *    primer reintegro, que es cuando recién hace falta — y ahí el formulario ya lo
  *    guarda en el perfil para no volver a pedirlo.
  *
- * Lo único que queda es aceptar las condiciones.
+ * Lo único que queda son las condiciones, que se aceptan tocando el botón.
  */
 export default function Paso5Cuota({
-  plan, odonto, cuota, acepta, onAcepta,
+  plan, odonto, cuota,
 }: {
   plan: string;
   odonto: boolean;
   cuota: number;
-  acepta: boolean;
-  onAcepta: (v: boolean) => void;
 }) {
   return (
     <View>
@@ -48,9 +45,12 @@ export default function Paso5Cuota({
         </Text>
       </View>
 
-      <Tilde marcado={acepta} onCambio={onAcepta}>
-        Acepto que la cuota se actualiza cada 3 meses según IPC y los plazos de carencia (60/90/180 días). Tengo 10 días de arrepentimiento.
-      </Tilde>
+      {/* Las condiciones a la vista, sin tilde: el gesto de aceptar es tocar el botón
+          de abajo. El texto tiene que quedar siempre —es lo que hace que la aceptación
+          valga—, el tilde era un toque más entre el socio y el pago. */}
+      <Text style={{ fontSize: 12.5, color: MUTED, lineHeight: 18 }}>
+        Al continuar aceptás el contrato de membresía: la cuota se actualiza cada 3 meses según IPC y los plazos de carencia son de 60, 90 y 180 días. Tenés 10 días de arrepentimiento (Ley 24.240).
+      </Text>
     </View>
   );
 }

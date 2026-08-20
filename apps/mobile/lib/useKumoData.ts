@@ -298,7 +298,7 @@ export function useKumoData(userId: string | null) {
         // La cobertura la habilita la cuota paga, no haberla contratado: misma regla
         // que los reintegros y los beneficios. Estaba fija en "No activo" para todos.
         odonto: etiquetaOdonto(p?.addon_odonto === true, debePagar),
-        sello: selloCarnet(debePagar, !!plan?.name),
+        sello: selloCarnet(debePagar, !!plan?.name, p?.paid_until ?? null),
         next: upcoming ? `Próxima: ${fmtShort(upcoming.due_on)}` : 'Todo al día',
         vaccines: vacs,
       };

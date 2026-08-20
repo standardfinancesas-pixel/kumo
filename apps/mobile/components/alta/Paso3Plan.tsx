@@ -44,7 +44,7 @@ export default function Paso3Plan({
           return (
             <TouchableOpacity
               key={p.id}
-              onPress={() => onEleccion({ modo: 'pago', plan: p.name, aceptaCuota: eleccion?.modo === 'pago' ? eleccion.aceptaCuota : false })}
+              onPress={() => onEleccion({ modo: 'pago', plan: p.name, aceptaCuota: true })}
               style={{ borderWidth: 2, borderColor: on ? BRAND : colors.violet[200], backgroundColor: on ? colors.violet[50] : '#fff', borderRadius: 18, padding: 18 }}
             >
               {p.featured ? (

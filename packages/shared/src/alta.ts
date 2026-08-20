@@ -115,6 +115,12 @@ export type BancoAlta = {
  */
 export type EleccionPlan =
   | { modo: 'gratis' }
+  /** `aceptaCuota` ya no sale de un tilde: se pone en true al elegir un plan pago,
+   *  porque la aceptación es tocar el botón que dice "Ir a Mercado Pago" con las
+   *  condiciones escritas al lado. Sigue viajando al servidor porque es lo que hace
+   *  que se escriba `contract_accepted_at`: sin él, el alta pagada dejaría de
+   *  registrar que el socio aceptó la cuota, y eso es justo lo que hay que poder
+   *  mostrar si alguien discute un cargo. */
   | { modo: 'pago'; plan: string; aceptaCuota: boolean };
 
 export type BorradorAlta = {
@@ -236,7 +242,16 @@ export function pasoOk(paso: number, b: BorradorAlta, conGoogle = false): boolea
     case 4: return declaracionCompleta(b);
     // El paso del pago solo existe con plan, y lo único que pide es aceptar la
     // cuota: la tarjeta se pone en el sitio de Mercado Pago, no acá.
-    case 5: return b.eleccion?.modo === 'pago' && b.eleccion.aceptaCuota;
+    /*
+     * El paso de la cuota ya no espera un tilde: la aceptación pasó a estar en el
+     * botón, con las condiciones escritas al lado ("Al continuar aceptás…"). Es el
+     * mismo valor legal —lo que importa es que el texto esté a la vista y que el acto
+     * de aceptar sea explícito— con un toque menos entre el socio y el pago.
+     *
+     * `aceptaCuota` sigue viajando al servidor, que es lo que escribe
+     * `contract_accepted_at`: la aceptación se sigue registrando, solo cambió el gesto.
+     */
+    case 5: return b.eleccion?.modo === 'pago';
     default: return true;
   }
 }

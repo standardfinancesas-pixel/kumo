@@ -74,7 +74,7 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
               microchip={m.microchip}
               fotoUrl={m.photo_url}
               etiqueta={etiqueta}
-              sello={selloCarnet(debePagar, !!plan?.name)}
+              sello={selloCarnet(debePagar, !!plan?.name, perfil.paid_until ?? null)}
               memberNo={perfil.member_no}
             />
           ))}

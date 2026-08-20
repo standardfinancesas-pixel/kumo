@@ -183,13 +183,7 @@ export default function Alta({
           />
         ) : null}
         {paso === 5 && b.eleccion?.modo === 'pago' ? (
-          <Paso5Cuota
-            plan={b.eleccion.plan}
-            odonto={b.odonto}
-            cuota={cuota}
-            acepta={b.eleccion.aceptaCuota}
-            onAcepta={(aceptaCuota) => setB({ ...b, eleccion: { modo: 'pago', plan: b.eleccion?.modo === 'pago' ? b.eleccion.plan : '', aceptaCuota } })}
-          />
+          <Paso5Cuota plan={b.eleccion.plan} odonto={b.odonto} cuota={cuota} />
         ) : null}
 
         {error ? (

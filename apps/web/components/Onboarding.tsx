@@ -223,9 +223,22 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
   const selectedPlan = plans.find((p) => p.name === plan);
   const planPrice = cuotaMensual(selectedPlan?.basePrice ?? 0, b.odonto);
 
+  /*
+   * El botón del último paso.
+   *
+   * En el camino PAGO no hay sheet de confirmación en el medio: el socio ya está
+   * mirando el plan, la cuota y las condiciones, así que el botón crea el alta y lo
+   * lleva a Mercado Pago. Una pantalla que repite lo que se está viendo para preguntar
+   * "¿seguro?" no protege de nada y es el paso donde más gente se cae.
+   *
+   * En el camino GRATUITO el sheet queda: ahí no hay pago que revisar después, y es la
+   * única vuelta atrás antes de crear la cuenta y firmar la declaración.
+   */
   const next = () => {
     if (step < total) { setStep(step + 1); return; }
-    if (canNext) setConfirmOpen(true);
+    if (!canNext) return;
+    if (gratis) { setConfirmOpen(true); return; }
+    confirmAlta();
   };
   const back = () => { if (step > 1) setStep(step - 1); else onClose(); };
 
@@ -290,7 +303,9 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
     }
   };
 
-  const tituloCTA = step === 4 ? 'Firmar y continuar' : step === total ? (gratis ? 'Confirmar y unirme' : 'Confirmar y pagar') : 'Continuar';
+  const tituloCTA = step === 4 && !gratis ? 'Firmar y continuar'
+    : step === total ? (gratis ? 'Confirmar y unirme' : submitting ? 'Creando tu cuenta…' : 'Ir a Mercado Pago')
+    : 'Continuar';
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: '#f5f4f8', overflowY: 'auto' }}>
@@ -398,7 +413,7 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
               {plans.map((p) => {
                 const on = plan === p.name;
                 return (
-                  <div key={p.id} onClick={() => setB({ ...b, eleccion: { modo: 'pago', plan: p.name, aceptaCuota: b.eleccion?.modo === 'pago' ? b.eleccion.aceptaCuota : false } })} style={{ position: 'relative', border: '2px solid ' + (on ? '#5D5491' : '#e6e3f0'), background: on ? '#faf9fd' : '#fff', borderRadius: 18, padding: 20, cursor: 'pointer', transition: '0.15s' }}>
+                  <div key={p.id} onClick={() => setB({ ...b, eleccion: { modo: 'pago', plan: p.name, aceptaCuota: true } })} style={{ position: 'relative', border: '2px solid ' + (on ? '#5D5491' : '#e6e3f0'), background: on ? '#faf9fd' : '#fff', borderRadius: 18, padding: 20, cursor: 'pointer', transition: '0.15s' }}>
                     {p.featured && <span style={{ position: 'absolute', top: -11, left: 20, background: '#E1FB62', color: '#211E33', fontWeight: 700, fontSize: 11, padding: '4px 12px', borderRadius: 100 }}>MÁS ELEGIDO</span>}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18, color: '#5D5491' }}>{p.name}</span>
@@ -521,15 +536,13 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
               </p>
             </div>
 
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 4, fontSize: 13, color: '#5b5670', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={b.eleccion.aceptaCuota}
-                onChange={(e) => setB({ ...b, eleccion: { modo: 'pago', plan: b.eleccion?.modo === 'pago' ? b.eleccion.plan : '', aceptaCuota: e.target.checked } })}
-                style={{ width: 17, height: 17, accentColor: '#5D5491', flex: '0 0 auto', marginTop: 2 }}
-              />
-              Acepto que la cuota se actualiza cada 3 meses según IPC y los plazos de carencia (60/90/180 días). Tengo 10 días de arrepentimiento.
-            </label>
+            {/* Las condiciones van a la vista, arriba del botón, en vez de detrás de un
+                tilde: el gesto de aceptar es tocar "Ir a Mercado Pago". El texto tiene
+                que quedar SIEMPRE —es lo que hace que la aceptación valga— pero el
+                tilde era un toque más entre el socio y el pago. */}
+            <p style={{ fontSize: 12.5, color: '#8781a0', lineHeight: 1.55, margin: '4px 0 0' }}>
+              Al continuar aceptás el contrato de membresía: la cuota se actualiza cada 3 meses según IPC y los plazos de carencia son de 60, 90 y 180 días. Tenés 10 días de arrepentimiento (Ley 24.240).
+            </p>
           </div>
         )}
       </div>
@@ -541,6 +554,9 @@ export function Onboarding({ open, onClose, initialPet, initialType, plans = dat
             {tituloCTA}
           </button>
           {!canNext && <div style={{ textAlign: 'center', fontSize: 12.5, color: '#8781a0', marginTop: 8 }}>Completá los datos para continuar.</div>}
+          {/* El error del alta ahora puede pasar sin sheet abierto: sin esto, el socio
+              tocaba el botón y no pasaba nada visible. */}
+          {submitError && !confirmOpen && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13, lineHeight: 1.45, borderRadius: 10, padding: '10px 12px', marginTop: 10 }}>{submitError}</div>}
         </div>
       </div>
 

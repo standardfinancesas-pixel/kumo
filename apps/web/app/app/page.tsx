@@ -347,7 +347,7 @@ export default async function Page() {
     profile.memberNo ? `#${profile.memberNo}` : '—',
     etiquetaPlan(cuota.planName, cuota.debePagar),
     etiquetaOdonto(cuota.odonto, cuota.debePagar),
-    selloCarnet(cuota.debePagar, cuota.planName !== '—'),
+    selloCarnet(cuota.debePagar, cuota.planName !== '—', cuota.hasta),
   ));
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
   const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));

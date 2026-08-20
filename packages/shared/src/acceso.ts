@@ -169,11 +169,19 @@ export function etiquetaPlan(planName: string | null | undefined, debePagar: boo
  * habilita la cuota paga, no haberla contratado alguna vez. Alguien con el add-on
  * y la cuota vencida no tiene cobertura, y el carnet no puede decir que sí.
  */
-export function selloCarnet(debePagar: boolean, tienePlan: boolean): { texto: string; tono: 'ok' | 'neutro' | 'alerta' } {
+export function selloCarnet(debePagar: boolean, tienePlan: boolean, cuotaHasta: string | null = null): { texto: string; tono: 'ok' | 'neutro' | 'alerta' } {
   if (!debePagar) return { texto: 'ACTIVO', tono: 'ok' };
-  return tienePlan
+  if (!tienePlan) return { texto: 'GRATUITO', tono: 'neutro' };
+  /*
+   * Eligió un plan y no lo está pagando. Son dos cosas distintas y el carnet no puede
+   * confundirlas: al que se le VENCIÓ hay una fecha que pasó, y al que recién se dio
+   * de alta y todavía no le entró el pago no se le venció nada. Decirle "CUOTA
+   * VENCIDA" al minuto de anotarse es acusarlo de una deuda que no existe — pasó de
+   * verdad probando el alta con el pago fallado.
+   */
+  return cuotaHasta
     ? { texto: 'CUOTA VENCIDA', tono: 'alerta' }
-    : { texto: 'GRATUITO', tono: 'neutro' };
+    : { texto: 'CUOTA PENDIENTE', tono: 'neutro' };
 }
 
 /** La fila "Odontológico" del carnet. */

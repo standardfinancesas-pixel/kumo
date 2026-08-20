@@ -68,7 +68,9 @@ export default function AltaListo({
 
   const etiqueta = etiquetaPlan(planName, debePagar);
   /* El sello decía ACTIVO escrito a mano, incluso para un socio gratuito. */
-  const sello = selloCarnet(debePagar, !!planName && planName !== '—');
+  /* `null` porque un alta recién hecha nunca tuvo un vencimiento: si el pago no entró
+     todavía, la cuota está PENDIENTE y no vencida. */
+  const sello = selloCarnet(debePagar, !!planName && planName !== '—', null);
   const varias = mascotas.length > 1;
 
   return (
