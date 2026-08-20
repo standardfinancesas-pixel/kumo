@@ -166,15 +166,25 @@ export async function traerSuscripcion(id: string): Promise<SuscripcionMP> {
 /**
  * Cambia la cuota de una suscripción viva. Rige desde el próximo débito y no le
  * pide nada al socio: la autorización de la tarjeta sigue siendo la misma.
+ * Verificado contra la cuenta real: la suscripción sigue `authorized` después.
  *
- * Lo usa el panel cuando el club cambia el precio de un plan: sin esto, los ya
- * suscriptos seguirían debitando el monto con el que firmaron para siempre.
+ * Dos usos: el panel cuando el club cambia el precio de un plan —sin esto los ya
+ * suscriptos debitarían para siempre el monto con el que firmaron— y el socio cuando
+ * cambia de plan desde la app.
+ *
+ * `motivo` es lo que el socio ve en su resumen de Mercado Pago ("Cuota Kumo · plan
+ * FAMILIA"). Se manda cuando cambia el plan: sin eso el débito nuevo llega con el
+ * nombre del plan viejo, y un cargo que no coincide con lo que la persona contrató es
+ * exactamente el que se desconoce.
  */
-export async function actualizarMontoSuscripcion(id: string, monto: number): Promise<SuscripcionMP> {
+export async function actualizarMontoSuscripcion(id: string, monto: number, motivo?: string): Promise<SuscripcionMP> {
   try {
     return (await new PreApproval(cliente()).update({
       id,
-      body: { auto_recurring: { transaction_amount: monto, currency_id: 'ARS' } },
+      body: {
+        auto_recurring: { transaction_amount: monto, currency_id: 'ARS' },
+        ...(motivo ? { reason: motivo } : {}),
+      },
     })) as unknown as SuscripcionMP;
   } catch (e) {
     if (e instanceof MercadoPagoSinConfigurar) throw e;

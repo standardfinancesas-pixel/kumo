@@ -2125,6 +2125,8 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
 function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profile: Profile; planes: PlanVM[]; recargar: () => void; onClose: () => void; irABeneficios: () => void }) {
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
+  /** El aviso de "tu cuota cambió": no es un error ni una espera, ya está hecho. */
+  const [actualizado, setActualizado] = useState('');
   /** Se prende al volver del navegador: recién ahí tiene sentido esperar el aviso. */
   const [volviendoDeMP, setVolviendoDeMP] = useState(false);
   /*
@@ -2190,6 +2192,15 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
         ({ res, data } = await pedir(token));
       }
 
+      /* Cambió de plan con el débito ya autorizado: el servidor le cambió el monto en
+         Mercado Pago, así que no hay nada que ir a autorizar. Se lo dice acá, porque un
+         botón que no lleva a ninguna parte y no explica nada se lee como que falló. */
+      if (data.actualizada) {
+        setActualizado(`Listo: tu cuota pasa a $${Number(data.monto ?? 0).toLocaleString('es-AR')} por mes y se debita desde el próximo cobro. Nada que autorizar de nuevo.`);
+        setYendo(false);
+        recargar();
+        return;
+      }
       if (data.yaAutorizada) { setVolviendoDeMP(true); setYendo(false); recargar(); return; }
       if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir la suscripción.'); setYendo(false); return; }
       // Al volver del navegador la app recarga sola (AppState), y con esto la hoja
@@ -2213,6 +2224,12 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>{copy.titulo}</Text>
       <Text style={{ fontSize: 14, color: '#5b5670', lineHeight: 20, marginBottom: 16 }}>{copy.cuerpo}</Text>
 
+      {/* Cambió de plan y ya estaba autorizado: el cambio ya está hecho. */}
+      {actualizado ? (
+        <View style={{ backgroundColor: '#f0f7f1', borderRadius: 13, padding: 13, marginBottom: 14 }}>
+          <Text style={{ fontSize: 13, color: '#2f8f5b', lineHeight: 19 }}>{actualizado}</Text>
+        </View>
+      ) : null}
       {estado === 'listo' ? (
         <TouchableOpacity onPress={irABeneficios} activeOpacity={0.85} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{copy.cta} →</Text>

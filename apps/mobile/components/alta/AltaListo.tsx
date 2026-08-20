@@ -53,6 +53,9 @@ export default function AltaListo({
       setFueAMP(true);
       if ('ok' in r) { await Linking.openURL(r.initPoint); return; }
       if ('yaAutorizada' in r) { recargar(); return; }
+      /* En el alta no puede haber una suscripción vieja que actualizar, pero el tipo
+         la contempla: se trata igual que "ya autorizada" en vez de ignorarla. */
+      if ('actualizada' in r) { recargar(); return; }
       setError(r.error);
     })();
     return () => { vivo = false; };

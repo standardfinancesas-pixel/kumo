@@ -88,6 +88,9 @@ export async function pedirLinkDeClave(email: string): Promise<void> {
 export type RespuestaCobro =
   | { ok: true; initPoint: string }
   | { yaAutorizada: true }
+  /** Ya tenia el debito autorizado y solo cambio de plan: el servidor le cambio el
+   *  monto en Mercado Pago y no hay nada que ir a autorizar. */
+  | { actualizada: true; monto: number }
   | { error: string };
 
 /**
@@ -107,7 +110,7 @@ export async function crearSuscripcion(opts: { plan: string; odonto: boolean; de
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(opts),
     });
-    return { res, data: (await res.json().catch(() => ({}))) as { initPoint?: string; yaAutorizada?: boolean; error?: string } };
+    return { res, data: (await res.json().catch(() => ({}))) as { initPoint?: string; yaAutorizada?: boolean; actualizada?: boolean; monto?: number; error?: string } };
   };
 
   try {
@@ -123,6 +126,7 @@ export async function crearSuscripcion(opts: { plan: string; odonto: boolean; de
       intento = await pedir(token);
     }
 
+    if (intento.data.actualizada) return { actualizada: true, monto: intento.data.monto ?? 0 };
     if (intento.data.yaAutorizada) return { yaAutorizada: true };
     if (!intento.res.ok || !intento.data.initPoint) return { error: intento.data.error ?? 'No pudimos abrir la suscripción.' };
     return { ok: true, initPoint: intento.data.initPoint };

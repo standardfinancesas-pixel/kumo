@@ -150,6 +150,8 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
   const router = useRouter();
   const [yendo, setYendo] = useState(false);
   const [error, setError] = useState('');
+  /** El aviso de "tu cuota cambió": no es un error ni una espera, es que ya está hecho. */
+  const [actualizado, setActualizado] = useState('');
   const [volviendoDeMP, setVolviendoDeMP] = useState(false);
   const [intentos, setIntentos] = useState(0);
   /*
@@ -246,6 +248,18 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
         body: JSON.stringify({ plan: planSel, odonto }),
       });
       const data = await res.json();
+      /*
+       * Cambió de plan teniendo el débito ya autorizado: el servidor le cambió el
+       * monto en Mercado Pago y no hay nada que ir a autorizar. Se lo dice acá mismo,
+       * porque un botón de pagar que no lleva a ninguna parte y no explica nada se lee
+       * como que no funcionó.
+       */
+      if (data.actualizada) {
+        setActualizado(`Listo: tu cuota pasa a $${Number(data.monto).toLocaleString('es-AR')} por mes y se debita desde el próximo cobro. Nada que autorizar de nuevo.`);
+        setYendo(false);
+        router.refresh();
+        return;
+      }
       if (!res.ok || !data.initPoint) { setError(data.error ?? 'No pudimos abrir el pago.'); setYendo(false); return; }
       window.location.href = data.initPoint;
     } catch {
@@ -340,6 +354,7 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
               </div>
             ) : null}
             {error && <div style={{ background: 'rgb(253,242,242)', color: 'rgb(176,58,58)', border: '1px solid rgb(245,214,214)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, marginBottom: 14 }}>{error}</div>}
+            {actualizado && <div style={{ background: 'rgb(240,247,241)', color: 'rgb(47,143,91)', border: '1px solid rgb(214,235,220)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, lineHeight: 1.45, marginBottom: 14 }}>{actualizado}</div>}
             <button
               onClick={pagar}
               disabled={yendo || !planSel}

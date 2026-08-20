@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cuotaMensual, urls, SITIO } from '@kumo/shared';
 import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
-import { crearSuscripcion, traerSuscripcion, cancelarSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
+import { crearSuscripcion, traerSuscripcion, cancelarSuscripcion, actualizarMontoSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
 
 /**
  * La suscripción del socio que está pidiendo: el link para autorizar el débito
@@ -99,13 +99,44 @@ export async function POST(req: Request) {
         return NextResponse.json({ initPoint: `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_id=${vieja.id}`, reusada: true });
       }
       /*
-       * Cambió de plan o sumó el add-on, así que la suscripción vieja es por otro
-       * monto: se cancela antes de crear la nueva. Sin esto quedarían dos vivas y
-       * el socio terminaría con dos débitos por mes — el peor error posible acá.
+       * Cambió de plan o sumó el add-on: la suscripción vieja es por otro monto.
+       *
+       * Con una suscripción AUTORIZADA se le cambia el monto y listo, que es lo mismo
+       * que hace el club cuando cambia el precio de un plan (`/api/planes/precio`).
+       * Rige desde el próximo cobro y no le pide nada al socio.
+       *
+       * Antes acá se cancelaba la vieja y se creaba otra, y eso traía tres cosas que
+       * el socio no pidió: Mercado Pago debita al autorizar (medido: 18 segundos), así
+       * que cambiar de plan a mitad de mes era un segundo cobro en el mismo mes;
+       * cancelaba el débito ANTES de que autorizara el nuevo, así que abandonar el
+       * checkout lo dejaba sin suscripción; y lo obligaba a pasar otra vez por MP.
+       *
+       * Los días no se pierden en ninguno de los dos caminos: `acreditar_cuota` suma
+       * el mes desde `paid_until`, no desde hoy.
        */
-      if (!mismoMonto && (vieja.status === 'authorized' || vieja.status === 'pending')) {
+      if (!mismoMonto && vieja.status === 'authorized') {
+        try {
+          await actualizarMontoSuscripcion(vieja.id, monto, `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}`);
+          console.log('[pagos/crear] débito actualizado', vieja.id, '→', monto);
+          return NextResponse.json({ actualizada: true, monto, hasta: perfil.paid_until });
+        } catch (e) {
+          /*
+           * Si Mercado Pago no acepta el cambio, el único camino que queda es
+           * reemplazarla. Se cancela ACÁ y no antes: mientras el update tenga chance,
+           * el socio conserva su débito.
+           */
+          console.error('[pagos/crear] no pudimos actualizar el monto, se reemplaza', vieja.id, e);
+          await cancelarSuscripcion(vieja.id);
+        }
+      }
+      /*
+       * Una suscripción PENDIENTE nunca cobró nada, así que reemplazarla no le cuesta
+       * nada al socio: se cancela y se crea con el monto nuevo. Y hay que hacerlo, o
+       * quedarían dos vivas y terminaría con dos débitos por mes.
+       */
+      if (!mismoMonto && vieja.status === 'pending') {
         await cancelarSuscripcion(vieja.id);
-        console.log('[pagos/crear] cancelada la suscripción', vieja.id, 'por cambio de monto');
+        console.log('[pagos/crear] cancelada la suscripción pendiente', vieja.id, 'por cambio de monto');
       }
     } catch (e) {
       // Si no se pudo consultar, se sigue: es peor dejarlo sin poder suscribirse.
