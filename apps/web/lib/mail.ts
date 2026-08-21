@@ -77,14 +77,20 @@ async function whatsappDelClub(): Promise<string> {
 const TIPO_TITULO = "'Baloo 2','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
 const TIPO_TEXTO = "'DM Sans','Segoe UI',Helvetica,Arial,sans-serif";
 /**
- * El isotipo, servido desde el sitio.
+ * El logo del mail: el isotipo Y la palabra "Kumo", en una sola imagen.
  *
- * Va desde `/mail/` y no desde la ruta de ícono que genera Next: esa lleva un hash
- * que cambia entre builds, y un mail de hace seis meses tiene que seguir mostrando
- * el logo. Los clientes que bloquean imágenes muestran el `alt`, así que el header
- * se sigue leyendo sin ella.
+ * La palabra va dentro de la imagen y no como texto porque si no, no es la misma
+ * marca que la web: ahí "Kumo" está en Baloo 2 800 (ver LandingClient) y en el mail
+ * saldría en la pila de respaldo. Está dibujada con la Baloo 2 que sirve el sitio,
+ * al doble de tamaño para las pantallas densas, y el fondo es transparente para que
+ * el violeta lo siga poniendo el header.
+ *
+ * Se sirve desde `/mail/` y no desde la ruta de ícono que genera Next: esa lleva un
+ * hash que cambia entre builds, y un mail de hace seis meses tiene que seguir
+ * mostrando el logo. `kumo-isotipo.png` queda al lado, sin usarse acá, porque es de
+ * donde salió el isotipo y los mails que ya salieron lo piden por URL.
  */
-const LOGO = `${SITE}/mail/kumo-isotipo.png`;
+const LOGO = `${SITE}/mail/kumo-logo-mail.png`;
 
 /** Envoltorio común: tablas y estilos en línea, que es lo que los clientes de
  *  mail renderizan de forma consistente. */
@@ -101,16 +107,10 @@ function layout(titulo: string, cuerpo: string, wa: string, cta?: { label: strin
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;">
         <tr><td style="background:${BRAND};padding:20px 26px;">
-          <!-- El logo y el nombre en una tabla y no con flex: en mail, flex no existe. -->
-          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
-            <td style="padding-right:12px;" valign="middle">
-              <img src="${LOGO}" width="44" height="44" alt="Kumo" style="display:block;width:44px;height:44px;border:0;border-radius:11px;" />
-            </td>
-            <td valign="middle">
-              <div style="font-family:${TIPO_TITULO};color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.3px;line-height:1.1;">Kumo</div>
-              <div style="color:#c9c3e3;font-size:12.5px;line-height:1.3;">el club de tu mascota</div>
-            </td>
-          </tr></table>
+          <!-- El estilo del img es para cuando la imagen NO carga: el cliente pinta el
+               texto del alt con estas reglas, y el header sigue diciendo Kumo en grande. -->
+          <img src="${LOGO}" width="124" height="40" alt="Kumo" style="display:block;width:124px;height:40px;border:0;font-family:${TIPO_TITULO};color:#ffffff;font-size:24px;font-weight:800;" />
+          <div style="margin-top:8px;color:#c9c3e3;font-size:12.5px;line-height:1.3;">el club de tu mascota</div>
         </td></tr>
         <tr><td style="padding:26px;">
           ${cuerpo}
