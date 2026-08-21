@@ -693,7 +693,13 @@ create policy "ajustes visibles"   on club_settings for select using (true);
 -- la anon key: el catálogo que el club negoció con los comercios estaba abierto.
 create policy "beneficios del socio con plan" on benefits for select
   using ((status = 'activo' and tiene_acceso() and tiene_plan_pago()) or is_admin());
-create policy "prestadores visibles" on providers for select using (status = 'verificado' or is_admin() or owner_id = auth.uid());
+-- El directorio se lee CON SESIÓN: la anon key va en el bundle del navegador, así
+-- que con ella cualquiera se bajaba los prestadores con teléfono y dirección sin
+-- ser socio. El corte es `tiene_acceso()` y no `tiene_plan_pago()`, porque
+-- Servicios es gratis para el socio; `is_admin()` va aparte porque el panel
+-- necesita ver además los pendientes y los rechazados.
+create policy "prestadores visibles" on providers for select
+  using ((status = 'verificado' and tiene_acceso()) or is_admin() or owner_id = auth.uid());
 
 -- Perfiles: cada quien ve/edita el suyo; admin ve todo
 -- El socio suspendido o de baja SÍ puede leer su perfil: es lo que la portada
@@ -756,23 +762,26 @@ create policy "reintegros del socio - insert" on reimbursements for insert
   with check (member_id = auth.uid() and tiene_acceso() and tiene_plan_pago());
 create policy "reintegros - admin update" on reimbursements for update using (is_admin());
 
--- Comunidad: lectura pública (el foro se ve sin cuenta), escritura solo del que
--- tiene acceso; admin modera
-create policy "posts visibles"  on community_posts for select using (true);
+-- Comunidad: se lee y se escribe con sesión; el admin modera.
+--
+-- La lectura era pública ("el foro se ve sin cuenta") y se cerró: un posteo lleva
+-- el nombre del autor, su zona y a veces la dirección de una mascota perdida, y con
+-- la anon key —que es pública por diseño— eso se leía sin tener cuenta.
+create policy "posts visibles"  on community_posts for select using (tiene_acceso());
 create policy "posts crear"     on community_posts for insert with check (author_id = auth.uid() and tiene_acceso());
 create policy "posts editar"    on community_posts for update using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "posts borrar"    on community_posts for delete using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
-create policy "respuestas visibles" on community_answers for select using (true);
+create policy "respuestas visibles" on community_answers for select using (tiene_acceso());
 create policy "respuestas crear"    on community_answers for insert with check (author_id = auth.uid() and tiene_acceso());
 create policy "respuestas moderar"  on community_answers for update using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
 -- Sin política de delete nadie borra: la respuesta propia quedaba para siempre.
 create policy "respuestas borrar"   on community_answers for delete using ((author_id = auth.uid() and tiene_acceso()) or is_admin());
 
--- Likes: se cuentan en público, cada socio maneja los suyos
-create policy "likes visibles" on post_likes for select using (true);
+-- Likes: se cuentan para quien entró al club, y cada socio maneja los suyos.
+create policy "likes visibles" on post_likes for select using (tiene_acceso());
 create policy "like propio"    on post_likes for all
   using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
-create policy "likes de respuesta visibles" on answer_likes for select using (true);
+create policy "likes de respuesta visibles" on answer_likes for select using (tiene_acceso());
 create policy "like de respuesta propio"    on answer_likes for all
   using (member_id = auth.uid() and tiene_acceso()) with check (member_id = auth.uid() and tiene_acceso());
 
