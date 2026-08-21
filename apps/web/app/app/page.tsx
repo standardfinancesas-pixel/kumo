@@ -205,7 +205,7 @@ export default async function Page() {
     { data: contactRows },
     { data: providerRows },
     { data: reviewRows },
-    { data: negocioRow },
+    { data: negocioRows },
     { data: benefitRows },
     { data: postRows },
     { data: postLikeRows },
@@ -241,14 +241,17 @@ export default async function Page() {
       .from('provider_reviews')
       .select('id, provider_id, member_id, rating, text, author_name, created_at')
       .order('created_at', { ascending: false }),
-    // El negocio propio del socio, si dio de alta uno. Va aparte de `providers`
-    // porque ese listado solo trae los verificados y acá interesa verlo aunque
-    // esté pendiente o lo hayan rechazado.
+    /* Los negocios propios del socio. Van aparte de `providers` porque ese listado
+       solo trae los verificados y acá interesan aunque estén pendientes o rechazados.
+
+       Son VARIOS: un socio puede tener un servicio y un comercio. Antes esto era un
+       `maybeSingle()`, que con dos filas del mismo dueño no devuelve una: devuelve
+       error, así que la pantalla Mi negocio se rompía en vez de mostrar de menos. */
     supabase
       .from('providers')
       .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website, photo_url, logo_url')
       .eq('owner_id', auth.user.id)
-      .maybeSingle(),
+      .order('created_at', { ascending: true }),
     supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
     supabase
       .from('community_posts')
@@ -413,19 +416,17 @@ export default async function Page() {
     });
   }
 
-  const negocio: MiNegocio | null = negocioRow
-    ? {
-        id: negocioRow.id, name: negocioRow.name, category: negocioRow.category, zone: negocioRow.zone,
-        address: negocioRow.address,
-        phone: negocioRow.phone, about: negocioRow.about, status: negocioRow.status,
-        rating: negocioRow.rating, reviews: negocioRow.reviews,
-        price: negocioRow.price, priceUnit: negocioRow.price_unit, instagram: negocioRow.instagram, website: negocioRow.website,
-        // Por `imgSrc` y no crudo: las fotos del seed se guardan como nombre de
-        // archivo, y en un url() de CSS un nombre suelto no resuelve a nada.
-        photoUrl: negocioRow.photo_url ? imgSrc(negocioRow.photo_url) : null,
-        logoUrl: negocioRow.logo_url ? imgSrc(negocioRow.logo_url) : null,
-      }
-    : null;
+  const negocios: MiNegocio[] = (negocioRows ?? []).map((n) => ({
+    id: n.id, name: n.name, category: n.category, zone: n.zone,
+    address: n.address,
+    phone: n.phone, about: n.about, status: n.status,
+    rating: n.rating, reviews: n.reviews,
+    price: n.price, priceUnit: n.price_unit, instagram: n.instagram, website: n.website,
+    // Por `imgSrc` y no crudo: las fotos del seed se guardan como nombre de
+    // archivo, y en un url() de CSS un nombre suelto no resuelve a nada.
+    photoUrl: n.photo_url ? imgSrc(n.photo_url) : null,
+    logoUrl: n.logo_url ? imgSrc(n.logo_url) : null,
+  }));
 
   const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow, desde));
   const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
@@ -445,11 +446,11 @@ export default async function Page() {
     reintegros: ((reintRows ?? []) as ReintRow[]).map((r) => ({
       id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
     })),
-    negocio: negocioRow ? { name: negocioRow.name, status: negocioRow.status, createdAt: negocioRow.created_at } : null,
+    negocios: (negocioRows ?? []).map((n) => ({ id: n.id, name: n.name, status: n.status, createdAt: n.created_at })),
   };
 
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
 }

@@ -162,14 +162,21 @@ export type Reimbursement = {
   flag: string | null; // ej: "Revisar tope"
 };
 
-export type ProviderCategory =
-  | 'Paseador'
-  | 'Guardería'
-  | 'Adiestrador'
-  | 'Baño y estética'
-  | 'Cuidador'
-  | 'Veterinaria'
-  | 'Otros';
+/**
+ * Los rubros de un prestador, que es lo mismo que decir de un negocio: un paseador
+ * y una veterinaria van a la misma tabla y a la misma sección Servicios.
+ *
+ * Vive acá y no en cada pantalla porque estaba escrito dos veces —webapp y app— y
+ * las dos listas tenían CINCO de los siete que el tipo ya contemplaba: Veterinaria y
+ * Otros existían en el tipo y no se podían elegir en ninguna parte, así que un
+ * comercio que no fuera uno de los cinco no tenía dónde encajar.
+ *
+ * El tipo se deriva de la lista: agregar un rubro es una línea y no se pueden
+ * desincronizar. En la base `category` es texto libre, así que no hace falta
+ * migración para sumar uno.
+ */
+export const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador', 'Veterinaria', 'Otros'] as const;
+export type ProviderCategory = (typeof RUBROS)[number];
 
 export type ProviderStatus = 'pendiente' | 'verificado' | 'rechazado';
 

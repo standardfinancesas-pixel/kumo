@@ -67,7 +67,8 @@ export function notifTiempo(iso: string): string {
 export type NotifInput = {
   pets: { name: string; vaccines: { id: string; name: string; kind?: string; status: string; dueOn: string | null }[] }[];
   reintegros: { id: string; providerName: string; refund: number; status: string; createdAt: string; resolvedAt: string | null }[];
-  negocio: { name: string; status: string; createdAt: string } | null;
+  /** Los negocios del socio. Son varios: puede tener un servicio y un comercio. */
+  negocios: { id: string; name: string; status: string; createdAt: string }[];
 };
 
 /**
@@ -131,10 +132,15 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
     }
   }
 
-  if (input.negocio?.status === 'verificado') {
-    items.push({ id: 'negocio-ok', kind: 'negocio-ok', title: '¡Tu negocio fue aprobado! 🎉', body: `"${input.negocio.name}" ya está publicado en Servicios. Los socios pueden verte y contactarte.`, date: input.negocio.createdAt, to: 'minegocio' });
-  } else if (input.negocio?.status === 'pendiente') {
-    items.push({ id: 'negocio-rev', kind: 'negocio-revision', title: 'Tu negocio está en revisión', body: `Estamos validando los datos de "${input.negocio.name}". Te avisamos cuando quede publicado.`, date: input.negocio.createdAt, to: 'minegocio' });
+  /* Uno por negocio: el socio puede tener varios, y con un aviso solo el segundo
+     quedaba sin noticias. El id lleva el id del negocio porque si no, dos avisos del
+     mismo estado colisionan en la lista. */
+  for (const n of input.negocios) {
+    if (n.status === 'verificado') {
+      items.push({ id: `negocio-ok-${n.id}`, kind: 'negocio-ok', title: '¡Tu negocio fue aprobado! 🎉', body: `"${n.name}" ya está publicado en Servicios. Los socios pueden verte y contactarte.`, date: n.createdAt, to: 'minegocio' });
+    } else if (n.status === 'pendiente') {
+      items.push({ id: `negocio-rev-${n.id}`, kind: 'negocio-revision', title: 'Tu negocio está en revisión', body: `Estamos validando los datos de "${n.name}". Te avisamos cuando quede publicado.`, date: n.createdAt, to: 'minegocio' });
+    }
   }
 
   items.sort((a, b) => asDate(b.date).getTime() - asDate(a.date).getTime());

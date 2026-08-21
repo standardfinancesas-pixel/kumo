@@ -102,8 +102,8 @@ export type KumoData = {
    *  resolver (y ahí `etiqueta` es null, porque el Obelisco no es la casa de nadie). */
   centro: { lat: number; lng: number; etiqueta: string | null };
   contacts: EmergencyContact[];
-  /** El negocio propio, si dio de alta uno. Puede estar pendiente o rechazado, así que no sale del listado de verificados. */
-  negocio: MiNegocio | null;
+  /** Los negocios propios. Pueden estar pendientes o rechazados, así que no salen del listado de verificados. */
+  negocios: MiNegocio[];
   /** Materia prima de las notificaciones: la lista la arma `buildNotifs` de @kumo/shared, igual que la webapp. */
   notifInput: NotifInput;
   /** Ids de los prestadores guardados (el corazón de la ficha y "Mis guardados"). */
@@ -218,7 +218,10 @@ export function useKumoData(userId: string | null) {
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
-      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at, photo_url, logo_url').eq('owner_id', userId).maybeSingle(),
+      /* Son VARIOS: un socio puede tener un servicio y un comercio. Antes esto era
+         un maybeSingle(), que con dos filas del mismo dueño no devuelve una:
+         devuelve error, así que Mi negocio se rompía en vez de mostrar de menos. */
+      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at, photo_url, logo_url').eq('owner_id', userId).order('created_at', { ascending: true }),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
       supabase.from('post_likes').select('post_id').eq('member_id', userId),
@@ -405,10 +408,10 @@ export function useKumoData(userId: string | null) {
         })),
     }));
 
-    const n = negocioRes.data;
-    const negocio: MiNegocio | null = n
-      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews, photo: n.photo_url, logo: n.logo_url }
-      : null;
+    const negocios: MiNegocio[] = (negocioRes.data ?? []).map((n) => ({
+      id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone,
+      status: n.status, rating: n.rating, reviews: n.reviews, photo: n.photo_url, logo: n.logo_url,
+    }));
 
     const notifInput: NotifInput = {
       pets: (petsRes.data ?? []).map((row) => ({
@@ -418,7 +421,7 @@ export function useKumoData(userId: string | null) {
       reintegros: (reintRes.data ?? []).map((r) => ({
         id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
       })),
-      negocio: n ? { name: n.name, status: n.status, createdAt: n.created_at } : null,
+      negocios: (negocioRes.data ?? []).map((n) => ({ id: n.id, name: n.name, status: n.status, createdAt: n.created_at })),
     };
 
     const guardados: string[] = (favRes.data ?? []).map((f) => f.provider_id);
@@ -468,7 +471,7 @@ export function useKumoData(userId: string | null) {
         detalle: p.method === 'manual' ? p.detail : null,
       }));
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocio, notifInput, guardados, reviews, misLikes, centro: { lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) } });
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocios, notifInput, guardados, reviews, misLikes, centro: { lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) } });
     setLoading(false);
   }, [userId]);
 

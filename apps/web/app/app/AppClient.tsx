@@ -4,7 +4,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, partirZona, avisoZonaLejos,
+  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
@@ -1338,9 +1338,14 @@ const RUBRO_ICONS: Record<string, ReactNode> = {
   Adiestrador: <><path d="M22 9 12 5 2 9l10 4 10-4z" /><path d="M6 11v5c0 1.3 2.7 3 6 3s6-1.7 6-3v-5" /></>,
   'Baño y estética': <path d="M12 3s6 5.7 6 10a6 6 0 0 1-12 0c0-4.3 6-10 6-10z" />,
   Cuidador: person,
+  // Los dos que el tipo ya contemplaba y ninguna pantalla ofrecía.
+  Veterinaria: <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M12 8v8M8 12h8" /></>,
+  Otros: <><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>,
 };
 
-function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: Profile; negocio: MiNegocio | null }) {
+/* Ya no frena si el socio tiene uno: puede tener varios —un servicio y un
+   comercio—, y el alta se cerraba con "Ya tenés un negocio". */
+function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile }) {
   const router = useRouter();
   const [rubro, setRubro] = useState<string>(RUBROS[0]!);
   const [nombre, setNombre] = useState('');
@@ -1371,16 +1376,6 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
   const [enviado, setEnviado] = useState(false);
 
   // Si ya tiene un negocio, no hay alta que hacer: se lo manda a verlo.
-  if (negocio && !enviado) {
-    return (
-      <div style={{ padding: '8px 20px 24px' }}>
-        <button onClick={() => go('servicios')} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 6 }}>← Servicios</button>
-        <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 2 }}>Ya tenés un negocio</div>
-        <p style={{ color: 'rgb(135,129,160)', fontSize: 14, margin: '0 0 18px' }}>Diste de alta &quot;{negocio.name}&quot;. Podés ver su estado y sus datos desde Mi negocio.</p>
-        <button onClick={() => go('negocio')} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Ir a Mi negocio</button>
-      </div>
-    );
-  }
 
   /** Valida y previsualiza. Una sola función para las dos: mismos formatos, mismo
    *  máximo, y así no se separan por descuido. */
@@ -2537,13 +2532,31 @@ function Foros({ initialPosts, profile, misLikes }: { initialPosts: ForumPost[];
 }
 
 /* ── Pantalla: Mi negocio ──────────────────────────────────────── */
-const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'];
 
-function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void; negocio: MiNegocio | null; profile: Profile; misReviews: Review[] }) {
+
+/**
+ * Mis negocios. Son VARIOS a proposito: un socio puede tener un servicio y un
+ * comercio, y hasta ahora el alta se frenaba con "Ya tenes un negocio".
+ *
+ * Con uno solo la pantalla se ve igual que antes —no hay lista de un elemento—; la
+ * lista aparece recien con el segundo.
+ */
+/** El estado del negocio como lo lee su dueño, con el tono del panel. */
+function textoEstadoNegocio(status: string): string {
+  return status === 'verificado' ? 'Publicado' : status === 'rechazado' ? 'Rechazado' : 'En revisión';
+}
+function estadoNegocio(status: string): CSSProperties {
+  const tono = status === 'verificado' ? { background: 'rgb(226,245,234)', color: 'rgb(47,143,91)' }
+    : status === 'rechazado' ? { background: 'rgb(251,232,239)', color: 'rgb(193,77,122)' }
+    : { background: 'rgb(251,243,226)', color: 'rgb(146,105,10)' };
+  return { ...tono, fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 100, whiteSpace: 'nowrap', flex: 'none' };
+}
+function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => void; negocios: MiNegocio[]; profile: Profile; misReviews: Review[] }) {
   const router = useRouter();
+  const [selId, setSelId] = useState<string | null>(null);
   const [showAlta, setShowAlta] = useState(false);
   const [nombre, setNombre] = useState('');
-  const [rubro, setRubro] = useState(RUBROS[0]!);
+  const [rubro, setRubro] = useState<string>(RUBROS[0]!);
   const [zona, setZona] = useState('');
   /** La dirección es opcional y es lo único que lo pone en el mapa: ver el aviso
    *  debajo del campo y  en lib/geocodificar. */
@@ -2564,14 +2577,31 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
   /** Cuál se está subiendo, para poner el cartel encima de ESA caja y no de las dos. */
   const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [fotoError, setFotoError] = useState('');
-  // Datos editables del negocio publicado.
+  /**
+   * El negocio abierto. Con uno solo es ese; con varios, el que se toca en la lista.
+   *
+   * Se busca por id contra la lista fresca y no se guarda el objeto: así después de
+   * subir una foto o guardar cambios, lo que se ve es lo que quedó en la base.
+   */
+  const negocio = negocios.find((n) => n.id === selId) ?? (negocios.length === 1 ? negocios[0]! : null);
+
+  // Datos editables del negocio publicado. Arrancan vacíos y los carga `abrirEdicion`
+  // con los del negocio que se está editando: un `useState` con valores iniciales se
+  // queda con los del primer render, que con varios negocios es el equivocado.
   const [ed, setEd] = useState({
-    name: negocio?.name ?? '', category: negocio?.category ?? RUBROS[0]!, zone: negocio?.zone ?? '',
-    address: negocio?.address ?? '',
-    phone: negocio?.phone ?? '', about: negocio?.about ?? '',
-    price: negocio?.price ? String(negocio.price) : '', priceUnit: negocio?.priceUnit ?? '',
-    instagram: negocio?.instagram ?? '', website: negocio?.website ?? '',
+    name: '', category: RUBROS[0]! as string, zone: '', address: '',
+    phone: '', about: '', price: '', priceUnit: '', instagram: '', website: '',
   });
+  const abrirEdicion = (n: MiNegocio) => {
+    setEd({
+      name: n.name, category: n.category, zone: n.zone, address: n.address ?? '',
+      phone: n.phone ?? '', about: n.about,
+      price: n.price ? String(n.price) : '', priceUnit: n.priceUnit ?? '',
+      instagram: n.instagram ?? '', website: n.website ?? '',
+    });
+    setError('');
+    setEditOpen(true);
+  };
 
   /** El logo o la portada del negocio: se suben y se guardan en el acto, igual que
    *  la foto de la mascota. Antes la portada solo se podía elegir en el alta larga y
@@ -2618,8 +2648,12 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
 
   // El estado sale del negocio real, no de un switch: sin negocio, esperando la
   // validación del club, publicado, o rechazado.
-  const state: 'sin' | 'revision' | 'activo' | 'rechazado' =
-    !negocio ? 'sin' : negocio.status === 'verificado' ? 'activo' : negocio.status === 'rechazado' ? 'rechazado' : 'revision';
+  const state: 'sin' | 'lista' | 'revision' | 'activo' | 'rechazado' =
+    negocios.length === 0 ? 'sin'
+      : !negocio ? 'lista'
+      : negocio.status === 'verificado' ? 'activo'
+      : negocio.status === 'rechazado' ? 'rechazado'
+      : 'revision';
 
   const enviarAlta = async (e: FormEvent) => {
     e.preventDefault();
@@ -2669,10 +2703,64 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     </div>
   );
 
+  /* El formulario del alta, en una constante: se usa en dos lugares —la tarjeta de
+     "todavia no tenes ninguno" y el boton "dar de alta otro" de la lista— y
+     duplicar veinte inputs es garantia de que se separen. */
+  const formAlta = showAlta ? (
+  <form onSubmit={enviarAlta} style={{ marginTop: 18, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 10, animation: 'kpop 0.2s ease' }}>
+    <input value={nombre} onChange={(e) => { setNombre(e.target.value); setError(''); }} placeholder="Nombre de tu negocio" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+    <select value={rubro} onChange={(e) => setRubro(e.target.value)} style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }}>
+      {RUBROS.map((r) => <option key={r}>{r}</option>)}
+    </select>
+    <CampoZona valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
+    <CampoDomicilio valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
+    <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+    {/* La dirección es lo único que lo pone en el mapa; sin ella el
+        negocio aparece en la lista pero sin distancia ni pin. */}
+    <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+    <input value={sitio} onChange={(e) => setSitio(e.target.value)} placeholder="Sitio web (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+    <div style={{ display: 'flex', gap: 8 }}>
+      <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="Tarifa (opcional)" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+      <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+    </div>
+    <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</p>
+    {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
+    <button type="submit" disabled={busy} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
+  </form>
+  ) : null;
+
   return (
     <div style={{ padding: '8px 20px 24px' }}>
-      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Mi negocio</div>
+      {/* Volver a la lista solo tiene sentido si hay una lista: con un negocio la
+          pantalla es la de siempre. */}
+      {negocio && negocios.length > 1 && (
+        <button onClick={() => setSelId(null)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '0 0 6px' }}>← Mis negocios</button>
+      )}
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>{negocios.length > 1 && !negocio ? 'Mis negocios' : 'Mi negocio'}</div>
       <div style={{ color: 'rgb(135,129,160)', fontSize: 14, marginBottom: 18 }}>Ofrecé tus servicios a la comunidad de Kumo.</div>
+
+      {/* La lista. Aparece con el segundo negocio: con uno la pantalla va directo a
+          su ficha, que es lo que había antes. */}
+      {state === 'lista' && (
+        <div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+            {negocios.map((n) => (
+              <button key={n.id} className="wa-card" onClick={() => setSelId(n.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 14, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
+                <div style={{ width: 46, height: 46, borderRadius: 14, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)', background: (n.logoUrl ?? n.photoUrl) ? `url(${n.logoUrl ?? n.photoUrl}) center/cover` : 'rgb(240,237,249)' }}>
+                  {!(n.logoUrl ?? n.photoUrl) && ic(RUBRO_ICONS[n.category] ?? paw, n.category === 'Paseador', 22)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{n.name}</div>
+                  <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)' }}>{n.category} · {n.zone}</div>
+                </div>
+                <span style={estadoNegocio(n.status)}>{textoEstadoNegocio(n.status)}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setShowAlta((s) => !s)} style={{ ...sheetBtn(false), width: '100%' }}>+ Dar de alta otro negocio</button>
+          {formAlta}
+        </div>
+      )}
 
       {state === 'sin' && (
         <div>
@@ -2683,28 +2771,7 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1.15 }}>¿Ofrecés un servicio para mascotas?</div>
             <p style={{ color: 'rgb(122,117,146)', fontSize: 14, lineHeight: 1.55, margin: '10px auto 20px', maxWidth: 460 }}>Dá de alta tu negocio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</p>
             <button onClick={() => setShowAlta((s) => !s)} style={{ display: 'inline-block', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 14, cursor: 'pointer' }}>Dar de alta mi negocio →</button>
-            {showAlta && (
-              <form onSubmit={enviarAlta} style={{ marginTop: 18, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 10, animation: 'kpop 0.2s ease' }}>
-                <input value={nombre} onChange={(e) => { setNombre(e.target.value); setError(''); }} placeholder="Nombre de tu negocio" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <select value={rubro} onChange={(e) => setRubro(e.target.value)} style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }}>
-                  {RUBROS.map((r) => <option key={r}>{r}</option>)}
-                </select>
-                <CampoZona valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
-                <CampoDomicilio valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
-                <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                {/* La dirección es lo único que lo pone en el mapa; sin ella el
-                    negocio aparece en la lista pero sin distancia ni pin. */}
-                <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <input value={sitio} onChange={(e) => setSitio(e.target.value)} placeholder="Sitio web (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="Tarifa (opcional)" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                  <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-                </div>
-                <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</p>
-                {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
-                <button type="submit" disabled={busy} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
-              </form>
-            )}
+            {formAlta}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {['Miles de socios buscando tu servicio', 'Sello "Verificado por Kumo"', 'Reseñas y contactos en un solo lugar'].map((t) => (
@@ -2795,7 +2862,7 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <button onClick={() => setEditOpen(true)} style={{ ...sheetBtn(true), width: '100%', fontSize: 14 }}>Editar datos</button>
+            <button onClick={() => negocio && abrirEdicion(negocio)} style={{ ...sheetBtn(true), width: '100%', fontSize: 14 }}>Editar datos</button>
             <button onClick={() => go('servicios')} style={{ ...sheetBtn(false), width: '100%', fontSize: 14 }}>Ver perfil público</button>
             <button onClick={() => setBajaOpen(true)} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Dar de baja mi negocio</button>
           </div>
@@ -2886,6 +2953,15 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
           <button onClick={darDeBaja} disabled={busy} style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', border: 'none', fontWeight: 700, fontSize: 14, padding: 13, borderRadius: 12, cursor: busy ? 'default' : 'pointer', width: '100%', opacity: busy ? 0.6 : 1 }}>{busy ? 'Borrando…' : 'Borrar la solicitud'}</button>
         </div>
       )}
+
+      {/* Con un solo negocio no hay lista donde poner este botón, así que va acá:
+          sin esto, el que ya tiene uno no tendría por dónde dar de alta el segundo. */}
+      {negocio && (
+        <div style={{ marginTop: 18 }}>
+          <button onClick={() => setShowAlta((s) => !s)} style={{ ...sheetBtn(false), width: '100%' }}>+ Dar de alta otro negocio</button>
+          {formAlta}
+        </div>
+      )}
     </div>
   );
 }
@@ -2898,7 +2974,7 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
  *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
  *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
  *  "Cambiar" plan te sacaba a la landing. */
-function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, pagos, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocio: MiNegocio | null; cuota: CuotaVM; pago: boolean; pagos: PagoVM[]; onPlan: () => void }) {
+function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pagos, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocios: MiNegocio[]; cuota: CuotaVM; pago: boolean; pagos: PagoVM[]; onPlan: () => void }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2965,10 +3041,12 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, pag
   );
   const inputEdit = { ...sheetInput, padding: '10px 12px', fontSize: 13.5, marginBottom: 8 };
 
-  const negocioHint = !negocio ? 'Ofrecé tu servicio en Kumo'
-    : negocio.status === 'verificado' ? `${negocio.name} · publicado`
-    : negocio.status === 'rechazado' ? `${negocio.name} · no aprobado`
-    : `${negocio.name} · en revisión`;
+  /* Con varios la fila no puede nombrarlos a todos: dice cuántos y cuántos están
+     publicados, que es lo que se quiere saber de un vistazo. */
+  const uno = negocios.length === 1 ? negocios[0]! : null;
+  const negocioHint = negocios.length === 0 ? 'Ofrecé tu servicio en Kumo'
+    : uno ? `${uno.name} · ${textoEstadoNegocio(uno.status).toLowerCase()}`
+    : `${negocios.length} negocios · ${negocios.filter((n) => n.status === 'verificado').length} publicados`;
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
@@ -3781,7 +3859,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -3852,13 +3930,13 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
-          {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
+          {pantalla === 'prestar' && <Prestar go={go} profile={profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} profile={profile} />}
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
-          {pantalla === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
+          {pantalla === 'negocio' && <Negocio go={go} negocios={negocios} profile={profile} misReviews={negocios.flatMap((n) => reviews[n.id] ?? [])} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
-          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocio={negocio} cuota={cuota} pago={pago} pagos={pagos} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocios={negocios} cuota={cuota} pago={pago} pagos={pagos} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>

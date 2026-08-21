@@ -7,7 +7,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  colors, PROVINCIAS, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
+  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -2166,10 +2166,14 @@ function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[];
  *  grilla con íconos. Antes el botón de Servicios no hacía nada. */
 const RUBRO_IC: Record<string, IconName> = {
   Paseador: 'paw', Guardería: 'house', Adiestrador: 'idcard', 'Baño y estética': 'droplet', Cuidador: 'person',
+  // Los dos que el tipo ya contemplaba y ninguna pantalla ofrecía.
+  Veterinaria: 'hospital', Otros: 'store',
 };
 
-function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { userId: string; phone: string; negocio: MiNegocio | null; onVolver: () => void; onNegocio: () => void; reload: () => void }) {
-  const [rubro, setRubro] = useState(RUBROS[0]!);
+/* Ya no frena si el socio tiene uno: puede tener varios —un servicio y un comercio—,
+   y el alta se cerraba con "Ya tenés un negocio". */
+function Prestar({ userId, phone, onVolver, onNegocio, reload }: { userId: string; phone: string; onVolver: () => void; onNegocio: () => void; reload: () => void }) {
+  const [rubro, setRubro] = useState<ProviderCategory>(RUBROS[0]!);
   const [nombre, setNombre] = useState('');
   const [zona, setZona] = useState('');
   /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
@@ -2192,19 +2196,6 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [enviado, setEnviado] = useState(false);
-
-  if (negocio && !enviado) {
-    return (
-      <ScrollView contentContainerStyle={styles.screen}>
-        <TouchableOpacity onPress={onVolver} style={{ paddingVertical: 6, marginBottom: 6 }}><Text style={{ color: BRAND, fontWeight: '600', fontSize: 14 }}>← Servicios</Text></TouchableOpacity>
-        <H1>Ya tenés un negocio</H1>
-        <Sub>Diste de alta &quot;{negocio.name}&quot;. Podés ver su estado desde Mi negocio.</Sub>
-        <TouchableOpacity onPress={onNegocio} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ir a Mi negocio</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    );
-  }
 
   if (enviado) {
     return (
@@ -2700,14 +2691,21 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: N
 }
 
 /* ── Sub-pantalla: Mi negocio ──────────────────────────────────── */
-const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador'];
 
-function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null; userId: string; phone: string; reload: () => void }) {
+/**
+ * Mis negocios. Son VARIOS a propósito: un socio puede tener un servicio y un
+ * comercio, y hasta ahora el alta se frenaba con "Ya tenés un negocio".
+ *
+ * Con uno solo la pantalla se ve igual que antes —no hay lista de un elemento—; la
+ * lista aparece recién con el segundo.
+ */
+function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; userId: string; phone: string; reload: () => void }) {
+  const [selId, setSelId] = useState<string | null>(null);
   const [showAlta, setShowAlta] = useState(false);
   /** Cuál se está subiendo, para poner el cartel en ESA caja y no en las dos. */
   const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [nombre, setNombre] = useState('');
-  const [rubro, setRubro] = useState(RUBROS[0]!);
+  const [rubro, setRubro] = useState<ProviderCategory>(RUBROS[0]!);
   const [zona, setZona] = useState('');
   /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
   const [direccion, setDireccion] = useState('');
@@ -2732,10 +2730,9 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
    * base que lo impide igual.
    */
   const [editOpen, setEditOpen] = useState(false);
-  const [ed, setEd] = useState({ name: '', category: RUBROS[0]!, zone: '', address: '', phone: '', about: '', price: '', priceUnit: '', instagram: '', website: '' });
+  const [ed, setEd] = useState<{ name: string; category: ProviderCategory; zone: string; address: string; phone: string; about: string; price: string; priceUnit: string; instagram: string; website: string }>({ name: '', category: RUBROS[0]!, zone: '', address: '', phone: '', about: '', price: '', priceUnit: '', instagram: '', website: '' });
 
-  const abrirEdicion = async () => {
-    if (!negocio) return;
+  const abrirEdicion = async (negocio: MiNegocio) => {
     setError('');
     // Los valores crudos de la base: la tarjeta no trae `about` ni las tarifas.
     const { data } = await supabase
@@ -2794,8 +2791,16 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
   };
 
   // El estado sale del negocio real, no de un selector de demo.
-  const state: 'sin' | 'revision' | 'activo' | 'rechazado' =
-    !negocio ? 'sin' : negocio.status === 'verificado' ? 'activo' : negocio.status === 'rechazado' ? 'rechazado' : 'revision';
+  /* El negocio abierto: con uno solo es ese, con varios el que se toca en la lista.
+     Se busca por id contra la lista fresca y no se guarda el objeto, así después de
+     guardar cambios se ve lo que quedó en la base. */
+  const negocio = negocios.find((n) => n.id === selId) ?? (negocios.length === 1 ? negocios[0]! : null);
+  const state: 'sin' | 'lista' | 'revision' | 'activo' | 'rechazado' =
+    negocios.length === 0 ? 'sin'
+      : !negocio ? 'lista'
+      : negocio.status === 'verificado' ? 'activo'
+      : negocio.status === 'rechazado' ? 'rechazado'
+      : 'revision';
 
   const enviarAlta = async () => {
     if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
@@ -2825,51 +2830,94 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
 
   const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
 
+  /* El formulario del alta, en una constante: se usa en la tarjeta de "todavía no
+     tenés ninguno" y en el botón "dar de alta otro" de la lista. */
+  const formAlta = (
+  <View style={{ gap: 10 }}>
+    <TextInput value={nombre} onChangeText={(t) => { setNombre(t); setError(''); }} placeholder="Nombre de tu negocio" placeholderTextColor={colors.violet[400]} style={field} />
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+      {RUBROS.map((r) => (
+        <TouchableOpacity key={r} onPress={() => setRubro(r)} style={{ backgroundColor: rubro === r ? LIME : 'rgba(255,255,255,0.15)', borderRadius: 100, paddingVertical: 8, paddingHorizontal: 13 }}>
+          <Text style={{ color: rubro === r ? INK : '#fff', fontWeight: '700', fontSize: 12.5 }}>{r}</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+    {/* `tono="oscuro"`: este formulario vive dentro de la tarjeta violeta y
+        los rótulos por defecto son grises: sobre el violeta no se leen. */}
+    <CampoZona tono="oscuro" label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
+    <CampoDomicilio tono="oscuro" label="Dirección (opcional)" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
+    <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
+    {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
+        aparece en la lista pero sin distancia ni pin. */}
+    <TextInput value={instagram} onChangeText={setInstagram} placeholder="Instagram (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
+    <TextInput value={sitio} onChangeText={setSitio} placeholder="Sitio web (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
+    <View style={{ flexDirection: 'row', gap: 8 }}>
+      <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="Tarifa (opcional)" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
+      <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
+    </View>
+    <Text style={{ fontSize: 11.5, color: colors.violet[200], lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
+    {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
+      </TouchableOpacity>
+      <TouchableOpacity disabled={busy} onPress={enviarAlta} style={{ flex: 1, backgroundColor: LIME, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
+        <Text style={{ color: INK, fontWeight: '700', fontSize: 14 }}>{busy ? 'Enviando…' : 'Enviar'}</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
-      <H1>Mi negocio</H1>
+      {/* Volver a la lista solo tiene sentido si hay una lista. */}
+      {negocio && negocios.length > 1 && (
+        <TouchableOpacity onPress={() => setSelId(null)} style={{ paddingVertical: 6 }}>
+          <Text style={{ color: BRAND, fontWeight: '600', fontSize: 14 }}>← Mis negocios</Text>
+        </TouchableOpacity>
+      )}
+      <H1>{negocios.length > 1 && !negocio ? 'Mis negocios' : 'Mi negocio'}</H1>
       <Sub>Ofrecé tus servicios a la comunidad de Kumo.</Sub>
+
+      {/* La lista. Aparece con el segundo negocio: con uno la pantalla va directo a
+          su ficha, que es lo que había antes. */}
+      {state === 'lista' && (
+        <View style={{ gap: 10, marginBottom: 18 }}>
+          {negocios.map((n) => (
+            <TouchableOpacity key={n.id} onPress={() => setSelId(n.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14 }}>
+              {(n.logo ?? n.photo) ? (
+                <Image source={{ uri: (n.logo ?? n.photo)! }} style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100] }} />
+              ) : (
+                <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                  <Ic d={RUBRO_IC[n.category] ?? 'paw'} size={22} />
+                </View>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{n.name}</Text>
+                <Text style={{ fontSize: 12.5, color: MUTED }}>{n.category} · {n.zone}</Text>
+              </View>
+              <View style={{ backgroundColor: n.status === 'verificado' ? colors.success.bg : n.status === 'rechazado' ? '#fbe8ef' : '#fbf3e2', borderRadius: 100, paddingHorizontal: 9, paddingVertical: 4 }}>
+                <Text style={{ fontSize: 11, fontWeight: '700', color: n.status === 'verificado' ? colors.success.fg : n.status === 'rechazado' ? '#c14d7a' : '#92690a' }}>
+                  {n.status === 'verificado' ? 'Publicado' : n.status === 'rechazado' ? 'Rechazado' : 'En revisión'}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ))}
+          {showAlta ? formAlta : (
+            <TouchableOpacity onPress={() => setShowAlta(true)} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
+              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>+ Dar de alta otro negocio</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {state === 'sin' && (
         <View style={{ backgroundColor: BRAND, borderRadius: 20, padding: 22, marginBottom: 18, overflow: 'hidden' }}>
           <View style={{ position: 'absolute', right: -20, top: -20, opacity: 0.15 }}><Ic d="store" size={120} color="#fff" /></View>
           <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}><Ic d="store" size={26} color="#fff" /></View>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: '#fff', lineHeight: 27 }}>¿Ofrecés un servicio para mascotas?</Text>
           <Text style={{ color: colors.violet[300], fontSize: 13.5, lineHeight: 20, marginTop: 10, marginBottom: 18 }}>Dá de alta tu negocio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</Text>
-          {showAlta ? (
-            <View style={{ gap: 10 }}>
-              <TextInput value={nombre} onChangeText={(t) => { setNombre(t); setError(''); }} placeholder="Nombre de tu negocio" placeholderTextColor={colors.violet[400]} style={field} />
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-                {RUBROS.map((r) => (
-                  <TouchableOpacity key={r} onPress={() => setRubro(r)} style={{ backgroundColor: rubro === r ? LIME : 'rgba(255,255,255,0.15)', borderRadius: 100, paddingVertical: 8, paddingHorizontal: 13 }}>
-                    <Text style={{ color: rubro === r ? INK : '#fff', fontWeight: '700', fontSize: 12.5 }}>{r}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              {/* `tono="oscuro"`: este formulario vive dentro de la tarjeta violeta y
-                  los rótulos por defecto son grises: sobre el violeta no se leen. */}
-              <CampoZona tono="oscuro" label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
-              <CampoDomicilio tono="oscuro" label="Dirección (opcional)" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
-              <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
-              {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
-                  aparece en la lista pero sin distancia ni pin. */}
-              <TextInput value={instagram} onChangeText={setInstagram} placeholder="Instagram (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
-              <TextInput value={sitio} onChangeText={setSitio} placeholder="Sitio web (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="Tarifa (opcional)" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
-                <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
-              </View>
-              <Text style={{ fontSize: 11.5, color: colors.violet[200], lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
-              {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
-              <View style={{ flexDirection: 'row', gap: 10 }}>
-                <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
-                  <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity disabled={busy} onPress={enviarAlta} style={{ flex: 1, backgroundColor: LIME, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-                  <Text style={{ color: INK, fontWeight: '700', fontSize: 14 }}>{busy ? 'Enviando…' : 'Enviar'}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
+          {showAlta ? formAlta : (
             <TouchableOpacity onPress={() => setShowAlta(true)} style={{ backgroundColor: LIME, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
               <Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>Dar de alta mi negocio →</Text>
             </TouchableOpacity>
@@ -2896,7 +2944,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
           <Text style={{ color: MUTED, fontSize: 13, marginTop: 8 }}>
             {negocio && negocio.reviews > 0 ? `★ ${negocio.rating.toFixed(1)} · ${negocio.reviews} reseñas` : 'Todavía sin reseñas'}
           </Text>
-          <TouchableOpacity onPress={abrirEdicion} style={{ marginTop: 16, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.success.fg, borderRadius: 13, paddingVertical: 12, alignItems: 'center' }}>
+          <TouchableOpacity onPress={() => negocio && abrirEdicion(negocio)} style={{ marginTop: 16, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.success.fg, borderRadius: 13, paddingVertical: 12, alignItems: 'center' }}>
             <Text style={{ color: colors.success.fg, fontWeight: '700', fontSize: 14 }}>Editar datos</Text>
           </TouchableOpacity>
           <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
@@ -2996,6 +3044,19 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Con un solo negocio no hay lista donde poner este botón, así que va acá:
+          sin esto, el que ya tiene uno no tendría por dónde dar de alta el segundo. */}
+      {negocio && (
+        <View style={{ marginBottom: 18 }}>
+          {showAlta ? formAlta : (
+            <TouchableOpacity onPress={() => setShowAlta(true)} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
+              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>+ Dar de alta otro negocio</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
+
       {([['person', 'Miles de socios buscando tu servicio'], ['shield', 'Sello "Verificado por Kumo"'], ['chat', 'Reseñas y contactos en un solo lugar']] as [IconName, string][]).map(([icon, t]) => (
         <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 14, marginBottom: 10 }}>
           <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d={icon} size={18} color={BRAND} /></View>
@@ -4053,14 +4114,14 @@ export default function App() {
           {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
           {pantalla === 'servicios' && <Servicios centro={data.centro} providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
-          {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
+          {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
-          {pantalla === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
+          {pantalla === 'minegocio' && <Negocio negocios={data.negocios} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
           {pantalla === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} />}
         </View>
         <View style={styles.tabbar}>
