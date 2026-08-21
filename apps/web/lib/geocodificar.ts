@@ -7,8 +7,9 @@
  *     que alimenta el autocompletado del campo de domicilio. Va primero justamente
  *     por eso: el punto guardado tiene que ser el que la persona vio al elegir.
  *  2. **Nominatim** (OpenStreetMap), para todo lo que Georef no tiene: una localidad
- *     sin calle, un barrio privado, una dirección rural. Es también el único camino
- *     para los comercios, que se buscan por barrio y no por localidad censal.
+ *     sin calle, un barrio privado, una dirección rural. Para los comercios es además
+ *     el camino de las zonas viejas escritas a mano ("Núñez", "CABA · Caballito"),
+ *     que entran en el texto de la consulta y no como localidad censal.
  *
  * Sobre Nominatim: es gratis, sin clave y sin tarjeta, igual que las teselas del
  * mapa. Su política de uso pide tres cosas y las tres se cumplen acá:
@@ -25,7 +26,8 @@
  * que queda sin coordenadas ve el mapa en el centro de CABA y la pantalla se lo
  * dice ("del centro" en vez de "de tu casa").
  */
-import { buscarDirecciones } from './lugares';
+import { buscarDirecciones, esCABA } from './lugares';
+import { partirZona } from '@kumo/shared';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 /* Quién consulta y a dónde escribirle: lo exige la política de Nominatim. El sitio
@@ -236,6 +238,45 @@ export async function geocodificarComercio(partes: {
   city?: string | null;
   province?: string | null;
 }): Promise<Ubicacion | null> {
+  /*
+   * Georef primero, igual que con el domicilio del socio, cuando sabemos la
+   * provincia o la localidad. Es la misma razón: el callejero oficial interpola la
+   * altura sobre la numeración real, y así el pin del comercio queda donde la
+   * pantalla del alta le mostró su dirección. Medido con Av. Cabildo 3900: Nominatim
+   * y Georef contestan puntos separados por 450 metros, los dos sobre la avenida.
+   *
+   * La pista sale de la ZONA, que desde que se elige de una lista viene como
+   * "Palermo, CABA" y se puede partir; si el comercio es de un socio, se usa además
+   * la localidad de su perfil.
+   *
+   * En CABA la localidad NO se manda: ahí la zona es un barrio y el callejero no
+   * conoce barrios como localidad, así que filtraría de más.
+   */
+  const calle = limpiarCalle(partes.address);
+  if (calle) {
+    const zona = partirZona(partes.zone);
+    const provincia = zona.provincia ?? partes.province ?? undefined;
+    const localidad = esCABA(provincia) ? undefined : (zona.localidad ?? partes.city ?? undefined);
+    if (provincia) {
+      // Con provincia se puede reintentar sin la localidad: el resultado sigue
+      // acotado a la provincia y no se va a otra punta del país.
+      const conPista = localidad ? await buscarDirecciones(calle, provincia, localidad) : [];
+      const [mejor] = conPista.length ? conPista : await buscarDirecciones(calle, provincia);
+      if (mejor) return { lat: mejor.lat, lng: mejor.lng, origen: 'domicilio' };
+    }
+    /*
+     * SIN PROVINCIA NO SE USA GEOREF, y esto se aprendió rompiendo algo: con la zona
+     * Belgrano a secas se le preguntó por la localidad Belgrano y contestó la de
+     * MENDOZA —existe un Belgrano en Guaymallén, y ahí hay un Cabildo 2450—, así que
+     * un prestador de Belgrano porteño terminó con el pin a 970 km. Un nombre de
+     * barrio se repite por todo el país; sin provincia que lo acote, la respuesta es
+     * una moneda al aire. Esos casos siguen por Nominatim, que mete la zona en el
+     * texto de la consulta y por eso acierta.
+     */
+  }
+  /* Nominatim de respaldo, y sigue siendo el camino principal para las zonas viejas
+     escritas a mano ("Núñez", "CABA · Caballito"): ahí la zona entra en el texto de
+     la consulta, que es algo que el callejero oficial no acepta. */
   return correr(consultasDeComercio(partes));
 }
 
