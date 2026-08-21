@@ -188,7 +188,10 @@ export type Provider = {
   price: number | null;
   priceUnit: string | null;
   status: ProviderStatus;
+  /** La foto de portada: la banda de arriba de la ficha. */
   photoUrl: string | null;
+  /** El logo de la marca, cuadrado: el avatar. Null = no subio, se usa la portada. */
+  logoUrl: string | null;
   /** Ubicación para Google Maps */
   lat: number | null;
   lng: number | null;

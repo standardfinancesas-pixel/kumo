@@ -112,7 +112,7 @@ export type EmergencyContact = { id: string; name: string; phone: string; type: 
  *  aparece igual en la lista). `kmDesde` es el texto de desde dónde se mide —"de tu
  *  casa", "de tu zona", "del centro"—, que lo decide el servidor según cuánto pudo
  *  resolver del domicilio del socio. */
-export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string | null; km: number | null; kmDesde: string; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
+export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string | null; logoUrl: string | null; km: number | null; kmDesde: string; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
 /** La ficha del beneficio necesita todo lo que la tabla ya guardaba y no se usaba:
  *  descripción, zona, días, horario y vigencia. */
 export type BenefitVM = {
@@ -138,7 +138,7 @@ export type PagoVM = {
   estado: EstadoPago; medio: MedioPago; cubreHasta: string | null; detalle: string | null;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
-export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null; /** La foto de su ficha. Null = todavia no subio ninguna, y no se le inventa una. */ photoUrl: string | null };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null; /** La portada de su ficha. Null = todavia no subio ninguna, y no se le inventa una. */ photoUrl: string | null; /** El logo cuadrado. Null = no subio, se usa la portada. */ logoUrl: string | null };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
 export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
@@ -877,7 +877,11 @@ const phonePath = <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5
  */
 function FotoPrestador({ p, lado, radio, extra }: { p: ProviderVM; lado: number; radio: number; extra?: CSSProperties }) {
   const caja: CSSProperties = { width: lado, height: lado, borderRadius: radio, flex: 'none', ...extra };
-  if (p.photoUrl) return <div style={{ ...caja, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)` }} />;
+  /* El logo primero: es la imagen pensada para un cuadrado. La portada es el
+     respaldo —un recorte del medio, que es mejor que nada— y el icono del rubro es
+     el ultimo, para el que no subio ninguna. */
+  const cuadrada = p.logoUrl ?? p.photoUrl;
+  if (cuadrada) return <div style={{ ...caja, background: `url(${cuadrada}) center/cover, rgb(240,237,249)` }} />;
   return (
     <div style={{ ...caja, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)' }}>
       {ic(RUBRO_ICONS[p.category] ?? paw, p.category === 'Paseador', Math.round(lado * 0.46))}
@@ -1354,8 +1358,14 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
   const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(profile.phone ?? '');
   const [about, setAbout] = useState('');
-  const [foto, setFoto] = useState<File | null>(null);
-  const [fotoPreview, setFotoPreview] = useState<string | null>(null);
+  /* Las dos imágenes del negocio, como en el prototipo: el logo es cuadrado y va de
+     avatar, la portada es la banda de arriba de la ficha. Antes había una sola y
+     hacía los dos trabajos, con lo que el logo salía estirado o la foto del local
+     salía recortada por el medio. Las dos son opcionales. */
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [portada, setPortada] = useState<File | null>(null);
+  const [portadaPreview, setPortadaPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [enviado, setEnviado] = useState(false);
@@ -1372,13 +1382,25 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
     );
   }
 
-  const elegirFoto = (f?: File) => {
+  /** Valida y previsualiza. Una sola función para las dos: mismos formatos, mismo
+   *  máximo, y así no se separan por descuido. */
+  const elegirImagen = (cual: 'logo' | 'portada') => (f?: File) => {
     if (!f) return;
     if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
-    if (f.size > FOTO_MAX) { setError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+    if (f.size > FOTO_MAX) { setError(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
     setError('');
-    setFoto(f);
-    setFotoPreview(URL.createObjectURL(f));
+    if (cual === 'logo') { setLogo(f); setLogoPreview(URL.createObjectURL(f)); }
+    else { setPortada(f); setPortadaPreview(URL.createObjectURL(f)); }
+  };
+
+  /** Sube una al bucket del socio y devuelve su URL. `null` si falló. */
+  const subir = async (f: File, prefijo: string): Promise<string | null> => {
+    const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
+    // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
+    const path = `${profile.id}/${prefijo}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
+    if (upErr) return null;
+    return supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
   };
 
   const enviar = async () => {
@@ -1387,12 +1409,14 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
     setBusy(true); setError('');
 
     let photoUrl: string | null = null;
-    if (foto) {
-      const ext = foto.name.split('.').pop()?.toLowerCase() || 'jpg';
-      const path = `${profile.id}/negocio-${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, foto, { contentType: foto.type });
-      if (upErr) { setError('No pudimos subir la portada. Probá de nuevo o mandá la solicitud sin foto.'); setBusy(false); return; }
-      photoUrl = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+    let logoUrl: string | null = null;
+    if (portada) {
+      photoUrl = await subir(portada, 'negocio');
+      if (!photoUrl) { setError('No pudimos subir la portada. Probá de nuevo o mandá la solicitud sin ella.'); setBusy(false); return; }
+    }
+    if (logo) {
+      logoUrl = await subir(logo, 'negocio-logo');
+      if (!logoUrl) { setError('No pudimos subir el logo. Probá de nuevo o mandá la solicitud sin él.'); setBusy(false); return; }
     }
 
     const { data: alta, error: insErr } = await supabase.from('providers').insert({
@@ -1400,7 +1424,7 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, status: 'pendiente',
+      phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, logo_url: logoUrl, status: 'pendiente',
     }).select('id').single();
     if (insErr) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     // El pin en el mapa: se resuelve en el servidor y no se espera. Si no sale, el
@@ -1489,17 +1513,29 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
           trabajos —la portada de la ficha y el cuadradito del listado—, y llamarla
           distinto acá y en "Editar datos" hacía que el prestador buscara un campo de
           portada que no existe. */}
-      <label style={sheetLabel}>Foto de tu negocio <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-      <label style={{ position: 'relative', display: 'flex', width: '100%', height: 140, border: '2px dashed rgb(230,227,240)', borderRadius: 12, alignItems: 'center', justifyContent: 'center', background: fotoPreview ? `url(${fotoPreview}) center/cover` : 'rgb(250,250,249)', cursor: 'pointer', overflow: 'hidden', marginBottom: 18 }}>
-        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirFoto(e.target.files?.[0])} style={{ display: 'none' }} />
-        {!fotoPreview && (
+      {/* Las dos imágenes, con los nombres del prototipo. El logo va chico y cuadrado
+          porque es lo que va a ser (el avatar), y la portada ancha: la caja tiene la
+          forma del lugar donde se va a ver, así nadie sube un logo apaisado. */}
+      <label style={sheetLabel}>Logo de la marca <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <label style={{ position: 'relative', display: 'flex', width: 92, height: 92, flex: 'none', border: '2px dashed rgb(230,227,240)', borderRadius: 16, alignItems: 'center', justifyContent: 'center', background: logoPreview ? `url(${logoPreview}) center/cover` : 'rgb(250,250,249)', cursor: 'pointer', overflow: 'hidden' }}>
+          <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirImagen('logo')(e.target.files?.[0])} style={{ display: 'none' }} />
+          {!logoPreview && <div style={{ color: 'rgb(162,157,186)', display: 'flex' }}>{ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></>, false, 20)}</div>}
+        </label>
+        <div style={{ fontSize: 12, color: 'rgb(135,129,160)', lineHeight: 1.45 }}>Cuadrado. Es el redondel de tu ficha y el cuadradito del listado de Servicios. Si no lo subís, se usa la portada.</div>
+      </div>
+
+      <label style={sheetLabel}>Foto de portada <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
+      <label style={{ position: 'relative', display: 'flex', width: '100%', height: 140, border: '2px dashed rgb(230,227,240)', borderRadius: 12, alignItems: 'center', justifyContent: 'center', background: portadaPreview ? `url(${portadaPreview}) center/cover` : 'rgb(250,250,249)', cursor: 'pointer', overflow: 'hidden' }}>
+        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirImagen('portada')(e.target.files?.[0])} style={{ display: 'none' }} />
+        {!portadaPreview && (
           <div style={{ textAlign: 'center', pointerEvents: 'none' }}>
             <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: 'rgb(162,157,186)' }}>{ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></>, false, 22)}</div>
-            <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Subir foto</div>
+            <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Subir portada</div>
           </div>
         )}
       </label>
-      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '-12px 0 18px', lineHeight: 1.45 }}>Es la portada de tu ficha y la que se ve en el listado de Servicios. Si no la subís ahora, la podés cargar después desde Mi negocio.</p>
+      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 18px', lineHeight: 1.45 }}>La banda de arriba de tu ficha. Las dos las podés cargar después desde Mi negocio.</p>
 
       {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
       <button onClick={enviar} disabled={busy} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 14, border: 'none', borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
@@ -2525,7 +2561,8 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [bajaOpen, setBajaOpen] = useState(false);
-  const [fotoBusy, setFotoBusy] = useState(false);
+  /** Cuál se está subiendo, para poner el cartel encima de ESA caja y no de las dos. */
+  const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [fotoError, setFotoError] = useState('');
   // Datos editables del negocio publicado.
   const [ed, setEd] = useState({
@@ -2536,23 +2573,24 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     instagram: negocio?.instagram ?? '', website: negocio?.website ?? '',
   });
 
-  /** La foto de la ficha del negocio: se sube y se guarda en el acto, igual que la
-   *  de la mascota. Antes solo se podía elegir en el alta larga y nunca más. */
-  const cambiarFoto = async (f?: File) => {
+  /** El logo o la portada del negocio: se suben y se guardan en el acto, igual que
+   *  la foto de la mascota. Antes la portada solo se podía elegir en el alta larga y
+   *  nunca más, y el logo no existía. */
+  const cambiarImagen = async (cual: 'logo' | 'portada', f?: File) => {
     if (!f || !negocio) return;
     if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setFotoError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
-    if (f.size > FOTO_MAX) { setFotoError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
-    setFotoBusy(true); setFotoError('');
+    if (f.size > FOTO_MAX) { setFotoError(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+    setFotoBusy(cual); setFotoError('');
     const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
     // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
-    const path = `${profile.id}/negocio-${Date.now()}.${ext}`;
+    const path = `${profile.id}/negocio${cual === 'logo' ? '-logo' : ''}-${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
-    if (upErr) { setFotoError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    if (upErr) { setFotoError('No pudimos subir la imagen. Probá de nuevo.'); setFotoBusy(null); return; }
     const url = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
-    const { error: e } = await supabase.from('providers').update({ photo_url: url }).eq('id', negocio.id);
-    if (e) { setFotoError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.'); setFotoBusy(false); return; }
+    const { error: e } = await supabase.from('providers').update(cual === 'logo' ? { logo_url: url } : { photo_url: url }).eq('id', negocio.id);
+    if (e) { setFotoError('Subimos la imagen pero no pudimos guardarla. Probá de nuevo.'); setFotoBusy(null); return; }
     router.refresh();
-    setFotoBusy(false);
+    setFotoBusy(null);
   };
 
   const guardarEdicion = async () => {
@@ -2769,20 +2807,31 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
         <Sheet onClose={() => setEditOpen(false)}>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 16 }}>Editar datos</div>
 
-          {/* La foto de la ficha. Hasta ahora solo se podía elegir en el alta larga
-              ("Sumate como prestador"), así que quien daba de alta desde acá no tenía
-              cómo poner una nunca. Se guarda sola al elegirla: es un archivo, no un
-              campo de texto, y esperar el "Guardar cambios" para subirlo deja al
-              socio sin saber si entró. */}
-          <label style={sheetLabel}>Foto de tu negocio</label>
+          {/* Las dos imágenes de la ficha. Hasta ahora ninguna se podía cambiar acá:
+              la portada solo se elegía en el alta larga y el logo no existía. Se
+              guardan solas al elegirlas: son archivos, no campos de texto, y esperar
+              el "Guardar cambios" para subirlos deja al socio sin saber si entró. */}
+          <label style={sheetLabel}>Logo de la marca</label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
-            <label title="Cambiar la foto" style={{ width: 74, height: 74, borderRadius: 16, flex: 'none', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: fotoBusy ? 'default' : 'pointer', background: negocio.photoUrl ? `url(${negocio.photoUrl}) center/cover` : 'rgb(240,237,249)', color: 'rgb(93,84,145)' }}>
-              {!negocio.photoUrl && ic(RUBRO_ICONS[negocio.category] ?? paw, negocio.category === 'Paseador', 30)}
-              {fotoBusy && <span style={{ position: 'absolute', inset: 0, background: 'rgba(33,30,51,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Subiendo…</span>}
-              <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarFoto(e.target.files?.[0])} />
+            <label title="Cambiar el logo" style={{ width: 74, height: 74, borderRadius: 16, flex: 'none', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: fotoBusy ? 'default' : 'pointer', background: negocio.logoUrl ? `url(${negocio.logoUrl}) center/cover` : 'rgb(240,237,249)', color: 'rgb(93,84,145)' }}>
+              {!negocio.logoUrl && ic(RUBRO_ICONS[negocio.category] ?? paw, negocio.category === 'Paseador', 30)}
+              {fotoBusy === 'logo' && <span style={{ position: 'absolute', inset: 0, background: 'rgba(33,30,51,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Subiendo…</span>}
+              <input type="file" accept={FOTO_TIPOS.join(',')} disabled={!!fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarImagen('logo', e.target.files?.[0])} />
             </label>
             <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', lineHeight: 1.45 }}>
-              {negocio.photoUrl ? 'Tocá la foto para cambiarla.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro.'} Es la portada de tu ficha y la que se ve en el listado de Servicios. JPG, PNG o WEBP, hasta 5 MB.
+              {negocio.logoUrl ? 'Tocá el logo para cambiarlo.' : 'Todavía no subiste logo: mientras tanto se usa la portada, y si tampoco hay, el ícono de tu rubro.'} Cuadrado. Es el redondel de tu ficha y el cuadradito del listado.
+            </div>
+          </div>
+
+          <label style={sheetLabel}>Foto de portada</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <label title="Cambiar la portada" style={{ width: 116, height: 74, borderRadius: 12, flex: 'none', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: fotoBusy ? 'default' : 'pointer', background: negocio.photoUrl ? `url(${negocio.photoUrl}) center/cover` : 'linear-gradient(135deg, #5D5491, #463f70)', color: '#fff' }}>
+              {!negocio.photoUrl && ic(RUBRO_ICONS[negocio.category] ?? paw, negocio.category === 'Paseador', 26)}
+              {fotoBusy === 'portada' && <span style={{ position: 'absolute', inset: 0, background: 'rgba(33,30,51,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Subiendo…</span>}
+              <input type="file" accept={FOTO_TIPOS.join(',')} disabled={!!fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarImagen('portada', e.target.files?.[0])} />
+            </label>
+            <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', lineHeight: 1.45 }}>
+              {negocio.photoUrl ? 'Tocá la portada para cambiarla.' : 'Todavía no subiste portada.'} Es la banda de arriba de tu ficha. JPG, PNG o WEBP, hasta 5 MB.
               {fotoError && <div style={{ color: 'rgb(176,72,63)', fontWeight: 600, marginTop: 4 }}>{fotoError}</div>}
             </div>
           </div>

@@ -76,7 +76,7 @@ function relTime(iso: string): string {
    socio, geocodificado en el alta (`profiles.lat/lng`). La cuenta y el texto de
    "desde dónde" viven en `@kumo/shared` (cerca.ts), compartidos con la app. */
 
-type ProviderRow = { id: string; name: string; category: string; zone: string; address: string | null; phone: string | null; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number | null; price_unit: string | null; photo_url: string | null; lat: number | null; lng: number | null; status: string };
+type ProviderRow = { id: string; name: string; category: string; zone: string; address: string | null; phone: string | null; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number | null; price_unit: string | null; photo_url: string | null; logo_url: string | null; lat: number | null; lng: number | null; status: string };
 function mapProvider(row: ProviderRow, desde: Punto & { origen: OrigenDistancia }): ProviderVM {
   // Sin coordenadas no hay distancia. Antes se le ponía 5 km, que es la clase de
   // dato inventado que después se lee como cierto: quedaba en el radio de todos y
@@ -88,7 +88,10 @@ function mapProvider(row: ProviderRow, desde: Punto & { origen: OrigenDistancia 
     /* Sin foto queda en null y NO se le pone una de archivo: antes el prestador que
        no subía nada salía con `default-pet.webp`, así que su ficha mostraba un perro
        ajeno como si fuera su local. La pantalla dibuja el ícono del rubro. */
-    price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: row.photo_url ? imgSrc(row.photo_url) : null, km,
+    price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: row.photo_url ? imgSrc(row.photo_url) : null,
+    /* El logo es cuadrado y la portada es una banda: el avatar y el cuadradito del
+       listado usan el logo, y si no hay, caen en la portada. */
+    logoUrl: row.logo_url ? imgSrc(row.logo_url) : null, km,
     // De dónde se está midiendo, para que el chip no diga "de tu casa" cuando el
     // origen es el centro de CABA porque no sabemos dónde vive.
     kmDesde: textoDistancia(desde.origen),
@@ -231,7 +234,7 @@ export default async function Page() {
       .eq('owner_id', auth.user.id),
     supabase
       .from('providers')
-      .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, lat, lng, status')
+      .select('id, name, category, zone, address, phone, instagram, website, about, rating, reviews, price, price_unit, photo_url, logo_url, lat, lng, status')
       .eq('status', 'verificado'),
     // Reseñas de los prestadores publicados, más nuevas primero.
     supabase
@@ -243,7 +246,7 @@ export default async function Page() {
     // esté pendiente o lo hayan rechazado.
     supabase
       .from('providers')
-      .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website, photo_url')
+      .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website, photo_url, logo_url')
       .eq('owner_id', auth.user.id)
       .maybeSingle(),
     supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
@@ -420,6 +423,7 @@ export default async function Page() {
         // Por `imgSrc` y no crudo: las fotos del seed se guardan como nombre de
         // archivo, y en un url() de CSS un nombre suelto no resuelve a nada.
         photoUrl: negocioRow.photo_url ? imgSrc(negocioRow.photo_url) : null,
+        logoUrl: negocioRow.logo_url ? imgSrc(negocioRow.logo_url) : null,
       }
     : null;
 

@@ -46,7 +46,11 @@ export type ProviderVM = {
   /** Para abrir el lugar en la app de mapas: se abre en el pin, no en el texto. */
   lat: number | null;
   lng: number | null;
-  rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string | null;
+  rating: number; reviews: number; price: number; priceUnit: string; phone: string;
+  /** La portada: la banda de arriba de la ficha. */
+  photo: string | null;
+  /** El logo cuadrado: el avatar y el cuadradito del listado. Null = se usa la portada. */
+  logo: string | null;
   // Los usa la ficha del prestador.
   about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
 };
@@ -127,7 +131,7 @@ export type PagoVM = {
   id: string; fecha: string; monto: number; plan: string | null;
   estado: EstadoPago; medio: MedioPago; cubreHasta: string | null; detalle: string | null;
 };
-export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; status: string; rating: number; reviews: number; /** La foto de su ficha. Null = todavía no subió ninguna, y no se le inventa una. */ photo: string | null };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; status: string; rating: number; reviews: number; /** La portada de su ficha. Null = todavía no subió ninguna, y no se le inventa una. */ photo: string | null; /** El logo cuadrado. Null = no subió, se usa la portada. */ logo: string | null };
 
 /* ── Helpers de formato ────────────────────────────────────────── */
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -211,10 +215,10 @@ export function useKumoData(userId: string | null) {
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
-      supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
+      supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
-      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at, photo_url').eq('owner_id', userId).maybeSingle(),
+      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at, photo_url, logo_url').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
       supabase.from('post_likes').select('post_id').eq('member_id', userId),
@@ -350,7 +354,7 @@ export function useKumoData(userId: string | null) {
       /* Sin foto queda en null y NO se le pone una de archivo: antes el prestador
          que no subía nada salía con la foto de un paseador cualquiera, o sea que su
          ficha mostraba un local ajeno. La pantalla dibuja el ícono del rubro. */
-      phone: r.phone ?? '', photo: r.photo_url ?? null,
+      phone: r.phone ?? '', photo: r.photo_url ?? null, logo: r.logo_url ?? null,
       about: r.about ?? '', address: r.address ?? '', instagram: r.instagram, website: r.website,
       // Los que no tienen coordenadas van al final: no se puede afirmar que estén
       // cerca, pero tampoco hay motivo para esconderlos.
@@ -403,7 +407,7 @@ export function useKumoData(userId: string | null) {
 
     const n = negocioRes.data;
     const negocio: MiNegocio | null = n
-      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews, photo: n.photo_url }
+      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews, photo: n.photo_url, logo: n.logo_url }
       : null;
 
     const notifInput: NotifInput = {

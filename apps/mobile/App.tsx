@@ -175,7 +175,11 @@ const petImg = (photo: string): ImageSourcePropType =>
  */
 function FotoPrestador({ p, lado, radio, extra }: { p: ProviderVM; lado: number; radio: number; extra?: object }) {
   const caja = { width: lado, height: lado, borderRadius: radio, backgroundColor: colors.violet[100], ...extra };
-  if (p.photo) return <Image source={petImg(p.photo)} style={caja} />;
+  /* El logo primero: es la imagen pensada para un cuadrado. La portada es el
+     respaldo —un recorte del medio, que es mejor que nada— y el ícono del rubro es el
+     último, para el que no subió ninguna. */
+  const cuadrada = p.logo ?? p.photo;
+  if (cuadrada) return <Image source={petImg(cuadrada)} style={caja} />;
   return (
     <View style={{ ...caja, alignItems: 'center', justifyContent: 'center' }}>
       <Ic d={RUBRO_IC[p.category] ?? 'paw'} size={Math.round(lado * 0.46)} fill={p.category === 'Paseador'} />
@@ -2179,11 +2183,12 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [about, setAbout] = useState('');
-  /* La foto de portada: la webapp la pedía en su alta larga y la app no la pedía
-     nunca, así que todo negocio dado de alta desde el teléfono nacía sin foto. Se
-     sube al elegirla y queda la URL; el insert la guarda con el resto. */
+  /* Las dos imágenes: la webapp las pedía en su alta larga y la app no pedía
+     ninguna, así que todo negocio dado de alta desde el teléfono nacía sin nada. Se
+     suben al elegirlas y queda la URL; el insert las guarda con el resto. */
   const [fotoUrl, setFotoUrl] = useState<string | null>(null);
-  const [fotoBusy, setFotoBusy] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [enviado, setEnviado] = useState(false);
@@ -2217,6 +2222,16 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
     );
   }
 
+  /** Elegir y subir una de las dos. Una sola función: se validan y se guardan igual,
+   *  lo que cambia es dónde se ven. */
+  const elegirImagen = async (cual: 'logo' | 'portada') => {
+    setFotoBusy(cual); setError('');
+    const r = await elegirYSubirFoto(userId, cual === 'logo' ? 'negocio-logo-' : 'negocio-');
+    if ('url' in r) (cual === 'logo' ? setLogoUrl : setFotoUrl)(r.url);
+    else if ('error' in r) setError(r.error);
+    setFotoBusy(null);
+  };
+
   const enviar = async () => {
     if (!nombre.trim()) { setError('Poné el nombre o la marca de tu servicio.'); return; }
     if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
@@ -2226,7 +2241,7 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, about: about.trim(), photo_url: fotoUrl, status: 'pendiente',
+      phone: tel.trim() || null, about: about.trim(), photo_url: fotoUrl, logo_url: logoUrl, status: 'pendiente',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id) void avisar('negocio-recibido', alta.id);
@@ -2301,31 +2316,42 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
       {/* La foto de portada, igual que en la webapp. Se sube al elegirla —así el
           socio ve que entró— y recién el insert la guarda: si abandona el alta,
           quedó un archivo suelto en el bucket y ningún negocio a medio crear. */}
-      {/* "Foto de tu negocio" y no "portada": es UNA sola imagen y hace los dos trabajos
-          —la portada de la ficha y el cuadradito del listado—, y llamarla distinto acá y
-          en "Editar datos" hacía buscar un campo de portada que no existe. */}
-      <SheetLabel>Foto de tu negocio · opcional</SheetLabel>
+      {/* Las dos imágenes, con los nombres del prototipo. Cada caja tiene la forma de
+          donde se va a ver: el logo cuadrado, la portada apaisada. */}
+      <SheetLabel>Logo de la marca · opcional</SheetLabel>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+        <TouchableOpacity
+          disabled={!!fotoBusy}
+          onPress={() => elegirImagen('logo')}
+          style={{ width: 92, height: 92, borderRadius: 16, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fafaf9', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+        >
+          {logoUrl ? (
+            <Image source={{ uri: logoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          ) : (
+            <Ic d="image" size={20} color={colors.violet[400]} />
+          )}
+        </TouchableOpacity>
+        <Text style={{ flex: 1, fontSize: 12, color: MUTED, lineHeight: 17 }}>
+          {fotoBusy === 'logo' ? 'Subiendo…' : 'Cuadrado. Es el redondel de tu ficha y el cuadradito del listado. Si no lo subís, se usa la portada.'}
+        </Text>
+      </View>
+
+      <SheetLabel>Foto de portada · opcional</SheetLabel>
       <TouchableOpacity
-        disabled={fotoBusy}
-        onPress={async () => {
-          setFotoBusy(true); setError('');
-          const r = await elegirYSubirFoto(userId, 'negocio-');
-          if ('url' in r) setFotoUrl(r.url);
-          else if ('error' in r) setError(r.error);
-          setFotoBusy(false);
-        }}
-        style={{ height: 140, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fafaf9', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 18 }}
+        disabled={!!fotoBusy}
+        onPress={() => elegirImagen('portada')}
+        style={{ height: 140, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fafaf9', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
       >
         {fotoUrl ? (
           <Image source={{ uri: fotoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
         ) : (
           <View style={{ alignItems: 'center' }}>
             <Ic d="image" size={22} color={colors.violet[400]} />
-            <Text style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{fotoBusy ? 'Subiendo…' : 'Subir foto'}</Text>
+            <Text style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{fotoBusy === 'portada' ? 'Subiendo…' : 'Subir portada'}</Text>
           </View>
         )}
       </TouchableOpacity>
-      <Text style={{ fontSize: 12, color: MUTED, marginTop: -12, marginBottom: 18, lineHeight: 17 }}>Es la portada de tu ficha y la que se ve en el listado de Servicios. Si no la subís ahora, la podés cargar después desde Mi negocio.</Text>
+      <Text style={{ fontSize: 12, color: MUTED, marginTop: 6, marginBottom: 18, lineHeight: 17 }}>La banda de arriba de tu ficha. Las dos las podés cargar después desde Mi negocio.</Text>
 
       {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text> : null}
       <TouchableOpacity disabled={busy} onPress={enviar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
@@ -2678,7 +2704,8 @@ const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'C
 
 function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null; userId: string; phone: string; reload: () => void }) {
   const [showAlta, setShowAlta] = useState(false);
-  const [fotoBusy, setFotoBusy] = useState(false);
+  /** Cuál se está subiendo, para poner el cartel en ESA caja y no en las dos. */
+  const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState(RUBROS[0]!);
   const [zona, setZona] = useState('');
@@ -2733,16 +2760,16 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
 
   /** La foto de la ficha del negocio: se sube y se guarda en el acto, con el mismo
    *  ayudante que la de la mascota. */
-  const cambiarFoto = async () => {
+  const cambiarImagen = async (cual: 'logo' | 'portada') => {
     if (!negocio) return;
-    setFotoBusy(true); setError('');
-    const r = await elegirYSubirFoto(userId, 'negocio-');
+    setFotoBusy(cual); setError('');
+    const r = await elegirYSubirFoto(userId, cual === 'logo' ? 'negocio-logo-' : 'negocio-');
     if ('url' in r) {
-      const { error: e } = await supabase.from('providers').update({ photo_url: r.url }).eq('id', negocio.id);
-      if (e) setError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.');
+      const { error: e } = await supabase.from('providers').update(cual === 'logo' ? { logo_url: r.url } : { photo_url: r.url }).eq('id', negocio.id);
+      if (e) setError('Subimos la imagen pero no pudimos guardarla. Probá de nuevo.');
       else await reload();
     } else if ('error' in r) setError(r.error);
-    setFotoBusy(false);
+    setFotoBusy(null);
   };
 
   const guardarEdicion = async () => {
@@ -2884,14 +2911,14 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
         <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], borderRadius: 20, padding: 18, marginBottom: 18, gap: 10 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>Editar datos</Text>
 
-          {/* La foto de la ficha. En mobile no había forma de ponerla: ni en el alta
-              ni después, así que el negocio quedaba para siempre sin la suya. Se
-              guarda al elegirla, como la de la mascota. */}
-          <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED }}>FOTO DE TU NEGOCIO</Text>
+          {/* Las dos imágenes de la ficha. En mobile no había forma de poner ninguna:
+              ni en el alta ni después, así que el negocio quedaba para siempre sin
+              las suyas. Se guardan al elegirlas, como la de la mascota. */}
+          <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED }}>LOGO DE LA MARCA</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <TouchableOpacity disabled={fotoBusy} onPress={cambiarFoto} style={{ opacity: fotoBusy ? 0.5 : 1 }}>
-              {negocio?.photo ? (
-                <Image source={{ uri: negocio.photo }} style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100] }} />
+            <TouchableOpacity disabled={!!fotoBusy} onPress={() => cambiarImagen('logo')} style={{ opacity: fotoBusy === 'logo' ? 0.5 : 1 }}>
+              {negocio?.logo ? (
+                <Image source={{ uri: negocio.logo }} style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100] }} />
               ) : (
                 <View style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
                   <Ic d={RUBRO_IC[negocio?.category ?? ''] ?? 'paw'} size={30} />
@@ -2899,7 +2926,23 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
               )}
             </TouchableOpacity>
             <Text style={{ flex: 1, fontSize: 12.5, color: MUTED, lineHeight: 18 }}>
-              {fotoBusy ? 'Subiendo…' : negocio?.photo ? 'Tocá la foto para cambiarla. Es la portada de tu ficha y la que se ve en el listado de Servicios.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro. Tocá para elegirla.'}
+              {fotoBusy === 'logo' ? 'Subiendo…' : negocio?.logo ? 'Tocá el logo para cambiarlo. Es el redondel de tu ficha y el cuadradito del listado.' : 'Todavía no subiste logo: mientras tanto se usa la portada, y si tampoco hay, el ícono de tu rubro.'}
+            </Text>
+          </View>
+
+          <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED }}>FOTO DE PORTADA</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity disabled={!!fotoBusy} onPress={() => cambiarImagen('portada')} style={{ opacity: fotoBusy === 'portada' ? 0.5 : 1 }}>
+              {negocio?.photo ? (
+                <Image source={{ uri: negocio.photo }} style={{ width: 116, height: 74, borderRadius: 12, backgroundColor: colors.violet[100] }} />
+              ) : (
+                <View style={{ width: 116, height: 74, borderRadius: 12, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                  <Ic d={RUBRO_IC[negocio?.category ?? ''] ?? 'paw'} size={26} color="#fff" />
+                </View>
+              )}
+            </TouchableOpacity>
+            <Text style={{ flex: 1, fontSize: 12.5, color: MUTED, lineHeight: 18 }}>
+              {fotoBusy === 'portada' ? 'Subiendo…' : negocio?.photo ? 'Tocá la portada para cambiarla. Es la banda de arriba de tu ficha.' : 'Todavía no subiste portada. Es la banda de arriba de tu ficha.'}
             </Text>
           </View>
 

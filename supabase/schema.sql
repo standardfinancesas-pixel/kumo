@@ -199,7 +199,10 @@ create table if not exists providers (
   price        integer,
   price_unit   text,
   status       provider_status not null default 'pendiente',
+  -- Dos imagenes y no una: la portada es la banda de arriba de la ficha y el logo
+  -- es el avatar cuadrado. Ver la migracion 20260821140000.
   photo_url    text,
+  logo_url     text,
   lat          double precision,
   lng          double precision,
   created_at   timestamptz not null default now()
