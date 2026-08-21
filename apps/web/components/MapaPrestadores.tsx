@@ -191,7 +191,11 @@ export function MapaPrestadores({
           title: p.nombre,
         })
           .addTo(mapa.current)
-          .bindTooltip(`${p.nombre} · ${p.categoria}`, { direction: 'top', offset: [0, -40] });
+          /* El tooltip va ESCAPADO: Leaflet inserta su contenido como HTML, y el
+             nombre del prestador lo escribe un socio al dar de alta su negocio. Sin
+             escapar, un nombre con una etiqueta adentro ejecuta script en el navegador
+             de cualquiera que abra Servicios. */
+          .bindTooltip(escapar(`${p.nombre} · ${p.categoria}`), { direction: 'top', offset: [0, -40] });
         if (onPin) marca.on('click', () => onPin(p.id));
         marcas.current.push(marca);
       }
