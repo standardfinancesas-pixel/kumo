@@ -116,3 +116,58 @@ export function partirZona(zona?: string | null): { localidad?: string; provinci
   }
   return { localidad: texto };
 }
+
+/* ── Cuando el catálogo no es de tu zona ───────────────────────────── */
+
+/** Desde cuántos kilómetros "lejos" es lejos. Es el techo del slider de Servicios:
+ *  más que eso ya no es una opción para ir un sábado. */
+export const LEJOS_KM = 25;
+
+const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+/**
+ * El aviso de que el catálogo de beneficios no es de la zona del socio.
+ *
+ * Beneficios lista TODO el catálogo activo, y eso es a propósito: un descuento en
+ * CABA le sirve al de Tandil si viaja, y con seis comercios cargados una lista vacía
+ * es peor que una lista lejana. Pero sin decir nada, a alguien del interior le
+ * ofrecemos seis descuentos que están todos a 300 km, como si fueran para él.
+ *
+ * Dos formas de saberlo, según los datos que haya:
+ *
+ *  · **Con distancias** (el club cargó la dirección del comercio): si el más cercano
+ *    está más lejos que el techo del slider, se dice el número. Es un hecho.
+ *  · **Sin distancias**, que es el caso mientras las direcciones estén vacías: se
+ *    mira si alguna zona menciona su localidad o su provincia. Ojo con el texto: el
+ *    aviso dice exactamente eso —"ninguno menciona Tandil"— y no "no hay nada cerca",
+ *    porque comparar texto libre no alcanza para afirmar lo segundo.
+ *
+ * Null cuando no hay nada que avisar: el que vive donde está la red no necesita
+ * leer nada.
+ */
+export function avisoZonaLejos(opts: {
+  localidad?: string | null;
+  provincia?: string | null;
+  zonas: string[];
+  /** El más cercano con distancia conocida, en km. Null si ninguno la tiene. */
+  masCercaKm?: number | null;
+}): string | null {
+  if (opts.zonas.length === 0) return null;
+
+  if (opts.masCercaKm != null) {
+    return opts.masCercaKm > LEJOS_KM
+      ? `El beneficio más cercano está a ${opts.masCercaKm.toLocaleString('es-AR')} km de tu casa. Podés usarlos igual si viajás.`
+      : null;
+  }
+
+  const donde = (opts.localidad ?? '').trim() || (opts.provincia ?? '').trim();
+  if (!donde) return null;
+  const mio = [opts.localidad, opts.provincia].map((t) => sinAcentos(t ?? '')).filter(Boolean);
+  const mencionado = opts.zonas.some((z) => {
+    const zona = sinAcentos(z);
+    return mio.some((m) => zona.includes(m) || m.includes(zona));
+  });
+  return mencionado
+    ? null
+    : `Ninguno de los beneficios cargados menciona ${donde}. El club los va sumando por zona; podés usarlos igual si viajás.`;
+}

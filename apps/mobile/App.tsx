@@ -7,7 +7,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  colors, PROVINCIAS, partirZona, PAGO_ESTADO, PAGO_MEDIO,
+  colors, PROVINCIAS, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -1216,12 +1216,26 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
   );
 }
 
-function Beneficios({ benefits, go, centro }: { benefits: BenefitVM[]; go: (t: Screen) => void; centro: Centro }) {
+function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; go: (t: Screen) => void; centro: Centro; profile: Profile | null }) {
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
+  const [zona, setZona] = useState('Todas');
   const [selId, setSelId] = useState<string | null>(null);
   const ql = buscado.trim().toLowerCase();
-  const list = benefits.filter((b) => !ql || `${b.name} ${b.cat} ${b.zone}`.toLowerCase().includes(ql));
+  /* Los chips de zona salen de las zonas que el club REALMENTE cargó: así no hay una
+     lista escrita a mano que quede vieja, y el socio ve qué zonas cubre la red. */
+  const zonas = [...new Set(benefits.map((b) => b.zone).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const list = benefits.filter((b) => (zona === 'Todas' || b.zone === zona)
+    && (!ql || `${b.name} ${b.cat} ${b.zone}`.toLowerCase().includes(ql)));
+  /* El aviso se calcula sobre TODOS los beneficios y no sobre la lista filtrada: la
+     pregunta es "¿la red llega hasta donde vivo?", no "¿esto que miro queda cerca?". */
+  const conKm = benefits.map((b) => b.km).filter((k): k is number => k != null);
+  const aviso = avisoZonaLejos({
+    localidad: profile?.city === '—' ? null : profile?.city,
+    provincia: profile?.province === '—' ? null : profile?.province,
+    zonas: benefits.map((b) => b.zone).filter(Boolean),
+    masCercaKm: conKm.length ? Math.min(...conKm) : null,
+  });
   const sel = benefits.find((b) => b.id === selId);
 
   return (
@@ -1259,6 +1273,26 @@ function Beneficios({ benefits, go, centro }: { benefits: BenefitVM[]; go: (t: S
         </View>
         <TouchableOpacity onPress={() => setBuscado(q)} style={{ backgroundColor: BRAND, borderRadius: 14, paddingHorizontal: 20, justifyContent: 'center' }}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Buscar</Text></TouchableOpacity>
       </View>
+      {/* Chips de zona: solo con más de una, porque con una sola no hay nada que
+          filtrar. */}
+      {zonas.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 12 }}>
+          {['Todas', ...zonas].map((z) => (
+            <TouchableOpacity key={z} onPress={() => setZona(z)} style={{ paddingVertical: 8, paddingHorizontal: 15, borderRadius: 100, backgroundColor: zona === z ? BRAND : colors.violet[100] }}>
+              <Text style={{ fontWeight: '600', fontSize: 13, color: zona === z ? '#fff' : BRAND }}>{z}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+      {/* El catálogo se lista completo a propósito —un descuento en CABA le sirve al de
+          Tandil si viaja— pero sin decir nada le ofrecíamos seis comercios a 300 km
+          como si fueran para él. */}
+      {aviso ? (
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start', backgroundColor: '#fff8e6', borderWidth: 1, borderColor: '#f5e7c4', borderRadius: 14, padding: 12, marginBottom: 14 }}>
+          <Ic d="pin" size={17} color="#b8860b" />
+          <Text style={{ flex: 1, fontSize: 12.5, color: '#7a5e14', lineHeight: 18 }}>{aviso}</Text>
+        </View>
+      ) : null}
       {buscado ? <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Beneficios en «{buscado}»</Text> : null}
       {/* Banner "mostrá tu carnet" */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: BRAND, borderRadius: 18, padding: 16, marginBottom: 18 }}>
@@ -3877,7 +3911,7 @@ export default function App() {
           {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
           {pantalla === 'servicios' && <Servicios centro={data.centro} providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
-          {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} />}
+          {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}

@@ -4,7 +4,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, partirZona,
+  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, partirZona, avisoZonaLejos,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
@@ -1886,18 +1886,49 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
   );
 }
 
-function Beneficios({ benefits, go, centro }: { benefits: BenefitVM[]; go: (s: Screen) => void; centro: { lat: number; lng: number; etiqueta: string | null } }) {
+function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; go: (s: Screen) => void; centro: { lat: number; lng: number; etiqueta: string | null }; profile: Profile }) {
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
+  const [zona, setZona] = useState('Todas');
   const [selId, setSelId] = useState<string | null>(null);
   const ql = buscado.trim().toLowerCase();
-  const list = benefits.filter((b) => !ql || `${b.name} ${b.category} ${b.zone}`.toLowerCase().includes(ql));
+  /*
+   * Los chips de zona salen de las zonas que el club REALMENTE cargó, no de una lista
+   * escrita a mano: así no hay nada que quede viejo cuando suman un barrio, y el socio
+   * ve de una qué zonas cubre la red.
+   */
+  const zonas = [...new Set(benefits.map((b) => b.zone).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const list = benefits.filter((b) => (zona === 'Todas' || b.zone === zona)
+    && (!ql || `${b.name} ${b.category} ${b.zone}`.toLowerCase().includes(ql)));
+  /*
+   * El aviso de que el catálogo no es de su zona.
+   *
+   * Se calcula sobre TODOS los beneficios y no sobre la lista filtrada: la pregunta es
+   * "¿la red llega hasta donde vivo?", no "¿lo que estoy mirando queda cerca?".
+   */
+  const conKm = benefits.map((b) => b.km).filter((k): k is number => k != null);
+  const aviso = avisoZonaLejos({
+    localidad: profile.city,
+    provincia: profile.province,
+    zonas: benefits.map((b) => b.zone).filter(Boolean),
+    masCercaKm: conKm.length ? Math.min(...conKm) : null,
+  });
   const sel = benefits.find((b) => b.id === selId);
   const buscar = () => setBuscado(q);
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>Beneficios</div>
       <div style={{ color: 'rgb(135,129,160)', fontSize: 14, marginBottom: 14 }}>Descuentos en la red de veterinarias y pet shops</div>
+
+      {/* El catálogo se lista completo a propósito —un descuento en CABA le sirve al de
+          Tandil si viaja— pero sin decir nada le ofrecíamos seis comercios a 300 km
+          como si fueran para él. */}
+      {aviso && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgb(255,248,230)', border: '1px solid rgb(245,231,196)', borderRadius: 14, padding: '11px 13px', marginBottom: 14 }}>
+          <span style={{ color: 'rgb(184,134,11)', flex: 'none', marginTop: 1 }}>{ic(pinDropPath, false, 17)}</span>
+          <span style={{ fontSize: 12.5, color: 'rgb(122,94,20)', lineHeight: 1.5 }}>{aviso}</span>
+        </div>
+      )}
 
       {/*
         * El mapa de los beneficios, con geografía de verdad.
@@ -1922,6 +1953,16 @@ function Beneficios({ benefits, go, centro }: { benefits: BenefitVM[]; go: (s: S
         onPin={(id) => setSelId(id)}
         style={{ height: 200, marginBottom: 14 }}
       />
+
+      {/* Chips de zona: solo si hay más de una, porque con una sola no hay nada que
+          filtrar y el chip "Todas" al lado del único barrio no aporta. */}
+      {zonas.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 10, marginBottom: 6 }}>
+          {['Todas', ...zonas].map((z) => (
+            <button key={z} onClick={() => setZona(z)} style={{ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, whiteSpace: 'nowrap', background: zona === z ? 'rgb(93,84,145)' : 'rgb(240,237,249)', color: zona === z ? '#fff' : 'rgb(93,84,145)' }}>{z}</button>
+          ))}
+        </div>
+      )}
 
       {/* Buscar dirección */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
@@ -3693,7 +3734,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} negocio={negocio} />}
           {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
-          {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} />}
+          {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} profile={profile} />}
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {pantalla === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
