@@ -131,12 +131,21 @@ export async function buscarDirecciones(consulta: string, provincia?: string, lo
 
       const altura = fila.altura?.valor;
       const domicilio = altura ? `${lindo(calle)} ${altura}` : lindo(calle);
-      /* La localidad: en CABA `localidad_censal` es la ciudad entera y repite la
-         provincia, así que ahí sirve el departamento, que es la comuna. En el resto
-         del país `localidad_censal` es la ciudad ("Tandil"), que es lo que uno
-         escribiría. */
+      /*
+       * La localidad. CABA es el único caso especial de verdad: ahí `localidad_censal`
+       * es la ciudad entera —repite el nombre de la provincia— y la unidad útil es la
+       * comuna, que después se refina al barrio.
+       *
+       * En el resto del país va `localidad_censal`, que es la ciudad. La regla anterior
+       * era "si la localidad coincide con la provincia, usar el departamento", y eso
+       * rompía justo en las provincias cuya capital se llama igual: para Alem 22 de
+       * Ciudad de Mendoza devolvía "Capital" (el departamento censal) en vez de
+       * "Mendoza". Lo mismo habría pasado en Santa Fe, Córdoba, San Juan o Salta.
+       */
       const censal = fila.localidad_censal?.nombre ?? '';
-      const localidadFinal = censal && censal !== prov ? censal : (fila.departamento?.nombre ?? '');
+      const localidadFinal = esCABA(prov)
+        ? (fila.departamento?.nombre ?? censal)
+        : (censal || fila.departamento?.nombre || '');
       const provinciaFinal = canonizarProvincia(prov);
 
       // Sin altura, Georef devuelve un punto por tramo de calle: son varias filas
