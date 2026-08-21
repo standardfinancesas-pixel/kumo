@@ -1485,16 +1485,21 @@ function Prestar({ go, profile, negocio }: { go: (s: Screen) => void; profile: P
       <label style={sheetLabel} htmlFor="pr-about">Contanos sobre tu servicio</label>
       <textarea id="pr-about" value={about} onChange={(e) => setAbout(e.target.value)} rows={3} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...sheetInput, marginBottom: 16, resize: 'none' }} />
 
-      <label style={sheetLabel}>Foto de portada</label>
+      {/* "Foto de tu negocio" y no "portada": es UNA sola imagen y hace los dos
+          trabajos —la portada de la ficha y el cuadradito del listado—, y llamarla
+          distinto acá y en "Editar datos" hacía que el prestador buscara un campo de
+          portada que no existe. */}
+      <label style={sheetLabel}>Foto de tu negocio <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
       <label style={{ position: 'relative', display: 'flex', width: '100%', height: 140, border: '2px dashed rgb(230,227,240)', borderRadius: 12, alignItems: 'center', justifyContent: 'center', background: fotoPreview ? `url(${fotoPreview}) center/cover` : 'rgb(250,250,249)', cursor: 'pointer', overflow: 'hidden', marginBottom: 18 }}>
         <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirFoto(e.target.files?.[0])} style={{ display: 'none' }} />
         {!fotoPreview && (
           <div style={{ textAlign: 'center', pointerEvents: 'none' }}>
             <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center', color: 'rgb(162,157,186)' }}>{ic(<><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></>, false, 22)}</div>
-            <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Subir portada</div>
+            <div style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Subir foto</div>
           </div>
         )}
       </label>
+      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '-12px 0 18px', lineHeight: 1.45 }}>Es la portada de tu ficha y la que se ve en el listado de Servicios. Si no la subís ahora, la podés cargar después desde Mi negocio.</p>
 
       {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
       <button onClick={enviar} disabled={busy} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 14, border: 'none', borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
@@ -2777,7 +2782,7 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
               <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarFoto(e.target.files?.[0])} />
             </label>
             <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', lineHeight: 1.45 }}>
-              {negocio.photoUrl ? 'Tocá la foto para cambiarla.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro.'} Es la que los socios ven en Servicios. JPG, PNG o WEBP, hasta 5 MB.
+              {negocio.photoUrl ? 'Tocá la foto para cambiarla.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro.'} Es la portada de tu ficha y la que se ve en el listado de Servicios. JPG, PNG o WEBP, hasta 5 MB.
               {fotoError && <div style={{ color: 'rgb(176,72,63)', fontWeight: 600, marginTop: 4 }}>{fotoError}</div>}
             </div>
           </div>

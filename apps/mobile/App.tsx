@@ -2301,7 +2301,10 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
       {/* La foto de portada, igual que en la webapp. Se sube al elegirla —así el
           socio ve que entró— y recién el insert la guarda: si abandona el alta,
           quedó un archivo suelto en el bucket y ningún negocio a medio crear. */}
-      <SheetLabel>Foto de portada · opcional</SheetLabel>
+      {/* "Foto de tu negocio" y no "portada": es UNA sola imagen y hace los dos trabajos
+          —la portada de la ficha y el cuadradito del listado—, y llamarla distinto acá y
+          en "Editar datos" hacía buscar un campo de portada que no existe. */}
+      <SheetLabel>Foto de tu negocio · opcional</SheetLabel>
       <TouchableOpacity
         disabled={fotoBusy}
         onPress={async () => {
@@ -2318,10 +2321,11 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
         ) : (
           <View style={{ alignItems: 'center' }}>
             <Ic d="image" size={22} color={colors.violet[400]} />
-            <Text style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{fotoBusy ? 'Subiendo…' : 'Subir portada'}</Text>
+            <Text style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{fotoBusy ? 'Subiendo…' : 'Subir foto'}</Text>
           </View>
         )}
       </TouchableOpacity>
+      <Text style={{ fontSize: 12, color: MUTED, marginTop: -12, marginBottom: 18, lineHeight: 17 }}>Es la portada de tu ficha y la que se ve en el listado de Servicios. Si no la subís ahora, la podés cargar después desde Mi negocio.</Text>
 
       {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text> : null}
       <TouchableOpacity disabled={busy} onPress={enviar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
@@ -2895,7 +2899,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
               )}
             </TouchableOpacity>
             <Text style={{ flex: 1, fontSize: 12.5, color: MUTED, lineHeight: 18 }}>
-              {fotoBusy ? 'Subiendo…' : negocio?.photo ? 'Tocá la foto para cambiarla. Es la que los socios ven en Servicios.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro. Tocá para elegirla.'}
+              {fotoBusy ? 'Subiendo…' : negocio?.photo ? 'Tocá la foto para cambiarla. Es la portada de tu ficha y la que se ve en el listado de Servicios.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro. Tocá para elegirla.'}
             </Text>
           </View>
 
