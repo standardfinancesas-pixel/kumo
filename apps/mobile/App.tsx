@@ -7,7 +7,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
-  colors, PROVINCIAS, partirZona,
+  colors, PROVINCIAS, partirZona, PAGO_ESTADO, PAGO_MEDIO,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -27,7 +27,7 @@ import { CampoDomicilio, CampoZona } from './components/ui/CampoDomicilio';
 import { Selector } from './components/ui/Controles';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
-import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio } from './lib/useKumoData';
+import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio, type PagoVM } from './lib/useKumoData';
 import Entrada from './components/Entrada';
 import Alta from './components/alta/Alta';
 import AltaListo from './components/alta/AltaListo';
@@ -1380,8 +1380,9 @@ function MasSheet({ onClose, onGo, pago, onPlan }: { onClose: () => void; onGo: 
  * cosas simplemente no existían. No era que "decía guardado y no guardaba":
  * faltaban.
  */
-function Perfil({ profile, planes, go, reload, pago, onPlan }: { profile: Profile | null; planes: PlanVM[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
+function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile: Profile | null; planes: PlanVM[]; pagos: PagoVM[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
   const [editando, setEditando] = useState(false);
+  const [pagosOpen, setPagosOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [datos, setDatos] = useState({
@@ -1521,6 +1522,55 @@ function Perfil({ profile, planes, go, reload, pago, onPlan }: { profile: Profil
           <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>Ver planes</Text>
         </TouchableOpacity>
       )}
+      {/*
+        * El historial de cuotas.
+        *
+        * Va para todos, incluido el gratuito: si alguna vez pagó, tiene derecho a ver
+        * qué le cobraron. La lista se abre en el lugar en vez de en una pantalla nueva,
+        * como "Editar datos": son pocas filas y no vale un viaje de navegación.
+        *
+        * Los rechazos se muestran igual que los cobros: cuando a alguien le rebota el
+        * débito, esa fila es la explicación de por qué se le cortó el acceso.
+        */}
+      <TouchableOpacity onPress={() => setPagosOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 15, marginBottom: pagosOpen ? 10 : 18 }}>
+        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: '700', fontSize: 14 }}>Mis pagos</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED }}>
+            {pagos.length === 0 ? 'Todavía no hay cuotas cobradas' : `Último: ${money(pagos[0]!.monto)} · ${pagos[0]!.fecha}`}
+          </Text>
+        </View>
+        <Text style={{ color: colors.violet[300], fontSize: 18 }}>{pagosOpen ? '⌃' : '›'}</Text>
+      </TouchableOpacity>
+      {pagosOpen ? (
+        <View style={{ marginBottom: 18, gap: 8 }}>
+          {pagos.length === 0 ? (
+            <Text style={{ fontSize: 13, color: MUTED, lineHeight: 19 }}>Cuando pagues la primera cuota, aparece acá con la fecha y hasta cuándo llega.</Text>
+          ) : pagos.map((p) => {
+            const est = PAGO_ESTADO[p.estado];
+            const tono = est.tono === 'ok'
+              ? { bg: '#e2f5ea', fg: '#2f8f5b' }
+              : est.tono === 'alerta' ? { bg: '#fbe8ef', fg: '#c14d7a' } : { bg: colors.violet[100], fg: BRAND };
+            return (
+              <View key={p.id} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 13 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 3 }}>
+                  <Text style={{ fontWeight: '700', fontSize: 15, flex: 1, color: INK }}>{money(p.monto)}</Text>
+                  <View style={{ backgroundColor: tono.bg, paddingHorizontal: 9, paddingVertical: 3, borderRadius: 100 }}>
+                    <Text style={{ color: tono.fg, fontWeight: '700', fontSize: 11 }}>{est.texto}</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12.5, color: MUTED }}>{p.fecha} · {PAGO_MEDIO[p.medio]}{p.plan ? ` · Plan ${p.plan}` : ''}</Text>
+                {/* Solo los acreditados llevan la cuota a algún lado: en uno rechazado,
+                    "cubre hasta" prometería un mes que no entró. */}
+                {p.cubreHasta && p.estado === 'aprobado' ? (
+                  <Text style={{ fontSize: 12.5, color: BRAND, fontWeight: '600', marginTop: 2 }}>Cuota paga hasta el {p.cubreHasta}</Text>
+                ) : null}
+                {p.detalle ? <Text style={{ fontSize: 12, color: colors.violet[400], marginTop: 2 }}>{p.detalle}</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
       {/* Los reintegros son del que paga: sin eso la fila promete una pantalla que
           no existe. */}
       {pago ? (
@@ -3865,7 +3915,7 @@ export default function App() {
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
-          {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {pantalla === 'minegocio' && <Negocio negocio={data.negocio} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}

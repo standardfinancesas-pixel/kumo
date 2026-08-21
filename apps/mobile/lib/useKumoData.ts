@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, distanciaKm, origenDelSocio, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -90,6 +90,8 @@ export type KumoData = {
   reintTotal: number;
   posts: ForumPost[];
   planes: PlanVM[];
+  /** El historial de cuotas. La RLS ya lo permitía y ninguna pantalla lo mostraba. */
+  pagos: PagoVM[];
   contacts: EmergencyContact[];
   /** El negocio propio, si dio de alta uno. Puede estar pendiente o rechazado, así que no sale del listado de verificados. */
   negocio: MiNegocio | null;
@@ -110,6 +112,16 @@ export type EmergencyContact = { id: string; name: string; phone: string; type: 
 /** Los planes, para el cambio de plan de Mi perfil. */
 export type PlanVM = { id: string; name: string; basePrice: number };
 
+/**
+ * Una cuota cobrada, como la ve el socio. Gemelo del `PagoVM` de la webapp.
+ *
+ * `cubreHasta` es lo que hace útil la lista: no alcanza con "pagué $18.000 el 19 de
+ * agosto", lo que importa es hasta cuándo llegó ese pago.
+ */
+export type PagoVM = {
+  id: string; fecha: string; monto: number; plan: string | null;
+  estado: EstadoPago; medio: MedioPago; cubreHasta: string | null; detalle: string | null;
+};
 export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; status: string; rating: number; reviews: number };
 
 /* ── Helpers de formato ────────────────────────────────────────── */
@@ -191,7 +203,7 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async (esReintento = false) => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
@@ -205,6 +217,13 @@ export function useKumoData(userId: string | null) {
       supabase.from('answer_likes').select('answer_id').eq('member_id', userId),
       supabase.from('plans').select('id, name, base_price'),
       supabase.from('emergency_contacts').select('id, name, phone, type, address, hours').eq('owner_id', userId),
+      // El historial de cuotas: doce meses alcanzan para cualquier reclamo y no
+      // obligan a paginar.
+      supabase.from('payments')
+        .select('id, amount, status, method, plan_name, covers_until, detail, created_at, paid_at')
+        .eq('member_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(24),
     ]);
 
     /**
@@ -222,6 +241,7 @@ export function useKumoData(userId: string | null) {
         ['prestadores', provRes], ['beneficios', benefRes], ['foro', postsRes],
         ['mi negocio', negocioRes], ['guardados', favRes], ['reseñas', revRes],
         ['likes', plikeRes], ['likes de respuestas', alikeRes], ['planes', planesRes], ['contactos', contactosRes],
+        ['pagos', pagosRes],
       ] as const
     )
       .filter(([, res]) => res.error)
@@ -412,7 +432,30 @@ export function useKumoData(userId: string | null) {
       address: c.address ?? '', hours: c.hours ?? '',
     }));
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, contacts, negocio, notifInput, guardados, reviews, misLikes });
+    /*
+     * El historial de cuotas.
+     *
+     * `paid_at` cuando existe y `created_at` si no: la fecha que le importa al socio es
+     * la del cobro. Los pendientes viejos se caen (ver `pagoEnHistorial`): un checkout
+     * abandonado no es un pago, y listarlo parece deuda.
+     *
+     * El detalle solo cuando lo escribió una persona: el de Mercado Pago es texto de
+     * máquina y trae adentro el id de la suscripción.
+     */
+    const pagos: PagoVM[] = (pagosRes.data ?? [])
+      .filter((p) => pagoEnHistorial(p.status as EstadoPago, p.created_at))
+      .map((p) => ({
+        id: p.id,
+        fecha: fmtShort(diaISO(p.paid_at ?? p.created_at)),
+        monto: p.amount,
+        plan: p.plan_name,
+        estado: p.status as EstadoPago,
+        medio: p.method as MedioPago,
+        cubreHasta: p.covers_until ? fmtShort(p.covers_until) : null,
+        detalle: p.method === 'manual' ? p.detail : null,
+      }));
+
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocio, notifInput, guardados, reviews, misLikes });
     setLoading(false);
   }, [userId]);
 

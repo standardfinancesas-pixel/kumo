@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
-import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia } from '@kumo/shared';
+import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
-import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM } from './AppClient';
+import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM, type PagoVM } from './AppClient';
 
 /** Landing: ahí está el login si no hay sesión. */
 const LANDING = urls.landing;
@@ -255,7 +255,15 @@ export default async function Page() {
     supabase.from('plans').select('id, name, base_price, tagline').order('base_price'),
     // Los últimos pagos del socio, para que el muro de la cuota sepa si hay uno
     // en curso en vez de tratarlo como si nunca hubiera intentado.
-    supabase.from('payments').select('status, method, detail, created_at').eq('member_id', auth.user.id).order('created_at', { ascending: false }).limit(5),
+    /* Los cobros del socio. Se piden completos porque además de detectar el pago en
+       curso son su historial de cuotas: la política de RLS ya decía "el socio ve su
+       historial" y hasta ahora ninguna pantalla lo mostraba. Doce meses alcanzan para
+       cualquier reclamo y no obligan a paginar. */
+    supabase.from('payments')
+      .select('id, amount, status, method, plan_name, covers_until, detail, created_at, paid_at')
+      .eq('member_id', auth.user.id)
+      .order('created_at', { ascending: false })
+      .limit(24),
   ]);
   if (!profileRow) redirect(LANDING);
 
@@ -356,6 +364,31 @@ export default async function Page() {
     etiquetaOdonto(cuota.odonto, cuota.debePagar),
     selloCarnet({ debePagar: cuota.debePagar, tienePlan: cuota.planName !== '—', cuotaHasta: cuota.hasta, suscripcion: cuota.suscripcion }),
   ));
+  /*
+   * El historial de cuotas.
+   *
+   * `paid_at` cuando existe y `created_at` si no: la fecha que le importa al socio es
+   * la del cobro, no la del registro. Y los pendientes viejos se caen (ver
+   * `pagoEnHistorial`): un checkout abandonado no es un pago, y listarlo parece deuda.
+   */
+  const pagos: PagoVM[] = (pagoRows ?? [])
+    .filter((p) => pagoEnHistorial(p.status as EstadoPago, p.created_at))
+    .map((p) => ({
+      id: p.id,
+      fecha: fmtDate(diaISO(p.paid_at ?? p.created_at)),
+      monto: p.amount,
+      plan: p.plan_name,
+      estado: p.status as EstadoPago,
+      medio: p.method as MedioPago,
+      cubreHasta: p.covers_until ? fmtDate(p.covers_until) : null,
+      /* El detalle solo cuando lo escribió una persona.
+         El de Mercado Pago es texto de máquina y trae el id de la suscripción
+         adentro ("débito automático de la suscripción e796bd03..."): no le explica
+         nada al socio y le manda al navegador un identificador interno del cobro.
+         El del club sí es para él ("efectivo en la veterinaria"). */
+      detalle: p.method === 'manual' ? p.detail : null,
+    }));
+
   const reintegros: Reint[] = (reintRows ?? []).map((r) => mapReint(r as ReintRow));
   const contacts: EmergencyContact[] = (contactRows ?? []).map((c) => ({ ...c, address: c.address ?? '', hours: c.hours ?? '' }));
   /*
@@ -408,5 +441,5 @@ export default async function Page() {
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocio={negocio} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
 }

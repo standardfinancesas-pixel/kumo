@@ -7,6 +7,7 @@ import {
   urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, partirZona,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
@@ -123,6 +124,18 @@ export type BenefitVM = {
   address: string | null; km: number | null; kmDesde: string;
   /** Para el pin en el mapa. Null cuando no hay dirección cargada. */
   lat: number | null; lng: number | null;
+};
+/**
+ * Una cuota cobrada, como la ve el socio.
+ *
+ * `cubreHasta` es el dato que convierte la lista en algo útil: no alcanza con "pagué
+ * $18.000 el 19 de agosto", lo que importa es hasta cuándo llegó ese pago. Y el plan
+ * queda congelado en la fila porque el precio cambia y un pago tiene que poder
+ * explicarse solo dentro de dos años.
+ */
+export type PagoVM = {
+  id: string; fecha: string; monto: number; plan: string | null;
+  estado: EstadoPago; medio: MedioPago; cubreHasta: string | null; detalle: string | null;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
@@ -1226,6 +1239,61 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * El historial de cuotas.
+ *
+ * Existía en la base desde el principio —la política de RLS dice "el socio ve su
+ * historial de cuotas"— y no había ninguna pantalla que lo mostrara. Es la respuesta a
+ * dos preguntas que hoy solo podía contestar el club por WhatsApp: "¿me cobraron?" y
+ * "¿hasta cuándo tengo la cuota?".
+ *
+ * Los rechazos se muestran igual que los cobros. Cuando a alguien le rebota el débito
+ * esa fila es la explicación de por qué se le cortó el acceso: esconderla lo dejaría
+ * buscando el motivo en el aire.
+ */
+function HojaPagos({ pagos, onClose }: { pagos: PagoVM[]; onClose: () => void }) {
+  const tono = (t: 'ok' | 'neutro' | 'alerta') => t === 'ok'
+    ? { bg: 'rgb(226,245,234)', fg: 'rgb(47,143,91)' }
+    : t === 'alerta'
+      ? { bg: 'rgb(251,232,239)', fg: 'rgb(193,77,122)' }
+      : { bg: 'rgb(240,237,249)', fg: 'rgb(93,84,145)' };
+  return (
+    <Sheet onClose={onClose}>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Mis pagos</div>
+      <p style={{ fontSize: 13, color: 'rgb(135,129,160)', margin: '0 0 16px' }}>Las cuotas de los últimos meses y hasta cuándo llegó cada una.</p>
+      {pagos.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: '24px 10px', color: 'rgb(162,157,186)', fontSize: 14, lineHeight: 1.5 }}>
+          Todavía no hay cuotas cobradas.<br />Cuando pagues la primera, aparece acá.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {pagos.map((p) => {
+            const est = PAGO_ESTADO[p.estado];
+            const c = tono(est.tono);
+            return (
+              <div key={p.id} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '12px 14px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>{m$(p.monto)}</span>
+                  <span style={{ background: c.bg, color: c.fg, fontWeight: 700, fontSize: 11, padding: '3px 9px', borderRadius: 100 }}>{est.texto}</span>
+                </div>
+                <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)' }}>
+                  {p.fecha} · {PAGO_MEDIO[p.medio]}{p.plan ? ` · Plan ${p.plan}` : ''}
+                </div>
+                {/* Solo los pagos acreditados llevan la cuota a algún lado: en uno
+                    rechazado, mostrar "cubre hasta" sería prometer un mes que no entró. */}
+                {p.cubreHasta && p.estado === 'aprobado' && (
+                  <div style={{ fontSize: 12.5, color: 'rgb(93,84,145)', fontWeight: 600, marginTop: 3 }}>Cuota paga hasta el {p.cubreHasta}</div>
+                )}
+                {p.detalle && <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginTop: 3 }}>{p.detalle}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Sheet>
   );
 }
 
@@ -2669,7 +2737,7 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
  *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
  *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
  *  "Cambiar" plan te sacaba a la landing. */
-function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocio: MiNegocio | null; cuota: CuotaVM; pago: boolean; onPlan: () => void }) {
+function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, pagos, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocio: MiNegocio | null; cuota: CuotaVM; pago: boolean; pagos: PagoVM[]; onPlan: () => void }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2678,6 +2746,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onP
   const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email });
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaHecha, setBajaHecha] = useState(false);
+  const [pagosOpen, setPagosOpen] = useState(false);
 
   /** Ahora sí guarda. El nombre también: antes no se podía editar desde ningún lado. */
   const guardarDatos = async () => {
@@ -2782,6 +2851,12 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onP
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Mi cuenta</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
         {row(ic(storeIcon, false, 19), 'Mi negocio', negocioHint, chevron, () => go('negocio'))}
+        {/* El historial de cuotas. Va para todos, incluido el gratuito: si alguna vez
+            pagó, tiene derecho a ver qué le cobraron. La bajada dice lo último que pasó
+            de verdad, que es lo que uno viene a mirar. */}
+        {row(ic(cardIcon, false, 19), 'Mis pagos',
+          pagos.length === 0 ? 'Todavía no hay cuotas cobradas' : `Último: ${m$(pagos[0]!.monto)} · ${pagos[0]!.fecha}`,
+          chevron, () => setPagosOpen(true))}
         {/* Los reintegros son del socio con la cuota paga: sin eso la fila promete
             una pantalla que no existe. */}
         {pago ? row(ic(wallet, false, 19), 'Mis reintegros', `${m$(reintegradoTotal)} reintegrados este año`, chevron, () => go('reintegros')) : null}
@@ -2927,6 +3002,8 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocio, cuota, pago, onP
           servidor y cancela la suscripción vieja si cambió. */}
 
       {/* Darme de baja */}
+      {pagosOpen && <HojaPagos pagos={pagos} onClose={() => setPagosOpen(false)} />}
+
       {bajaOpen && (
         <Sheet onClose={() => setBajaOpen(false)}>
           {bajaHecha ? (
@@ -3543,7 +3620,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocio, notifInput, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocio: MiNegocio | null; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -3620,7 +3697,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
           {pantalla === 'negocio' && <Negocio go={go} negocio={negocio} profile={profile} misReviews={negocio ? (reviews[negocio.id] ?? []) : []} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
-          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocio={negocio} cuota={cuota} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocio={negocio} cuota={cuota} pago={pago} pagos={pagos} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
         </div>
       </div>
