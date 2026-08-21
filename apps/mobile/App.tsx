@@ -24,6 +24,7 @@ import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
 import { recalcularUbicacion, ubicarNegocio } from './lib/api';
 import { CampoDomicilio, CampoZona } from './components/ui/CampoDomicilio';
+import { MapaLugares } from './components/MapaLugares';
 import { Selector } from './components/ui/Controles';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
@@ -769,51 +770,11 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
   );
 }
 
-/* ── Mapa estilizado (bloques + calles), como en el prototipo ── */
-function MapBlocks({ children }: { children?: ReactNode }) {
-  return (
-    <Svg width="100%" height="100%" viewBox="0 0 320 250" preserveAspectRatio="xMidYMid slice">
-      <Rect width="320" height="250" fill="#e9ebf1" />
-      <Rect x="26" y="24" width="80" height="58" rx="4" fill="#dfe2ea" />
-      <Rect x="128" y="18" width="70" height="66" rx="4" fill="#dfe2ea" />
-      <Rect x="220" y="30" width="74" height="52" rx="4" fill="#dfe2ea" />
-      <Rect x="20" y="138" width="86" height="72" rx="4" fill="#dfe2ea" />
-      <Rect x="128" y="132" width="66" height="84" rx="4" fill="#dfe2ea" />
-      <Rect x="214" y="138" width="86" height="78" rx="4" fill="#dfe2ea" />
-      <Path d="M0 112 H320 M0 120 H320" stroke="#cfd3de" strokeWidth={8} />
-      <Path d="M112 0 V250 M206 0 V250" stroke="#cfd3de" strokeWidth={8} />
-      {children}
-    </Svg>
-  );
-}
-/* Pin tipo "gota" con etiqueta arriba */
-function Pin({ x, y, label, icon }: { x: number; y: number; label?: string; icon: IconName }) {
-  return (
-    <View style={{ position: 'absolute', left: `${x}%`, top: `${y}%`, transform: [{ translateX: -20 }, { translateY: -44 }], alignItems: 'center' }}>
-      {label ? <View style={{ backgroundColor: BRAND, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 3 }}><Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' }}>{label}</Text></View> : null}
-      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: LIME, borderWidth: 3, borderColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
-        <Ic d={icon} size={20} color={BRAND} fill={icon === 'paw'} />
-      </View>
-    </View>
-  );
-}
-
 /* ── Pantalla: Servicios ───────────────────────────────────────── */
 const CHIPS = [
   { label: 'Todos', cat: null as string | null }, { label: 'Paseos', cat: 'Paseador' }, { label: 'Guardería', cat: 'Guardería' },
   { label: 'Baño', cat: 'Baño y estética' }, { label: 'Adiestrador', cat: 'Adiestrador' }, { label: 'Cuidador', cat: 'Cuidador' },
 ];
-const PIN_ICON: Record<string, IconName> = {
-  'Paseador': 'paw', 'Guardería': 'house', 'Baño y estética': 'pin', 'Adiestrador': 'person', 'Cuidador': 'heart',
-};
-/** Posición del pin. El mapa es decorativo (Google Maps real es Fase 4), así que
- *  sale del id para que sea estable entre renders y no salte al filtrar. */
-function pinPos(id: string): { x: number; y: number } {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) % 100000;
-  return { x: 18 + (h % 64), y: 24 + (Math.floor(h / 64) % 48) };
-}
-
 /* ── Sub-pantalla: ficha del prestador ─────────────────────────── */
 /** Portada, identidad, tarifa, contacto y reseñas, con la barra fija de abajo.
  *  Antes tocar un prestador abría WhatsApp directo, sin poder ver nada. */
@@ -1024,7 +985,10 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
   );
 }
 
-function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId, firstName, reload }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void; reviews: Record<string, Review[]>; userId: string; firstName: string; reload: () => void }) {
+/** El centro de los mapas: el domicilio del socio (ver useKumoData). */
+type Centro = { lat: number; lng: number; etiqueta: string | null };
+
+function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId, firstName, reload, centro }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void; reviews: Record<string, Review[]>; userId: string; firstName: string; reload: () => void; centro: Centro }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radius, setRadius] = useState(5);
@@ -1073,20 +1037,21 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
         <Text style={{ fontSize: 11, color: '#a29dba' }}>1 km</Text><Text style={{ fontSize: 11, color: '#a29dba' }}>25 km</Text>
       </View>
-      {/* Mapa con radio + pins */}
-      <View style={{ height: 230, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#e6e3f0', marginBottom: 14 }}>
-        <MapBlocks />
-        <View style={{ position: 'absolute', left: '50%', top: '52%', width: 150, height: 150, borderRadius: 75, borderWidth: 2, borderColor: 'rgba(93,84,145,0.4)', backgroundColor: 'rgba(93,84,145,0.08)', marginLeft: -75, marginTop: -75 }} />
-        {/* Un pin por prestador de la lista, y se toca para abrir su ficha. Antes
-            eran los tres primeros y no hacían nada. */}
-        {list.map((p) => {
-          const pos = pinPos(p.id);
-          return (
-            <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%` }}>
-              <Pin x={0} y={0} label={p.name} icon={PIN_ICON[p.category] ?? 'pin'} />
-            </TouchableOpacity>
-          );
-        })}
+      {/*
+        * El mapa, con geografía de verdad (ver components/MapaLugares).
+        *
+        * Era un dibujo: manzanas grises y los pines ubicados con un hash del id,
+        * "estables entre renders" pero sin relación con dónde queda cada prestador. Se
+        * muestran los de la lista filtrada que tengan coordenadas: uno sin lat/lng no
+        * se puede dibujar, y ponerlo en el centro sería inventar de nuevo.
+        */}
+      <View style={{ marginBottom: 14 }}>
+        <MapaLugares
+          pins={list.filter((p) => p.lat != null && p.lng != null).map((p) => ({ id: p.id, nombre: p.name, lat: p.lat as number, lng: p.lng as number }))}
+          centro={centro}
+          radioKm={radius}
+          onPin={(id) => setSelId(id)}
+        />
       </View>
 
       {/* Guardados */}
@@ -1251,7 +1216,7 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
   );
 }
 
-function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (t: Screen) => void }) {
+function Beneficios({ benefits, go, centro }: { benefits: BenefitVM[]; go: (t: Screen) => void; centro: Centro }) {
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
   const [selId, setSelId] = useState<string | null>(null);
@@ -1264,28 +1229,28 @@ function Beneficios({ benefits, go }: { benefits: BenefitVM[]; go: (t: Screen) =
     <ScrollView contentContainerStyle={styles.screen}>
       <H1>Beneficios</H1>
       <Sub>Descuentos en la red de veterinarias y pet shops</Sub>
-      {/* Mapa: un pin por beneficio de la lista, tocable. Antes eran seis pines
-          fijos que no representaban ninguno en particular. */}
-      <View style={{ height: 175, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#e6e3f0', marginBottom: 16 }}>
-        <MapBlocks />
-        {list.map((b) => {
-          const pos = pinPos(b.id);
-          return (
-            <TouchableOpacity key={b.id} onPress={() => setSelId(b.id)} style={{ position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, transform: [{ translateX: -15 }, { translateY: -30 }] }}>
-              <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: LIME }}>
-                <Text style={{ color: LIME, fontWeight: '800', fontSize: 13 }}>%</Text>
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-        {buscado ? (
-          <View style={{ position: 'absolute', left: '50%', top: '50%', transform: [{ translateX: -9 }, { translateY: -9 }] }}>
-            <View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#2a78d6', borderWidth: 3, borderColor: '#fff' }} />
-          </View>
-        ) : null}
+      {/*
+        * El mapa de los beneficios, con geografía de verdad.
+        *
+        * Era el último dibujo que quedaba en la app: pines por hash del id y un punto
+        * azul en el centro que aparecía al buscar, haciéndose pasar por la ubicación
+        * del socio. Ahora el pin lleva el descuento adentro —que es el dato por el que
+        * uno mira este mapa— y la casa del socio va en el centro. Los beneficios de
+        * zona entera ("Todo CABA") no tienen dirección posible, así que no tienen pin:
+        * siguen en la lista, con su zona.
+        *
+        * Sin radio: un descuento sirve igual aunque quede lejos.
+        */}
+      <View style={{ marginBottom: 16 }}>
+        <MapaLugares
+          pins={list.filter((b) => b.lat != null && b.lng != null).map((b) => ({ id: b.id, nombre: b.name, lat: b.lat as number, lng: b.lng as number, etiqueta: b.disc }))}
+          centro={centro}
+          onPin={(id) => setSelId(id)}
+          alto={175}
+        />
       </View>
-      {/* No hay geolocalización: los beneficios no tienen coordenadas (solo zona),
-          así que se busca por zona, nombre o rubro. */}
+      {/* Se busca por texto y no por cercanía a propósito: a un beneficio se llega por
+          el comercio o el rubro, y la distancia ya está en cada tarjeta. */}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
         <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingHorizontal: 14 }}>
           <Ic d="pin" size={17} color={colors.violet[400]} />
@@ -3910,9 +3875,9 @@ export default function App() {
         <View style={{ flex: 1 }}>
           {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
-          {pantalla === 'servicios' && <Servicios providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
+          {pantalla === 'servicios' && <Servicios centro={data.centro} providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} negocio={data.negocio} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
-          {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} />}
+          {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
           {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}

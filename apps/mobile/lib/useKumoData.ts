@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -58,6 +58,8 @@ export type BenefitVM = {
   /** La dirección del comercio y a qué distancia le queda al socio. `km` es null
    *  cuando el club no cargó dirección: ahí no se muestra distancia. */
   address: string | null; km: number | null; kmDesde: string;
+  /** Para el pin del mapa. Null cuando no hay dirección cargada. */
+  lat: number | null; lng: number | null;
 };
 /** El detalle necesita bastante más que la tarjeta del historial: el seguimiento,
  *  el comprobante y los datos de acreditación. */
@@ -92,6 +94,9 @@ export type KumoData = {
   planes: PlanVM[];
   /** El historial de cuotas. La RLS ya lo permitía y ninguna pantalla lo mostraba. */
   pagos: PagoVM[];
+  /** El centro de los mapas: el domicilio del socio, o el de CABA si no se pudo
+   *  resolver (y ahí `etiqueta` es null, porque el Obelisco no es la casa de nadie). */
+  centro: { lat: number; lng: number; etiqueta: string | null };
   contacts: EmergencyContact[];
   /** El negocio propio, si dio de alta uno. Puede estar pendiente o rechazado, así que no sale del listado de verificados. */
   negocio: MiNegocio | null;
@@ -356,6 +361,8 @@ export function useKumoData(userId: string | null) {
       address: b.address,
       km: b.lat != null && b.lng != null ? distanciaKm(desde, { lat: b.lat, lng: b.lng }) : null,
       kmDesde,
+      // Para el pin del mapa de Beneficios.
+      lat: b.lat, lng: b.lng,
     }));
 
     const reintegros: ReintVM[] = (reintRes.data ?? []).map((r) => {
@@ -455,7 +462,7 @@ export function useKumoData(userId: string | null) {
         detalle: p.method === 'manual' ? p.detail : null,
       }));
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocio, notifInput, guardados, reviews, misLikes });
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocio, notifInput, guardados, reviews, misLikes, centro: { lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) } });
     setLoading(false);
   }, [userId]);
 
