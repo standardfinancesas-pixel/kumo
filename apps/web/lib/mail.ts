@@ -112,6 +112,25 @@ async function enviar(to: string, subject: string, html: string, text: string) {
   }
 }
 
+/**
+ * Escapa lo que escribió una persona antes de meterlo en el HTML del mail.
+ *
+ * No es XSS —los clientes de correo no ejecutan scripts— pero sin esto se puede
+ * inyectar markup y links DENTRO de un mail que sale firmado por Kumo: un concepto
+ * de reintegro como `Consulta</strong><a href="...">Reclamá acá</a>` llega con
+ * nuestro nombre y nuestro logo. El que lo recibe no tiene forma de saber que esa
+ * línea la escribió otro.
+ *
+ * Se aplica SOLO en la versión HTML. En la de texto plano no va: ahí "Rodríguez &
+ * Cía" tiene que leerse así y no como `&amp;`.
+ */
+const esc = (t: string | number) => String(t)
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 /* ── Piezas que se repiten en varios mails ─────────────────────── */
 
 /** Título de un mail. */
@@ -161,12 +180,12 @@ export async function sendBienvenida(opts: { to: string; firstName: string; masc
   const suCarnet = varias ? `sus carnets digitales` : `su carnet digital`;
   const elCarnetDe = varias ? `los carnets de ${nombres}` : `el carnet de ${nombres}`;
   const cuerpo = `
-    ${h1(`Te sumaste al club, ${firstName}`)}
-    ${par(`${nombres} ya ${varias ? "tienen" : "tiene"} ${suCarnet}, y vos tu número de socio.`)}
+    ${h1(`Te sumaste al club, ${esc(firstName)}`)}
+    ${par(`${esc(nombres)} ya ${varias ? "tienen" : "tiene"} ${esc(suCarnet)}, y vos tu número de socio.`)}
     ${caja(`${filaChica('TU NÚMERO DE SOCIO')}${filaGrande(`#${memberNo}`)}${filaMedia(planName ? `Plan ${planName}` : 'Plan gratuito')}`)}
     ${par(planName
-      ? `Desde tu cuenta podés ver ${elCarnetDe}, pedir el reintegro de lo que gastás en el veterinario y usar los descuentos de la red de prestadores.`
-      : `Desde tu cuenta podés ver ${elCarnetDe}, anotar las vacunas, buscar prestadores cerca y participar de los foros. Los reintegros y los beneficios se activan con cualquier plan, cuando quieras.`, true)}`;
+      ? `Desde tu cuenta podés ver ${esc(elCarnetDe)}, pedir el reintegro de lo que gastás en el veterinario y usar los descuentos de la red de prestadores.`
+      : `Desde tu cuenta podés ver ${esc(elCarnetDe)}, anotar las vacunas, buscar prestadores cerca y participar de los foros. Los reintegros y los beneficios se activan con cualquier plan, cuando quieras.`, true)}`;
   const text = `Te sumaste al club, ${firstName}.\n\n${nombres} ya ${varias ? "tienen" : "tiene"} ${suCarnet}.\nTu número de socio: #${memberNo}\n${planName ? `Plan ${planName}` : "Plan gratuito"}\n\nEntrá a tu cuenta: ${SITE}${urls.webapp}`;
   return enviar(to, `Ya sos parte de Kumo · socio #${memberNo}`, layout('Bienvenida a Kumo', cuerpo, wa, { label: varias ? 'Ver mis carnets' : 'Ver mi carnet', href: `${SITE}${urls.webapp}` }), text);
 }
@@ -186,8 +205,8 @@ export async function sendReintegroRecibido(opts: {
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Lo estamos revisando')}
-    ${par(`${firstName}, nos llegó tu pedido por ${concept} en ${providerName}, por ${money(amount)}.`)}
-    ${caja(`${filaMedia(`<strong>${providerName}</strong>`)}${filaChica(`${concept} · ${money(amount)}`)}`)}
+    ${par(`${esc(firstName)}, nos llegó tu pedido por ${esc(concept)} en ${esc(providerName)}, por ${money(amount)}.`)}
+    ${caja(`${filaMedia(`<strong>${esc(providerName)}</strong>`)}${filaChica(`${esc(concept)} · ${money(amount)}`)}`)}
     ${par('Lo revisa una persona del club, así que puede tardar unos días hábiles. Te escribimos en cuanto esté resuelto — no hace falta que vuelvas a mandarlo.', true)}`;
   const text = `${firstName}, recibimos tu pedido de reintegro.\n\n${providerName} · ${concept} · ${money(amount)}\n\nLo revisa una persona del club y puede tardar unos días hábiles. Te escribimos cuando esté resuelto: no hace falta volver a mandarlo.\n\nVer el estado: ${SITE}${urls.webapp}`;
   return enviar(to, 'Recibimos tu pedido de reintegro', layout('Pedido de reintegro recibido', cuerpo, wa, { label: 'Ver el estado', href: `${SITE}${urls.webapp}` }), text);
@@ -216,10 +235,10 @@ export async function sendReintegroResuelto(opts: {
 
   const cuerpo = acreditado
     ? `${h1('Aprobamos tu reintegro 🎉')}
-       ${par(`${firstName}, ya está: transferimos ${money(refund)} a tu CBU y se acredita dentro de los 30 días corridos.`)}
+       ${par(`${esc(firstName)}, ya está: transferimos ${money(refund)} a tu CBU y se acredita dentro de los 30 días corridos.`)}
        ${detalle}`
     : `${h1('Sobre tu reintegro')}
-       ${par(`${firstName}, esta vez no pudimos aprobarlo. Los motivos más comunes son que el comprobante no se lee bien, que el gasto no entra en tu plan, o que ya usaste el tope del mes.`)}
+       ${par(`${esc(firstName)}, esta vez no pudimos aprobarlo. Los motivos más comunes son que el comprobante no se lee bien, que el gasto no entra en tu plan, o que ya usaste el tope del mes.`)}
        ${detalle}
        ${par(`Si creés que hubo un error, ${linkWa(wa, 'escribinos por WhatsApp')} y lo revisamos con vos. Si el problema era el comprobante, podés cargarlo de nuevo desde la app.`, true)}`;
 
@@ -250,9 +269,9 @@ export async function sendVacunaProxima(opts: {
   const wa = await whatsappDelClub();
   const cuando = dias === 0 ? 'vence hoy' : dias === 1 ? 'vence mañana' : `vence en ${dias} días`;
   const cuerpo = `
-    ${h1(`Se acerca la ${vacuna.toLowerCase()} de ${petName}`)}
-    ${par(`${firstName}, ${cuando}: el ${fecha}.`)}
-    ${caja(`${filaChica('VENCE')}${filaGrande(fecha)}${filaMedia(`${vacuna} · ${petName}`)}`)}
+    ${h1(`Se acerca la ${esc(vacuna.toLowerCase())} de ${esc(petName)}`)}
+    ${par(`${esc(firstName)}, ${cuando}: el ${fecha}.`)}
+    ${caja(`${filaChica('VENCE')}${filaGrande(fecha)}${filaMedia(`${esc(vacuna)} · ${esc(petName)}`)}`)}
     ${par('Reservá turno en tu veterinaria y después cargala en el carnet, así no se te pasa la próxima. Si la aplicás en un prestador de la red, te llevás el descuento.', true)}`;
   const text = `${firstName}, la ${vacuna.toLowerCase()} de ${petName} ${cuando} (${fecha}).\n\nReservá turno y cargala en el carnet cuando la apliquen. En los prestadores de la red tenés descuento.\n\nVer el carnet: ${SITE}${urls.webapp}`;
   return enviar(to, `A ${petName} le toca la ${vacuna.toLowerCase()}`, layout('Recordatorio de vacuna', cuerpo, wa, { label: `Ver el carnet de ${petName}`, href: `${SITE}${urls.webapp}` }), text);
@@ -272,7 +291,7 @@ export async function sendPlanCambiado(opts: {
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Listo, cambiamos tu plan')}
-    ${par(`${firstName}, pasaste del plan ${planAnterior} al ${planNuevo}.`)}
+    ${par(`${esc(firstName)}, pasaste del plan ${planAnterior} al ${planNuevo}.`)}
     ${caja(`${filaChica('TU CUOTA MENSUAL')}${filaGrande(money(cuota))}${filaMedia(`Plan ${planNuevo}`)}`)}
     ${par('Los topes y coberturas nuevos ya están activos en tu cuenta. Las carencias de las coberturas que antes no tenías empiezan a contar desde hoy.', true)}`;
   const text = `${firstName}, pasaste del plan ${planAnterior} al ${planNuevo}.\nTu cuota mensual queda en ${money(cuota)}.\n\nLos topes y coberturas nuevos ya están activos. Las carencias de lo que antes no tenías cuentan desde hoy.`;
@@ -295,8 +314,8 @@ export async function sendBajaMembresia(opts: {
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Tu membresía quedó dada de baja')}
-    ${par(`${firstName}, no te vamos a cobrar más. Tu cobertura y los descuentos estuvieron activos hasta el ${hasta}.`)}
-    ${par(`El carnet de ${petNames} y su historial de vacunas quedan guardados: si algún día volvés, están ahí.`)}
+    ${par(`${esc(firstName)}, no te vamos a cobrar más. Tu cobertura y los descuentos estuvieron activos hasta el ${hasta}.`)}
+    ${par(`El carnet de ${esc(petNames)} y su historial de vacunas quedan guardados: si algún día volvés, están ahí.`)}
     ${dentroDeLos10Dias
       ? par(`Como te diste de baja dentro de los primeros 10 días desde el alta, te devolvemos la cuota completa por el mismo medio de pago (Ley 24.240 de Defensa del Consumidor). Si en 5 días hábiles no ves la devolución, ${linkWa(wa, 'escribinos')}.`, true)
       : par(`Si te diste de baja por algo que podamos resolver, ${linkWa(wa, 'contanos')}. Y si querés volver, tu número de socio te espera.`, true)}`;
@@ -318,7 +337,7 @@ export async function sendNegocioRecibido(opts: { to: string; firstName: string;
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Estamos validando tu negocio')}
-    ${par(`Gracias por sumarte, ${firstName}. Antes de publicar ${negocio} revisamos los datos: es lo que hace que el sello de verificado signifique algo para los socios.`)}
+    ${par(`Gracias por sumarte, ${esc(firstName)}. Antes de publicar ${esc(negocio)} revisamos los datos: es lo que hace que el sello de verificado signifique algo para los socios.`)}
     ${par(`Te escribimos en cuanto esté listo. Si necesitamos algo más, te lo pedimos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
   const text = `Gracias por sumarte, ${firstName}. Estamos validando los datos de ${negocio} antes de publicarlo: es lo que hace que el sello de verificado signifique algo.\n\nTe escribimos en cuanto esté listo.`;
   return enviar(to, `Recibimos los datos de ${negocio}`, layout('Alta de negocio recibida', cuerpo, wa), text);
@@ -329,8 +348,8 @@ export async function sendNegocioPublicado(opts: { to: string; firstName: string
   const { to, firstName, negocio } = opts;
   const wa = await whatsappDelClub();
   const cuerpo = `
-    ${h1(`¡Estás en la red, ${firstName}! 🎉`)}
-    ${par(`${negocio} ya aparece en Servicios y los socios pueden verte, contactarte y dejarte reseñas.`)}
+    ${h1(`¡Estás en la red, ${esc(firstName)}! 🎉`)}
+    ${par(`${esc(negocio)} ya aparece en Servicios y los socios pueden verte, contactarte y dejarte reseñas.`)}
     ${par('Desde <strong>Mi negocio</strong> podés editar horarios, precios y fotos cuando quieras. Los cambios se publican al instante.', true)}`;
   const text = `¡Estás en la red, ${firstName}!\n\n${negocio} ya aparece en Servicios: los socios pueden verte, contactarte y dejarte reseñas.\n\nDesde Mi negocio editás horarios, precios y fotos cuando quieras: ${SITE}${urls.webapp}`;
   return enviar(to, `${negocio} ya está publicado en Kumo`, layout('Negocio publicado', cuerpo, wa, { label: 'Ver mi ficha', href: `${SITE}${urls.webapp}` }), text);
@@ -342,7 +361,7 @@ export async function sendNegocioRechazado(opts: { to: string; firstName: string
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('No pudimos publicarlo todavía')}
-    ${par(`${firstName}, revisamos ${negocio} y por ahora no lo publicamos. Puede ser porque faltan datos de contacto, porque no pudimos verificar la dirección, o porque el rubro no entra en las categorías del club.`)}
+    ${par(`${esc(firstName)}, revisamos ${esc(negocio)} y por ahora no lo publicamos. Puede ser porque faltan datos de contacto, porque no pudimos verificar la dirección, o porque el rubro no entra en las categorías del club.`)}
     ${par(`No es definitivo: ${linkWa(wa, 'escribinos por WhatsApp')}, vemos qué falta y lo publicamos.`, true)}`;
   const text = `${firstName}, revisamos ${negocio} y por ahora no lo publicamos: pueden faltar datos de contacto, no haber podido verificar la dirección, o el rubro no entrar en las categorías del club.\n\nNo es definitivo: escribinos y lo resolvemos. ${waLink(wa)}`;
   return enviar(to, `Sobre la publicación de ${negocio}`, layout('Negocio no publicado', cuerpo, wa), text);
@@ -367,7 +386,7 @@ export async function sendCuotaRechazada(opts: {
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Tu tarjeta rechazó el pago')}
-    ${par(`${firstName}, no pudimos cobrar la cuota de ${mes}. Suele ser por fondos, por una tarjeta vencida o por un tope del banco.`)}
+    ${par(`${esc(firstName)}, no pudimos cobrar la cuota de ${mes}. Suele ser por fondos, por una tarjeta vencida o por un tope del banco.`)}
     ${caja(`${filaChica(`CUOTA DE ${mes.toUpperCase()}`)}${filaGrande(money(cuota))}${filaMedia(`Reintentamos el ${reintentoEl}`)}`)}
     ${par('Mientras tanto tu cobertura sigue activa. Si tampoco sale en el reintento, se suspende hasta que regularices.', true)}`;
   const text = `${firstName}, no pudimos cobrar la cuota de ${mes} (${money(cuota)}). Suele ser por fondos, tarjeta vencida o un tope del banco.\n\nReintentamos el ${reintentoEl}. Tu cobertura sigue activa hasta entonces.\n\nActualizá tu tarjeta: ${SITE}${urls.webapp}`;
@@ -382,7 +401,7 @@ export async function sendCuotaAcreditada(opts: {
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Pago acreditado')}
-    ${par(`${firstName}, cobramos tu cuota de ${mes}.`)}
+    ${par(`${esc(firstName)}, cobramos tu cuota de ${mes}.`)}
     ${caja(`${filaChica(`CUOTA DE ${mes.toUpperCase()}`)}${filaGrande(money(cuota))}${filaMedia(`Plan ${planName} · ${tarjeta}`)}`)}
     ${par('El comprobante lo tenés en tu cuenta.', true)}`;
   const text = `${firstName}, cobramos ${money(cuota)} del plan ${planName} por ${mes}, con tu ${tarjeta}.\n\nEl comprobante está en tu cuenta: ${SITE}${urls.webapp}`;
@@ -408,7 +427,7 @@ export async function sendCuotaActualizada(opts: {
     : 'Es el monto que vale desde el próximo mes que abones.';
   const cuerpo = `
     ${h1('Tu cuota cambia de precio')}
-    ${par(`${firstName}, el club actualizó el precio del plan ${planName}. Tu cuota queda así:`)}
+    ${par(`${esc(firstName)}, el club actualizó el precio del plan ${planName}. Tu cuota queda así:`)}
     ${caja(`${filaChica('CUOTA MENSUAL · DESDE EL PRÓXIMO COBRO')}${filaGrande(money(cuota))}${filaMedia(detalle)}`)}
     ${par(cierre, true)}
     ${par(`Si querés revisar tu plan o tenés dudas, escribinos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
@@ -435,7 +454,7 @@ export async function sendRecuperarClave(opts: { to: string; firstName: string; 
   const wa = await whatsappDelClub();
   const cuerpo = `
     ${h1('Cambiá tu contraseña')}
-    ${par(`${firstName}, alguien pidió recuperar la contraseña de esta cuenta. Si fuiste vos, el botón de abajo te deja elegir una nueva.`)}
+    ${par(`${esc(firstName)}, alguien pidió recuperar la contraseña de esta cuenta. Si fuiste vos, el botón de abajo te deja elegir una nueva.`)}
     ${par('El link vence en una hora y sirve una sola vez. Si no lo pediste, ignorá este mail: tu contraseña sigue siendo la de siempre.', true)}
     ${par(`Cualquier cosa, escribinos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
   const text = `${firstName}, alguien pidió recuperar la contraseña de esta cuenta.\n\nSi fuiste vos, elegí una nueva acá: ${link}\n\nEl link vence en una hora y sirve una sola vez. Si no lo pediste, ignorá este mail: tu contraseña sigue siendo la de siempre.`;
