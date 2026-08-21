@@ -4,6 +4,7 @@ import { colors, etiquetaPlan, selloCarnet } from '@kumo/shared';
 import { crearSuscripcion } from '../../lib/api';
 import { useEsperarPago } from '../../lib/esperarPago';
 import { Texto as Text, BRAND, INK, LIME, MUTED } from '../ui/Texto';
+import { SelloCarnet } from '../ui/SelloCarnet';
 
 /** Lo mínimo de una mascota para dibujar su carnet. Sale de los datos ya cargados. */
 export type MascotaListo = { id: string; nombre: string; especie: string; raza?: string | null; edad?: string | null; peso?: string | null };
@@ -97,9 +98,7 @@ export default function AltaListo({
             <View key={m.id} style={{ backgroundColor: BRAND, borderRadius: 18, padding: 18 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                 <Text style={{ color: '#c9c3e3', fontSize: 12, fontWeight: '700' }}>{etiqueta.toUpperCase()}</Text>
-                <View style={{ backgroundColor: sello.tono === 'ok' ? LIME : sello.tono === 'alerta' ? '#fbe8ef' : 'rgba(255,255,255,0.18)', borderRadius: 100, paddingHorizontal: 10, paddingVertical: 3 }}>
-                  <Text style={{ fontSize: 10, fontWeight: '800', color: sello.tono === 'ok' ? INK : sello.tono === 'alerta' ? '#c14d7a' : '#fff' }}>{sello.texto}</Text>
-                </View>
+                <SelloCarnet sello={sello} />
               </View>
               <Text style={{ fontFamily: 'Baloo2_800ExtraBold', fontSize: 22, color: '#fff' }}>{m.nombre}</Text>
               <Text style={{ color: '#c9c3e3', fontSize: 13, marginTop: 2 }}>

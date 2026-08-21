@@ -24,6 +24,7 @@ import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
 import { recalcularUbicacion, ubicarNegocio } from './lib/api';
 import { CampoDomicilio, CampoZona } from './components/ui/CampoDomicilio';
+import { SelloCarnet } from './components/ui/SelloCarnet';
 import { MapaLugares } from './components/MapaLugares';
 import { Selector } from './components/ui/Controles';
 import * as Notifications from 'expo-notifications';
@@ -207,9 +208,10 @@ function PetCard({ pet, detailed }: { pet: Pet; detailed?: boolean }) {
           <Text style={{ color: '#fff', fontWeight: '800', fontFamily: FH, fontSize: 19 }}>{pet.name}</Text>
           <Text style={{ color: colors.violet[300], fontSize: 12 }}>{detailed ? pet.breed : `${pet.plan} · Socio ${pet.socio}`}</Text>
         </View>
-        <View style={{ backgroundColor: LIME, borderRadius: 100, paddingVertical: 4, paddingHorizontal: 9 }}>
-          <Text style={{ color: INK, fontWeight: '800', fontFamily: FH, fontSize: 10 }}>ACTIVO</Text>
-        </View>
+        {/* El sello sale de la cuota (`selloCarnet`), no está escrito acá: decía
+            ACTIVO fijo, así que un socio gratuito veía ACTIVO en la app y GRATUITO
+            en la webapp. */}
+        <SelloCarnet sello={pet.sello} />
       </View>
       {detailed && (
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
@@ -2177,6 +2179,11 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
   const [unidad, setUnidad] = useState('');
   const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [about, setAbout] = useState('');
+  /* La foto de portada: la webapp la pedía en su alta larga y la app no la pedía
+     nunca, así que todo negocio dado de alta desde el teléfono nacía sin foto. Se
+     sube al elegirla y queda la URL; el insert la guarda con el resto. */
+  const [fotoUrl, setFotoUrl] = useState<string | null>(null);
+  const [fotoBusy, setFotoBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [enviado, setEnviado] = useState(false);
@@ -2219,7 +2226,7 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, about: about.trim(), status: 'pendiente',
+      phone: tel.trim() || null, about: about.trim(), photo_url: fotoUrl, status: 'pendiente',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id) void avisar('negocio-recibido', alta.id);
@@ -2290,6 +2297,31 @@ function Prestar({ userId, phone, negocio, onVolver, onNegocio, reload }: { user
 
       <SheetLabel>Contanos sobre tu servicio</SheetLabel>
       <TextInput value={about} onChangeText={setAbout} multiline numberOfLines={3} placeholder="Experiencia, disponibilidad, precios de referencia…" placeholderTextColor={colors.violet[400]} style={{ ...input, height: 90, textAlignVertical: 'top', marginBottom: 16 }} />
+
+      {/* La foto de portada, igual que en la webapp. Se sube al elegirla —así el
+          socio ve que entró— y recién el insert la guarda: si abandona el alta,
+          quedó un archivo suelto en el bucket y ningún negocio a medio crear. */}
+      <SheetLabel>Foto de portada · opcional</SheetLabel>
+      <TouchableOpacity
+        disabled={fotoBusy}
+        onPress={async () => {
+          setFotoBusy(true); setError('');
+          const r = await elegirYSubirFoto(userId, 'negocio-');
+          if ('url' in r) setFotoUrl(r.url);
+          else if ('error' in r) setError(r.error);
+          setFotoBusy(false);
+        }}
+        style={{ height: 140, borderRadius: 12, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fafaf9', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 18 }}
+      >
+        {fotoUrl ? (
+          <Image source={{ uri: fotoUrl }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        ) : (
+          <View style={{ alignItems: 'center' }}>
+            <Ic d="image" size={22} color={colors.violet[400]} />
+            <Text style={{ fontSize: 12, color: MUTED, marginTop: 6 }}>{fotoBusy ? 'Subiendo…' : 'Subir portada'}</Text>
+          </View>
+        )}
+      </TouchableOpacity>
 
       {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text> : null}
       <TouchableOpacity disabled={busy} onPress={enviar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
