@@ -417,7 +417,9 @@ export default async function Page() {
         phone: negocioRow.phone, about: negocioRow.about, status: negocioRow.status,
         rating: negocioRow.rating, reviews: negocioRow.reviews,
         price: negocioRow.price, priceUnit: negocioRow.price_unit, instagram: negocioRow.instagram, website: negocioRow.website,
-        photoUrl: negocioRow.photo_url,
+        // Por `imgSrc` y no crudo: las fotos del seed se guardan como nombre de
+        // archivo, y en un url() de CSS un nombre suelto no resuelve a nada.
+        photoUrl: negocioRow.photo_url ? imgSrc(negocioRow.photo_url) : null,
       }
     : null;
 
