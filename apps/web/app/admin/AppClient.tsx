@@ -84,12 +84,13 @@ const icons = {
   // de un lado y se veía deforme.
   ajustes: I(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" /></>),
   prestadores: I(<><circle cx="5.5" cy="10" r="1.7" /><circle cx="9.7" cy="6.4" r="1.8" /><circle cx="14.3" cy="6.4" r="1.8" /><circle cx="18.5" cy="10" r="1.7" /><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" /></>),
+  negocios: I(<><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>),
   moderacion: I(<><path d="M12 3l8 4v5c0 4.4-3.4 7.5-8 9-4.6-1.5-8-4.6-8-9V7z" /><path d="M9.5 12l1.8 1.8L15 10" /></>),
   cobros: I(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 10v4M18 10v4" /></>),
   menu: I(<><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></>),
 };
 
-type Screen = 'dashboard' | 'socios' | 'cobros' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'moderacion';
+type Screen = 'dashboard' | 'socios' | 'cobros' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'negocios' | 'moderacion';
 const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
   { k: 'socios', label: 'Socios', icon: icons.socios },
@@ -102,7 +103,8 @@ const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'faq', label: 'FAQ', icon: icons.faq },
   { k: 'push', label: 'Push', icon: icons.push },
   { k: 'ajustes', label: 'Ajustes', icon: icons.ajustes },
-  { k: 'prestadores', label: 'Prestadores', icon: icons.prestadores },
+  { k: 'prestadores', label: 'Servicios', icon: icons.prestadores },
+  { k: 'negocios', label: 'Negocios', icon: icons.negocios },
   { k: 'moderacion', label: 'Moderación', icon: icons.moderacion },
 ];
 
@@ -1808,23 +1810,25 @@ function Aviso({ texto }: { texto: string }) {
   );
 }
 
-/* ── Prestadores ───────────────────────────────────────────────── */
+/* ── Servicios y Negocios ──────────────────────────────────────── */
 /**
- * Los prestadores del club, en UNA pantalla.
+ * Dos pantallas sobre la misma tabla, y la diferencia es de quién es cada fila.
  *
- * Eran dos —"Prestadores" y "Negocios"— y hacían exactamente lo mismo: las dos
- * leían la tabla entera sin filtrar, abrían la misma ficha y resolvían con la misma
- * función. La única diferencia real era el título, la bajada y una columna. Peor: la
- * bajada de "Negocios" decía "N solicitudes pendientes de validación" y la tabla de
- * abajo listaba todo, incluidos los verificados — el número decía una cosa y la
- * lista otra.
+ * "Servicios" es el DIRECTORIO: todo lo que el socio ve en su sección Servicios, sin
+ * importar quién lo cargó. "Negocios" son los que **registró un socio** desde la app
+ * —los que tienen dueño—: es la bandeja de lo que llega de afuera, con el nombre de
+ * quién lo pidió y cuándo.
  *
- * Es un solo trabajo: el ciclo de vida de un prestador. Así que es una pantalla con
- * chips por estado, como Socios, y el menú del panel pasa de doce secciones a once.
+ * Ojo con la historia, para no repetirla: antes también eran dos pantallas, pero las
+ * dos listaban la tabla ENTERA sin filtrar y solo cambiaban el título; la bajada de
+ * "Negocios" decía "N solicitudes pendientes" arriba de una lista que incluía los
+ * verificados. Se unificaron por eso. Vuelven a ser dos porque son dos trabajos
+ * distintos —curar el catálogo y atender lo que mandan los socios—, y ahora sí cada
+ * una muestra un conjunto distinto.
  *
- * Los chips arrancan en "Todos" a propósito: una pantalla que se abre filtrada deja
- * al que entra preguntándose dónde está el resto. Lo pendiente se dice en la bajada,
- * que es donde se lee sin buscar.
+ * Los chips de estado arrancan en "Todos" a propósito: una pantalla que se abre
+ * filtrada deja al que entra preguntándose dónde está el resto. Lo pendiente se dice
+ * en la bajada, que es donde se lee sin buscar.
  */
 function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
   const router = useRouter();
@@ -1842,7 +1846,7 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
   };
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
 
-  const pendientes = providers.filter((r) => r.estado === 'Pendiente').length;
+  const propios = providers.filter((r) => r.dueño).length;
   const lista = providers.filter((r) => estado === 'Todos' || r.estado === estado);
 
   return (
@@ -1855,12 +1859,13 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
           onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
         />
       )}
-      <h1 className="adm-h1" style={h1}>Prestadores</h1>
-      {/* La bajada dice lo que hay que hacer hoy, que es validar lo que llegó. */}
+      <h1 className="adm-h1" style={h1}>Servicios</h1>
+      {/* El directorio completo: lo que carga el club y lo que registran los socios,
+          que es exactamente lo que el socio ve en su sección Servicios. */}
       <p style={sub}>
-        {pendientes === 0
-          ? 'Ninguna solicitud pendiente · tocá una fila para ver la ficha y validar la identidad'
-          : `${pendientes} ${pendientes === 1 ? 'solicitud' : 'solicitudes'} pendientes de validación · tocá una fila para ver la ficha`}
+        Todo lo que los socios ven en Servicios, sin importar quién lo cargó
+        {propios > 0 && ` · ${propios} ${propios === 1 ? 'lo registró un socio' : 'los registraron socios'} (ver Negocios)`}
+        {' · tocá una fila para ver la ficha'}
       </p>
       <Aviso texto={aviso} />
 
@@ -1907,6 +1912,93 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
         {lista.length === 0 && (
           <div style={{ padding: 30, textAlign: 'center', color: '#8781a0' }}>
             {providers.length === 0 ? 'Todavía no hay prestadores.' : `Ninguno con estado "${estado}".`}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Los negocios que registraron los socios desde la app.
+ *
+ * Es la bandeja de lo que llega de afuera, y por eso lista SOLO los que tienen dueño
+ * —los que cargó el club a mano no son una solicitud de nadie— y muestra de quién es
+ * cada uno. Ordena lo pendiente arriba: es lo único que espera una respuesta del
+ * club, y con dos filas da igual pero con cuarenta no.
+ *
+ * La ficha y el resolver son los mismos que en Servicios: es el mismo prestador
+ * mirado desde el otro lado, no otra entidad.
+ */
+function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
+  const router = useRouter();
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [aviso, setAviso] = useState('');
+  const [ficha, setFicha] = useState<ProviderAdminRow | null>(null);
+  const resolver = async (id: string, status: 'verificado' | 'rechazado') => {
+    setBusyId(id);
+    setAviso(await resolverNegocio(id, status));
+    router.refresh();
+    setBusyId(null);
+  };
+
+  const propios = providers.filter((r) => r.dueño);
+  const pendientes = propios.filter((r) => r.estado === 'Pendiente').length;
+  const lista = [...propios].sort((a, b) => Number(b.estado === 'Pendiente') - Number(a.estado === 'Pendiente'));
+
+  return (
+    <div>
+      {ficha && (
+        <FichaPrestadorModal
+          p={ficha}
+          busy={busyId === ficha.id}
+          onClose={() => setFicha(null)}
+          onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
+        />
+      )}
+      <h1 className="adm-h1" style={h1}>Negocios</h1>
+      {/* La bajada cuenta solo lo pendiente de ESTA lista: es el error que tenía la
+          pantalla vieja, donde el número hablaba de una lista y la tabla de otra. */}
+      <p style={sub}>
+        Los que registró un socio desde la app
+        {pendientes === 0
+          ? ' · ninguno esperando validación'
+          : ` · ${pendientes} ${pendientes === 1 ? 'espera' : 'esperan'} validación`}
+        {' · tocá una fila para ver la ficha'}
+      </p>
+      <Aviso texto={aviso} />
+      <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          {/* DE QUIÉN ES es la columna que justifica esta pantalla: en Servicios no
+              está porque ahí la mayoría no tiene dueño. */}
+          <thead><tr>{['NEGOCIO', 'DE QUIÉN ES', 'RUBRO', 'ZONA', 'SOLICITADO', 'ESTADO', ''].map((hd, i) => <th key={i} style={th}>{hd}</th>)}</tr></thead>
+          <tbody>
+            {lista.map((r) => (
+              <tr key={r.id} className="adm-row" onClick={() => setFicha(r)} style={{ cursor: 'pointer' }}>
+                <td style={{ ...td, fontWeight: 600 }}>{r.nombre}</td>
+                <td style={td}>
+                  <div>{r.dueño?.nombre}</div>
+                  <div style={{ fontSize: 12, color: '#8781a0' }}>{r.dueño?.email}</div>
+                </td>
+                <td style={{ ...td, color: '#8781a0' }}>{r.rubro}</td>
+                <td style={td}>{r.zona}</td>
+                <td style={{ ...td, color: '#8781a0' }}>{r.solicitado}</td>
+                <td style={td}><span style={estadoBadge(r.estado)}>{r.estado}</span></td>
+                {/* Los botones paran el clic: si burbujeara, resolver también abriría
+                    la ficha de la fila. */}
+                <td style={td}>{r.estado === 'Pendiente' && (
+                  <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                    <button disabled={busyId === r.id} onClick={(e) => { e.stopPropagation(); resolver(r.id, 'verificado'); }} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Verificar</button>
+                    <button disabled={busyId === r.id} onClick={(e) => { e.stopPropagation(); resolver(r.id, 'rechazado'); }} style={{ background: 'rgb(251,232,239)', color: 'rgb(193,77,122)', border: 'none', fontWeight: 700, fontSize: 12.5, padding: '7px 14px', borderRadius: 9, cursor: 'pointer', opacity: busyId === r.id ? 0.6 : 1 }}>Rechazar</button>
+                  </div>
+                )}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {lista.length === 0 && (
+          <div style={{ padding: 30, textAlign: 'center', color: '#8781a0' }}>
+            Todavía ningún socio registró su negocio.
           </div>
         )}
       </div>
@@ -2283,6 +2375,7 @@ export default function AppClient({
           {screen === 'push' && <Push audiences={audiences} sent={sent} />}
           {screen === 'ajustes' && <Ajustes settings={settings} />}
           {screen === 'prestadores' && <Prestadores providers={providers} />}
+          {screen === 'negocios' && <Negocios providers={providers} />}
           {screen === 'cobros' && <Cobros cobros={cobros} />}
           {screen === 'moderacion' && <Moderacion reports={reports} />}
         </div>
