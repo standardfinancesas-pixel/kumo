@@ -85,7 +85,10 @@ function mapProvider(row: ProviderRow, desde: Punto & { origen: OrigenDistancia 
   return {
     id: row.id, name: row.name, category: row.category, zone: row.zone, address: row.address ?? '', phone: row.phone ?? '',
     instagram: row.instagram, website: row.website, about: row.about, rating: row.rating, reviews: row.reviews,
-    price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: imgSrc(row.photo_url), km,
+    /* Sin foto queda en null y NO se le pone una de archivo: antes el prestador que
+       no subía nada salía con `default-pet.webp`, así que su ficha mostraba un perro
+       ajeno como si fuera su local. La pantalla dibuja el ícono del rubro. */
+    price: row.price ?? 0, priceUnit: row.price_unit ?? '', photoUrl: row.photo_url ? imgSrc(row.photo_url) : null, km,
     // De dónde se está midiendo, para que el chip no diga "de tu casa" cuando el
     // origen es el centro de CABA porque no sabemos dónde vive.
     kmDesde: textoDistancia(desde.origen),
@@ -240,7 +243,7 @@ export default async function Page() {
     // esté pendiente o lo hayan rechazado.
     supabase
       .from('providers')
-      .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website')
+      .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website, photo_url')
       .eq('owner_id', auth.user.id)
       .maybeSingle(),
     supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
@@ -414,6 +417,7 @@ export default async function Page() {
         phone: negocioRow.phone, about: negocioRow.about, status: negocioRow.status,
         rating: negocioRow.rating, reviews: negocioRow.reviews,
         price: negocioRow.price, priceUnit: negocioRow.price_unit, instagram: negocioRow.instagram, website: negocioRow.website,
+        photoUrl: negocioRow.photo_url,
       }
     : null;
 

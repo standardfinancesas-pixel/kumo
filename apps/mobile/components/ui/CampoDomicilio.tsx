@@ -85,8 +85,19 @@ function useSugerencias<T extends Fila>(valor: string, tipo: 'direccion' | 'loca
   return { sugerencias, cerrar };
 }
 
+/**
+ * En qué fondo está parado el campo.
+ *
+ * `oscuro` no es un capricho: el alta de "Mi negocio" vive dentro de una tarjeta
+ * violeta, y ahí el gris de los rótulos (MUTED, #8781a0 sobre #5D5491) queda en
+ * 1.9:1 — o sea, no se lee. El input es blanco en los dos casos; lo que cambia es
+ * el rótulo y la ayuda, que van sobre el fondo de la tarjeta.
+ */
+export type Tono = 'claro' | 'oscuro';
+const rotulo = (tono: Tono) => (tono === 'oscuro' ? colors.violet[200] : MUTED);
+
 function CampoConLista<T extends Fila>({
-  label, valor, onCambio, onElegir, sugerencias, placeholder, ayuda,
+  label, valor, onCambio, onElegir, sugerencias, placeholder, ayuda, tono = 'claro',
 }: {
   label: string;
   valor: string;
@@ -95,10 +106,11 @@ function CampoConLista<T extends Fila>({
   sugerencias: T[];
   placeholder?: string;
   ayuda?: string;
+  tono?: Tono;
 }) {
   return (
     <View style={{ marginBottom: 12 }}>
-      <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED, marginBottom: 6 }}>{label.toUpperCase()}</Text>
+      <Text style={{ fontSize: 12, fontWeight: '700', color: rotulo(tono), marginBottom: 6 }}>{label.toUpperCase()}</Text>
       <TextInput
         value={valor}
         onChangeText={onCambio}
@@ -107,7 +119,7 @@ function CampoConLista<T extends Fila>({
         autoCapitalize="words"
         style={estiloInput}
       />
-      {ayuda ? <Text style={{ fontSize: 11.5, color: MUTED, marginTop: 4 }}>{ayuda}</Text> : null}
+      {ayuda ? <Text style={{ fontSize: 11.5, color: rotulo(tono), marginTop: 4 }}>{ayuda}</Text> : null}
       {sugerencias.length > 0 && (
         <View style={{ marginTop: 6, borderWidth: 1, borderColor: colors.violet[200], borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff' }}>
           {sugerencias.map((s, i) => (
@@ -129,7 +141,7 @@ function CampoConLista<T extends Fila>({
 }
 
 export function CampoDomicilio({
-  label = 'Domicilio', valor, provincia, localidad, onCambio, onElegir, placeholder = 'Calle y número', ayuda,
+  label = 'Domicilio', valor, provincia, localidad, onCambio, onElegir, placeholder = 'Calle y número', ayuda, tono,
 }: {
   label?: string;
   valor: string;
@@ -142,6 +154,7 @@ export function CampoDomicilio({
   onElegir: (lugar: LugarElegido) => void;
   placeholder?: string;
   ayuda?: string;
+  tono?: Tono;
 }) {
   const { sugerencias, cerrar } = useSugerencias<FilaDireccion>(valor, 'direccion', provincia, localidad);
   return (
@@ -152,6 +165,7 @@ export function CampoDomicilio({
       sugerencias={sugerencias}
       placeholder={placeholder}
       ayuda={ayuda}
+      tono={tono}
       onElegir={(f) => {
         cerrar(f.domicilio, f.etiqueta);
         onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
@@ -173,7 +187,7 @@ export function CampoDomicilio({
 }
 
 export function CampoZona({
-  label = 'Zona', valor, provincia, onCambio, onElegir, placeholder = 'Palermo, CABA', ayuda,
+  label = 'Zona', valor, provincia, onCambio, onElegir, placeholder = 'Palermo, CABA', ayuda, tono,
 }: {
   label?: string;
   valor: string;
@@ -182,6 +196,7 @@ export function CampoZona({
   onElegir: (zona: ZonaElegida) => void;
   placeholder?: string;
   ayuda?: string;
+  tono?: Tono;
 }) {
   const { sugerencias, cerrar } = useSugerencias<Fila & ZonaElegida>(valor, 'localidad', provincia);
   return (
@@ -192,6 +207,7 @@ export function CampoZona({
       sugerencias={sugerencias}
       placeholder={placeholder}
       ayuda={ayuda}
+      tono={tono}
       onElegir={(f) => {
         cerrar(f.zona, f.localidad, f.etiqueta);
         onElegir({ zona: f.zona, localidad: f.localidad, provincia: f.provincia });

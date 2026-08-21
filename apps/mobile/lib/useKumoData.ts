@@ -46,7 +46,7 @@ export type ProviderVM = {
   /** Para abrir el lugar en la app de mapas: se abre en el pin, no en el texto. */
   lat: number | null;
   lng: number | null;
-  rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string;
+  rating: number; reviews: number; price: number; priceUnit: string; phone: string; photo: string | null;
   // Los usa la ficha del prestador.
   about: string; address: string; instagram: string | null; website: string | null; verificado: boolean;
 };
@@ -127,7 +127,7 @@ export type PagoVM = {
   id: string; fecha: string; monto: number; plan: string | null;
   estado: EstadoPago; medio: MedioPago; cubreHasta: string | null; detalle: string | null;
 };
-export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; status: string; rating: number; reviews: number };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; status: string; rating: number; reviews: number; /** La foto de su ficha. Null = todavía no subió ninguna, y no se le inventa una. */ photo: string | null };
 
 /* ── Helpers de formato ────────────────────────────────────────── */
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -157,7 +157,6 @@ function relTime(iso: string): string {
    de "desde dónde" están en `@kumo/shared` (cerca.ts), compartidos con la web. */
 
 const PET_FALLBACK = ['happy-dog.webp', 'plan-cat.webp'];
-const PROVIDER_FALLBACK = 'prestador-walker.webp';
 
 function benefitIcon(category: string): BenefitVM['icon'] {
   const c = category.toLowerCase();
@@ -215,7 +214,7 @@ export function useKumoData(userId: string | null) {
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
-      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at').eq('owner_id', userId).maybeSingle(),
+      supabase.from('providers').select('id, name, category, zone, address, phone, status, rating, reviews, created_at, photo_url').eq('owner_id', userId).maybeSingle(),
       supabase.from('provider_favorites').select('provider_id').eq('member_id', userId),
       supabase.from('provider_reviews').select('id, provider_id, member_id, rating, text, author_name, created_at').order('created_at', { ascending: false }),
       supabase.from('post_likes').select('post_id').eq('member_id', userId),
@@ -348,7 +347,10 @@ export function useKumoData(userId: string | null) {
       // El sello sale del estado que puso el admin, con el mismo criterio que la webapp.
       badge: providerBadge(r.status, r.rating, r.reviews), verificado: r.status === 'verificado',
       rating: r.rating, reviews: r.reviews, price: r.price, priceUnit: r.price_unit,
-      phone: r.phone ?? '', photo: r.photo_url ?? PROVIDER_FALLBACK,
+      /* Sin foto queda en null y NO se le pone una de archivo: antes el prestador
+         que no subía nada salía con la foto de un paseador cualquiera, o sea que su
+         ficha mostraba un local ajeno. La pantalla dibuja el ícono del rubro. */
+      phone: r.phone ?? '', photo: r.photo_url ?? null,
       about: r.about ?? '', address: r.address ?? '', instagram: r.instagram, website: r.website,
       // Los que no tienen coordenadas van al final: no se puede afirmar que estén
       // cerca, pero tampoco hay motivo para esconderlos.
@@ -401,7 +403,7 @@ export function useKumoData(userId: string | null) {
 
     const n = negocioRes.data;
     const negocio: MiNegocio | null = n
-      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews }
+      ? { id: n.id, name: n.name, category: n.category, zone: n.zone, address: n.address, phone: n.phone, status: n.status, rating: n.rating, reviews: n.reviews, photo: n.photo_url }
       : null;
 
     const notifInput: NotifInput = {

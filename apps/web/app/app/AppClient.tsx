@@ -112,7 +112,7 @@ export type EmergencyContact = { id: string; name: string; phone: string; type: 
  *  aparece igual en la lista). `kmDesde` es el texto de desde dónde se mide —"de tu
  *  casa", "de tu zona", "del centro"—, que lo decide el servidor según cuánto pudo
  *  resolver del domicilio del socio. */
-export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string; km: number | null; kmDesde: string; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
+export type ProviderVM = { id: string; name: string; category: string; zone: string; address: string; phone: string; instagram: string | null; website: string | null; about: string; rating: number; reviews: number; price: number; priceUnit: string; photoUrl: string | null; km: number | null; kmDesde: string; lat: number | null; lng: number | null; verificado: boolean; badge?: string };
 /** La ficha del beneficio necesita todo lo que la tabla ya guardaba y no se usaba:
  *  descripción, zona, días, horario y vigencia. */
 export type BenefitVM = {
@@ -138,7 +138,7 @@ export type PagoVM = {
   estado: EstadoPago; medio: MedioPago; cubreHasta: string | null; detalle: string | null;
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
-export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null };
+export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null; /** La foto de su ficha. Null = todavia no subio ninguna, y no se le inventa una. */ photoUrl: string | null };
 export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
 export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
@@ -866,6 +866,25 @@ const igPath = <><rect x="2" y="2" width="20" height="20" rx="5.5" /><circle cx=
 const pinDropPath = <><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z" /><circle cx="12" cy="10" r="3" /></>;
 const phonePath = <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3 19.5 19.5 0 0 1-6-6 19.8 19.8 0 0 1-3-8.6A2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8.1 9.8a16 16 0 0 0 6 6l1.3-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.8 2z" />;
 
+/**
+ * El cuadro de la foto de un prestador, en la ficha y en las listas.
+ *
+ * Cuando no hay foto NO se pone una de archivo. Antes el que no subía nada salía
+ * con `default-pet.webp`: su ficha mostraba un perro ajeno como si fuera su local,
+ * y desde adentro parecía que Kumo le había guardado una foto que él nunca eligió.
+ * En su lugar va el ícono de su rubro sobre violeta, que se lee por lo que es:
+ * todavía no subió foto.
+ */
+function FotoPrestador({ p, lado, radio, extra }: { p: ProviderVM; lado: number; radio: number; extra?: CSSProperties }) {
+  const caja: CSSProperties = { width: lado, height: lado, borderRadius: radio, flex: 'none', ...extra };
+  if (p.photoUrl) return <div style={{ ...caja, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)` }} />;
+  return (
+    <div style={{ ...caja, background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgb(93,84,145)' }}>
+      {ic(RUBRO_ICONS[p.category] ?? paw, p.category === 'Paseador', Math.round(lado * 0.46))}
+    </div>
+  );
+}
+
 /* ── Pantalla: detalle del prestador ───────────────────────────── */
 /** Portada, identidad, tarifas, contacto y reseñas, con la barra fija de abajo.
  *  Antes tocar un prestador solo desplegaba un acordeón dentro de la lista. */
@@ -950,7 +969,14 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
   return (
     <div style={{ padding: '0 0 24px' }}>
       {/* Portada */}
-      <div style={{ position: 'relative', height: 132, background: `linear-gradient(135deg, #5D5491, #463f70), url(${p.photoUrl}) center/cover`, backgroundBlendMode: 'darken', borderRadius: '16px 16px 0 0', overflow: 'hidden' }}>
+      {/* Sin foto la portada es el violeta con el ícono del rubro de marca de agua:
+          el degradé solo ya se veía como un error de carga. */}
+      <div style={{ position: 'relative', height: 132, background: p.photoUrl ? `linear-gradient(135deg, #5D5491, #463f70), url(${p.photoUrl}) center/cover` : 'linear-gradient(135deg, #5D5491, #463f70)', backgroundBlendMode: 'darken', borderRadius: '16px 16px 0 0', overflow: 'hidden' }}>
+        {!p.photoUrl && (
+          <div style={{ position: 'absolute', right: 14, bottom: -18, color: '#fff', opacity: 0.16, display: 'flex' }}>
+            {ic(RUBRO_ICONS[p.category] ?? paw, p.category === 'Paseador', 108)}
+          </div>
+        )}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.2), rgba(0,0,0,0.4))' }} />
         <div style={{ position: 'absolute', right: -30, top: -30, width: 150, height: 150, borderRadius: '50%', background: 'radial-gradient(circle, rgba(225,251,98,0.25), transparent 70%)' }} />
         <button onClick={onVolver} aria-label="Volver a Servicios" style={{ position: 'absolute', top: 14, left: 16, width: 38, height: 38, borderRadius: 12, background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2 }}>←</button>
@@ -961,7 +987,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, profile }
         {/* El avatar monta sobre la portada, pero no tanto: con -38 el nombre
             arrancaba justo en el filo de la foto y se leía pegado. */}
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, marginTop: -26, marginBottom: 14, position: 'relative', zIndex: 3 }}>
-          <div style={{ width: 84, height: 84, borderRadius: 24, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)`, flex: 'none', border: '4px solid #fff', boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }} />
+          <FotoPrestador p={p} lado={84} radio={24} extra={{ border: '4px solid #fff', boxShadow: '0 8px 20px rgba(0,0,0,0.12)' }} />
           <div style={{ flex: 1, paddingBottom: 4 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1.1 }}>{p.name}</span>
@@ -1185,7 +1211,7 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {guardadosList.map((p) => (
               <button key={p.id} onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 11, background: '#fff', border: 'none', borderRadius: 13, padding: '10px 12px', cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
-                <div style={{ width: 38, height: 38, borderRadius: 11, background: `url(${p.photoUrl}) center/cover, rgb(240,237,249)`, flex: 'none' }} />
+                <FotoPrestador p={p} lado={38} radio={11} />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
                   <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone}</div>
@@ -1207,7 +1233,7 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {list.map((p) => (
           <button key={p.id} className="wa-card" onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 14, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
-            <div style={{ width: 50, height: 50, borderRadius: 15, background: `url(${p.photoUrl}) center/cover, rgb(226,245,234)`, flex: '0 0 auto' }} />
+            <FotoPrestador p={p} lado={50} radio={15} />
             <div style={{ flex: '1 1 0%', minWidth: 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
@@ -2494,6 +2520,8 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
   const [bajaOpen, setBajaOpen] = useState(false);
+  const [fotoBusy, setFotoBusy] = useState(false);
+  const [fotoError, setFotoError] = useState('');
   // Datos editables del negocio publicado.
   const [ed, setEd] = useState({
     name: negocio?.name ?? '', category: negocio?.category ?? RUBROS[0]!, zone: negocio?.zone ?? '',
@@ -2502,6 +2530,25 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
     price: negocio?.price ? String(negocio.price) : '', priceUnit: negocio?.priceUnit ?? '',
     instagram: negocio?.instagram ?? '', website: negocio?.website ?? '',
   });
+
+  /** La foto de la ficha del negocio: se sube y se guarda en el acto, igual que la
+   *  de la mascota. Antes solo se podía elegir en el alta larga y nunca más. */
+  const cambiarFoto = async (f?: File) => {
+    if (!f || !negocio) return;
+    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setFotoError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
+    if (f.size > FOTO_MAX) { setFotoError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+    setFotoBusy(true); setFotoError('');
+    const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
+    // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
+    const path = `${profile.id}/negocio-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
+    if (upErr) { setFotoError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    const url = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+    const { error: e } = await supabase.from('providers').update({ photo_url: url }).eq('id', negocio.id);
+    if (e) { setFotoError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.'); setFotoBusy(false); return; }
+    router.refresh();
+    setFotoBusy(false);
+  };
 
   const guardarEdicion = async () => {
     if (!negocio) return;
@@ -2716,6 +2763,25 @@ function Negocio({ go, negocio, profile, misReviews }: { go: (s: Screen) => void
       {editOpen && negocio && (
         <Sheet onClose={() => setEditOpen(false)}>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 16 }}>Editar datos</div>
+
+          {/* La foto de la ficha. Hasta ahora solo se podía elegir en el alta larga
+              ("Sumate como prestador"), así que quien daba de alta desde acá no tenía
+              cómo poner una nunca. Se guarda sola al elegirla: es un archivo, no un
+              campo de texto, y esperar el "Guardar cambios" para subirlo deja al
+              socio sin saber si entró. */}
+          <label style={sheetLabel}>Foto de tu negocio</label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <label title="Cambiar la foto" style={{ width: 74, height: 74, borderRadius: 16, flex: 'none', overflow: 'hidden', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: fotoBusy ? 'default' : 'pointer', background: negocio.photoUrl ? `url(${negocio.photoUrl}) center/cover` : 'rgb(240,237,249)', color: 'rgb(93,84,145)' }}>
+              {!negocio.photoUrl && ic(RUBRO_ICONS[negocio.category] ?? paw, negocio.category === 'Paseador', 30)}
+              {fotoBusy && <span style={{ position: 'absolute', inset: 0, background: 'rgba(33,30,51,0.55)', color: '#fff', fontSize: 10, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>Subiendo…</span>}
+              <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarFoto(e.target.files?.[0])} />
+            </label>
+            <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', lineHeight: 1.45 }}>
+              {negocio.photoUrl ? 'Tocá la foto para cambiarla.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro.'} Es la que los socios ven en Servicios. JPG, PNG o WEBP, hasta 5 MB.
+              {fotoError && <div style={{ color: 'rgb(176,72,63)', fontWeight: 600, marginTop: 4 }}>{fotoError}</div>}
+            </div>
+          </div>
+
           <label style={sheetLabel}>Nombre del negocio</label>
           <input value={ed.name} onChange={(e) => { setEd({ ...ed, name: e.target.value }); setError(''); }} style={{ ...sheetInput, marginBottom: 12 }} />
           <label style={sheetLabel}>Rubro</label>

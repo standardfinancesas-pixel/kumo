@@ -163,6 +163,25 @@ const numero = (s: string): number | null => {
 const petImg = (photo: string): ImageSourcePropType =>
   IMG[photo] ?? (photo.startsWith('http') ? { uri: photo } : IMG['happy-dog.webp']!);
 
+/**
+ * El cuadro de la foto de un prestador, gemelo del de la web.
+ *
+ * Cuando no hay foto NO se pone una de archivo. Antes el que no subía nada salía
+ * con `prestador-walker.webp`: su ficha mostraba el local de otro como si fuera el
+ * suyo, y desde adentro parecía que Kumo le había guardado una foto que él nunca
+ * eligió. En su lugar va el ícono de su rubro sobre violeta, que se lee por lo que
+ * es: todavía no subió foto.
+ */
+function FotoPrestador({ p, lado, radio, extra }: { p: ProviderVM; lado: number; radio: number; extra?: object }) {
+  const caja = { width: lado, height: lado, borderRadius: radio, backgroundColor: colors.violet[100], ...extra };
+  if (p.photo) return <Image source={petImg(p.photo)} style={caja} />;
+  return (
+    <View style={{ ...caja, alignItems: 'center', justifyContent: 'center' }}>
+      <Ic d={RUBRO_IC[p.category] ?? 'paw'} size={Math.round(lado * 0.46)} fill={p.category === 'Paseador'} />
+    </View>
+  );
+}
+
 /* ── Componentes chicos ────────────────────────────────────────── */
 function PetChips({ pets, idx, setIdx }: { pets: Pet[]; idx: number; setIdx: (i: number) => void }) {
   if (pets.length === 0) return null;
@@ -855,7 +874,15 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
         {/* Portada. Va con las esquinas de arriba redondeadas y separada, como en
             el prototipo: pegada al header se leía como parte de él. */}
         <View style={{ height: 132, marginTop: 6, borderTopLeftRadius: 16, borderTopRightRadius: 16, backgroundColor: BRAND, overflow: 'hidden' }}>
-          <Image source={petImg(p.photo)} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.55 }} resizeMode="cover" />
+          {/* Sin foto la portada es el violeta con el ícono del rubro de marca de
+              agua: el violeta pelado se leía como un error de carga. */}
+          {p.photo ? (
+            <Image source={petImg(p.photo)} style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0.55 }} resizeMode="cover" />
+          ) : (
+            <View style={{ position: 'absolute', right: 10, bottom: -22, opacity: 0.16 }}>
+              <Ic d={RUBRO_IC[p.category] ?? 'paw'} size={112} color="#fff" fill={p.category === 'Paseador'} />
+            </View>
+          )}
           <TouchableOpacity onPress={onVolver} style={{ position: 'absolute', top: 14, left: 16, width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.22)', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ color: '#fff', fontSize: 18 }}>←</Text>
           </TouchableOpacity>
@@ -866,7 +893,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
           {/* El avatar monta sobre la portada, pero no tanto: con -38 el nombre
               arrancaba justo en el filo de la foto y se leía pegado. */}
           <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 14, marginTop: -26, marginBottom: 14 }}>
-            <Image source={petImg(p.photo)} style={{ width: 84, height: 84, borderRadius: 24, borderWidth: 4, borderColor: '#fff', backgroundColor: colors.violet[100] }} />
+            <FotoPrestador p={p} lado={84} radio={24} extra={{ borderWidth: 4, borderColor: '#fff' }} />
             <View style={{ flex: 1, paddingBottom: 4 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                 <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>{p.name}</Text>
@@ -1067,7 +1094,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
           <View style={{ gap: 8 }}>
             {guardadosList.map((p) => (
               <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, backgroundColor: '#fff', borderRadius: 13, paddingHorizontal: 12, paddingVertical: 10 }}>
-                <Image source={petImg(p.photo)} style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: colors.violet[100] }} />
+                <FotoPrestador p={p} lado={38} radio={11} />
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.name}</Text>
                   <Text style={{ fontSize: 12, color: '#a29dba' }}>{p.category} · {p.zone}</Text>
@@ -1098,7 +1125,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
       <View style={{ gap: 12 }}>
         {list.map((p) => (
           <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
-            <Image source={petImg(p.photo)} style={{ width: 54, height: 54, borderRadius: 15, backgroundColor: colors.violet[100] }} />
+            <FotoPrestador p={p} lado={54} radio={15} />
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
@@ -2113,7 +2140,7 @@ function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[];
         <View style={{ gap: 12 }}>
           {list.map((p) => (
             <TouchableOpacity key={p.id} onPress={onAbrir} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
-              <Image source={petImg(p.photo)} style={{ width: 50, height: 50, borderRadius: 15, backgroundColor: colors.violet[100] }} />
+              <FotoPrestador p={p} lado={50} radio={15} />
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
                 <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone}{p.km != null ? ` · ${p.km} km` : ''}</Text>
@@ -2615,6 +2642,7 @@ const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'C
 
 function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null; userId: string; phone: string; reload: () => void }) {
   const [showAlta, setShowAlta] = useState(false);
+  const [fotoBusy, setFotoBusy] = useState(false);
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState(RUBROS[0]!);
   const [zona, setZona] = useState('');
@@ -2665,6 +2693,20 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
       website: data?.website ?? '',
     });
     setEditOpen(true);
+  };
+
+  /** La foto de la ficha del negocio: se sube y se guarda en el acto, con el mismo
+   *  ayudante que la de la mascota. */
+  const cambiarFoto = async () => {
+    if (!negocio) return;
+    setFotoBusy(true); setError('');
+    const r = await elegirYSubirFoto(userId, 'negocio-');
+    if ('url' in r) {
+      const { error: e } = await supabase.from('providers').update({ photo_url: r.url }).eq('id', negocio.id);
+      if (e) setError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.');
+      else await reload();
+    } else if ('error' in r) setError(r.error);
+    setFotoBusy(false);
   };
 
   const guardarEdicion = async () => {
@@ -2740,8 +2782,10 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
                   </TouchableOpacity>
                 ))}
               </View>
-              <CampoZona label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
-              <CampoDomicilio label="Dirección (opcional)" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
+              {/* `tono="oscuro"`: este formulario vive dentro de la tarjeta violeta y
+                  los rótulos por defecto son grises: sobre el violeta no se leen. */}
+              <CampoZona tono="oscuro" label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
+              <CampoDomicilio tono="oscuro" label="Dirección (opcional)" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
               <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
               {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
                   aparece en la lista pero sin distancia ni pin. */}
@@ -2751,7 +2795,7 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
                 <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="Tarifa (opcional)" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
                 <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
               </View>
-              <Text style={{ fontSize: 11.5, color: MUTED, lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
+              <Text style={{ fontSize: 11.5, color: colors.violet[200], lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
               {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
               <View style={{ flexDirection: 'row', gap: 10 }}>
                 <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
@@ -2803,6 +2847,26 @@ function Negocio({ negocio, userId, phone, reload }: { negocio: MiNegocio | null
       {editOpen && (
         <View style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], borderRadius: 20, padding: 18, marginBottom: 18, gap: 10 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>Editar datos</Text>
+
+          {/* La foto de la ficha. En mobile no había forma de ponerla: ni en el alta
+              ni después, así que el negocio quedaba para siempre sin la suya. Se
+              guarda al elegirla, como la de la mascota. */}
+          <Text style={{ fontSize: 12, fontWeight: '700', color: MUTED }}>FOTO DE TU NEGOCIO</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+            <TouchableOpacity disabled={fotoBusy} onPress={cambiarFoto} style={{ opacity: fotoBusy ? 0.5 : 1 }}>
+              {negocio?.photo ? (
+                <Image source={{ uri: negocio.photo }} style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100] }} />
+              ) : (
+                <View style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                  <Ic d={RUBRO_IC[negocio?.category ?? ''] ?? 'paw'} size={30} />
+                </View>
+              )}
+            </TouchableOpacity>
+            <Text style={{ flex: 1, fontSize: 12.5, color: MUTED, lineHeight: 18 }}>
+              {fotoBusy ? 'Subiendo…' : negocio?.photo ? 'Tocá la foto para cambiarla. Es la que los socios ven en Servicios.' : 'Todavía no subiste ninguna: mientras tanto tu ficha muestra el ícono de tu rubro. Tocá para elegirla.'}
+            </Text>
+          </View>
+
           <CampoZona label="Zona" valor={ed.zone} onCambio={(v) => { setEd({ ...ed, zone: v }); setError(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setError(''); }} />
           <CampoDomicilio label="Dirección (opcional)" valor={ed.address} {...partirZona(ed.zone)} onCambio={(v) => setEd({ ...ed, address: v })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} ayuda="Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona." />
           {[
