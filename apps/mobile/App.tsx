@@ -2704,6 +2704,12 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
   const [showAlta, setShowAlta] = useState(false);
   /** Cuál se está subiendo, para poner el cartel en ESA caja y no en las dos. */
   const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
+  /* Las imágenes del alta. Van aparte de las del negocio publicado: acá todavía no
+     existe la fila donde guardarlas, así que se suben al elegirlas y el insert guarda
+     las URLs. */
+  const [altaLogo, setAltaLogo] = useState<string | null>(null);
+  const [altaPortada, setAltaPortada] = useState<string | null>(null);
+  const [altaBusy, setAltaBusy] = useState<'logo' | 'portada' | null>(null);
   const [nombre, setNombre] = useState('');
   const [rubro, setRubro] = useState<ProviderCategory>(RUBROS[0]!);
   const [zona, setZona] = useState('');
@@ -2802,6 +2808,15 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
       : negocio.status === 'rechazado' ? 'rechazado'
       : 'revision';
 
+  /** Elegir y subir una de las dos imágenes del alta. */
+  const elegirAlta = async (cual: 'logo' | 'portada') => {
+    setAltaBusy(cual); setError('');
+    const r = await elegirYSubirFoto(userId, cual === 'logo' ? 'negocio-logo-' : 'negocio-');
+    if ('url' in r) (cual === 'logo' ? setAltaLogo : setAltaPortada)(r.url);
+    else if ('error' in r) setError(r.error);
+    setAltaBusy(null);
+  };
+
   const enviarAlta = async () => {
     if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
     if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
@@ -2811,7 +2826,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, status: 'pendiente',
+      phone: tel.trim() || null, photo_url: altaPortada, logo_url: altaLogo, status: 'pendiente',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id && direccion.trim()) void ubicarNegocio(alta.id);
@@ -2854,6 +2869,27 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
     <View style={{ flexDirection: 'row', gap: 8 }}>
       <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="Tarifa (opcional)" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
       <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
+    </View>
+    {/* El logo y la portada, también acá: estaban solo en el alta larga ("Sumate como
+        prestador"), así que quien daba de alta desde Mi negocio —que es el camino más
+        corto— no tenía dónde subirlas y su ficha nacía con el ícono del rubro. */}
+    <View style={{ flexDirection: 'row', gap: 10 }}>
+      <TouchableOpacity
+        disabled={!!altaBusy}
+        onPress={() => elegirAlta('logo')}
+        style={{ width: 84, height: 84, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+      >
+        {altaLogo ? <Image source={{ uri: altaLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          : <Text style={{ fontSize: 11, color: MUTED, textAlign: 'center' }}>{altaBusy === 'logo' ? 'Subiendo…' : 'Logo\n(opcional)'}</Text>}
+      </TouchableOpacity>
+      <TouchableOpacity
+        disabled={!!altaBusy}
+        onPress={() => elegirAlta('portada')}
+        style={{ flex: 1, height: 84, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
+      >
+        {altaPortada ? <Image source={{ uri: altaPortada }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+          : <Text style={{ fontSize: 11.5, color: MUTED, textAlign: 'center' }}>{altaBusy === 'portada' ? 'Subiendo…' : 'Foto de portada (opcional)'}</Text>}
+      </TouchableOpacity>
     </View>
     <Text style={{ fontSize: 11.5, color: colors.violet[200], lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
     {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}

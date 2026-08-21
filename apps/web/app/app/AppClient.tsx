@@ -2577,6 +2577,33 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
   /** Cuál se está subiendo, para poner el cartel encima de ESA caja y no de las dos. */
   const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [fotoError, setFotoError] = useState('');
+  /* Las imágenes del alta. Van aparte de las del negocio ya publicado: acá todavía no
+     existe la fila donde guardarlas, así que se eligen, se previsualizan y se suben
+     al enviar la solicitud. */
+  const [altaLogo, setAltaLogo] = useState<File | null>(null);
+  const [altaLogoPreview, setAltaLogoPreview] = useState<string | null>(null);
+  const [altaPortada, setAltaPortada] = useState<File | null>(null);
+  const [altaPortadaPreview, setAltaPortadaPreview] = useState<string | null>(null);
+
+  /** Valida y previsualiza una de las dos imágenes del alta. */
+  const elegirAlta = (cual: 'logo' | 'portada') => (f?: File) => {
+    if (!f) return;
+    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
+    if (f.size > FOTO_MAX) { setError(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+    setError('');
+    if (cual === 'logo') { setAltaLogo(f); setAltaLogoPreview(URL.createObjectURL(f)); }
+    else { setAltaPortada(f); setAltaPortadaPreview(URL.createObjectURL(f)); }
+  };
+
+  /** Sube al bucket del socio y devuelve la URL, o null si falló. */
+  const subirImagen = async (f: File, prefijo: string): Promise<string | null> => {
+    const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
+    // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
+    const path = `${profile.id}/${prefijo}-${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
+    if (upErr) return null;
+    return supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
+  };
   /**
    * El negocio abierto. Con uno solo es ese; con varios, el que se toca en la lista.
    *
@@ -2660,12 +2687,27 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
     if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
     if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
     setBusy(true); setError('');
+
+    /* Las dos imágenes se suben ANTES del insert y con las URLs ya resueltas: si el
+       insert saliera primero, un fallo al subir dejaría el negocio creado sin foto y
+       sin manera de saber que faltó. */
+    let photoUrl: string | null = null;
+    let logoUrl: string | null = null;
+    if (altaPortada) {
+      photoUrl = await subirImagen(altaPortada, 'negocio');
+      if (!photoUrl) { setError('No pudimos subir la portada. Probá de nuevo o mandá la solicitud sin ella.'); setBusy(false); return; }
+    }
+    if (altaLogo) {
+      logoUrl = await subirImagen(altaLogo, 'negocio-logo');
+      if (!logoUrl) { setError('No pudimos subir el logo. Probá de nuevo o mandá la solicitud sin él.'); setBusy(false); return; }
+    }
+
     const { data: alta, error: e2 } = await supabase.from('providers').insert({
       owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, status: 'pendiente',
+      phone: tel.trim() || null, photo_url: photoUrl, logo_url: logoUrl, status: 'pendiente',
     }).select('id').single();
     if (e2) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id) void avisar('negocio-recibido', alta.id);
@@ -2722,6 +2764,19 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
     <div style={{ display: 'flex', gap: 8 }}>
       <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="Tarifa (opcional)" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
       <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
+    </div>
+    {/* El logo y la portada, también acá: estaban solo en el alta larga ("Sumate como
+        prestador"), así que quien daba de alta desde Mi negocio —que es el camino más
+        corto— no tenía dónde subirlas y su ficha nacía con el ícono del rubro. */}
+    <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
+      <label style={{ position: 'relative', display: 'flex', width: 84, height: 84, flex: 'none', border: '2px dashed rgb(230,227,240)', borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: altaLogoPreview ? `url(${altaLogoPreview}) center/cover` : '#fff', cursor: 'pointer', overflow: 'hidden' }}>
+        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirAlta('logo')(e.target.files?.[0])} style={{ display: 'none' }} />
+        {!altaLogoPreview && <div style={{ textAlign: 'center', color: 'rgb(135,129,160)', fontSize: 11, pointerEvents: 'none' }}>Logo<br />(opcional)</div>}
+      </label>
+      <label style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0, height: 84, border: '2px dashed rgb(230,227,240)', borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: altaPortadaPreview ? `url(${altaPortadaPreview}) center/cover` : '#fff', cursor: 'pointer', overflow: 'hidden' }}>
+        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirAlta('portada')(e.target.files?.[0])} style={{ display: 'none' }} />
+        {!altaPortadaPreview && <div style={{ textAlign: 'center', color: 'rgb(135,129,160)', fontSize: 11.5, pointerEvents: 'none' }}>Foto de portada (opcional)</div>}
+      </label>
     </div>
     <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</p>
     {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
