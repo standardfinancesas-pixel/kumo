@@ -60,19 +60,57 @@ async function whatsappDelClub(): Promise<string> {
   }
 }
 
+/*
+ * La tipografía del mail, y por qué no es la de la marca a secas.
+ *
+ * Gmail —web, Android e iOS, o sea la mayoría de las casillas— BORRA los web fonts:
+ * ni `@font-face` ni el `<link>` a Google Fonts. Apple Mail y iOS Mail sí los
+ * respetan, y Outlook de escritorio no. Así que Baloo 2 y DM Sans se piden igual
+ * (para los clientes que los muestran) pero la pila de respaldo es la que se va a
+ * ver en la mayoría de los casos, y está elegida a mano: Trebuchet para los títulos
+ * porque es la web-safe más redonda y cercana a Baloo, y Helvetica/Arial para el
+ * cuerpo, que es donde DM Sans casi no se distingue.
+ *
+ * La marca de verdad la lleva el LOGO, que va como imagen: es la única forma de que
+ * la tipografía de Kumo llegue al inbox tal cual.
+ */
+const TIPO_TITULO = "'Baloo 2','Trebuchet MS','Segoe UI',Helvetica,Arial,sans-serif";
+const TIPO_TEXTO = "'DM Sans','Segoe UI',Helvetica,Arial,sans-serif";
+/**
+ * El isotipo, servido desde el sitio.
+ *
+ * Va desde `/mail/` y no desde la ruta de ícono que genera Next: esa lleva un hash
+ * que cambia entre builds, y un mail de hace seis meses tiene que seguir mostrando
+ * el logo. Los clientes que bloquean imágenes muestran el `alt`, así que el header
+ * se sigue leyendo sin ella.
+ */
+const LOGO = `${SITE}/mail/kumo-isotipo.png`;
+
 /** Envoltorio común: tablas y estilos en línea, que es lo que los clientes de
  *  mail renderizan de forma consistente. */
 function layout(titulo: string, cuerpo: string, wa: string, cta?: { label: string; href: string }): string {
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>${titulo}</title></head>
-<body style="margin:0;padding:0;background:#f5f4f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;color:${INK};">
+<title>${titulo}</title>
+<!-- Las fuentes de la marca, para los clientes que las cargan (Apple Mail, iOS).
+     Gmail y Outlook lo ignoran y usan la pila de respaldo: ver TIPO_TITULO. -->
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#f5f4f8;font-family:${TIPO_TEXTO};color:${INK};">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f4f8;padding:28px 12px;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;">
-        <tr><td style="background:${BRAND};padding:22px 26px;">
-          <span style="color:#ffffff;font-size:24px;font-weight:700;letter-spacing:-0.3px;">Kumo</span>
-          <span style="color:#c9c3e3;font-size:13px;margin-left:8px;">el club de tu mascota</span>
+        <tr><td style="background:${BRAND};padding:20px 26px;">
+          <!-- El logo y el nombre en una tabla y no con flex: en mail, flex no existe. -->
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="padding-right:12px;" valign="middle">
+              <img src="${LOGO}" width="44" height="44" alt="Kumo" style="display:block;width:44px;height:44px;border:0;border-radius:11px;" />
+            </td>
+            <td valign="middle">
+              <div style="font-family:${TIPO_TITULO};color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.3px;line-height:1.1;">Kumo</div>
+              <div style="color:#c9c3e3;font-size:12.5px;line-height:1.3;">el club de tu mascota</div>
+            </td>
+          </tr></table>
         </td></tr>
         <tr><td style="padding:26px;">
           ${cuerpo}
@@ -134,7 +172,7 @@ const esc = (t: string | number) => String(t)
 /* ── Piezas que se repiten en varios mails ─────────────────────── */
 
 /** Título de un mail. */
-const h1 = (texto: string) => `<h1 style="margin:0 0 10px;font-size:23px;font-weight:700;">${texto}</h1>`;
+const h1 = (texto: string) => `<h1 style="margin:0 0 10px;font-family:${TIPO_TITULO};font-size:23px;font-weight:800;">${texto}</h1>`;
 /** Párrafo del cuerpo. */
 const par = (texto: string, ultimo = false) =>
   `<p style="margin:0 0 ${ultimo ? 0 : 18}px;font-size:15px;line-height:1.65;color:#3f3a55;">${texto}</p>`;
