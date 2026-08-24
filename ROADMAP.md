@@ -304,7 +304,11 @@ de cada pantalla.
       **Para iOS falta cuenta de Apple Developer** (usa APNs, no Firebase).
 - [x] **El socio decide si los quiere.** El switch "Push y recordatorios" de la
       pantalla de Notificaciones estaba pintado prendido y no había nada atrás.
-      Ahora prende y apaga de verdad: apagarlo borra el token, y lo que corta el
+      Ahora prende y apaga de verdad, y solo en la app: en la webapp el switch
+      se eliminó en vez de cablearlo, porque en el navegador el push es otro
+      mecanismo (Web Push con service worker y VAPID, que además Safari en
+      iPhone solo entrega si el sitio está agregado a la pantalla de inicio).
+      Apagarlo borra el token, y lo que corta el
       envío es el token que no está — el club le manda a los tokens que tiene, así
       que no hace falta que cada envío pregunte por una preferencia. La preferencia
       vive en el teléfono, no en el perfil: es del aparato, no de la persona.

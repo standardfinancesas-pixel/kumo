@@ -3895,17 +3895,14 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
         </div>
       ))}
 
-      {/* Del prototipo. El push todavía no está implementado, así que el switch
-          es decorativo: no hay nada que apagar. */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#f7f6fa', border: '1px solid #eeecf5', borderRadius: 16, padding: '14px 16px', marginTop: 4 }}>
-        <div>
-          <div style={{ fontWeight: 600, fontSize: 14 }}>Push y recordatorios</div>
-          <div style={{ fontSize: 12, color: '#a29dba' }}>Vacunas, reintegros y beneficios</div>
-        </div>
-        <div style={{ width: 44, height: 26, borderRadius: 100, background: '#5D5491', position: 'relative', flex: 'none' }}>
-          <span style={{ position: 'absolute', top: 3, right: 3, width: 20, height: 20, borderRadius: '50%', background: '#fff' }} />
-        </div>
-      </div>
+      {/* Acá iba un switch de "Push y recordatorios" heredado del prototipo. Estaba
+          pintado prendido y no controlaba nada, y se sacó en vez de hacerlo andar:
+          en el navegador el push es otro mecanismo (Web Push, con service worker y
+          VAPID) y no comparte NADA con el de la app, que va por Expo/FCM con un
+          token del aparato. Sostener los dos para que uno funcione a medias no se
+          justifica — y a medias de verdad, porque Safari en iPhone no entrega web
+          push salvo que el socio agregue el sitio a la pantalla de inicio.
+          El push vive en la app, y ahí el switch sí es un control real. */}
     </div>
   );
 }
