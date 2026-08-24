@@ -4,23 +4,17 @@
     "slug": "kumo",
     "owner": "flor2021",
     "scheme": "kumo",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F7F6FA",
     "icon": "./assets/icon.png",
-    "splash": {
-      "image": "./assets/splash.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#5D5491"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "pet.kumo.app"
     },
     "android": {
       "package": "pet.kumo.app",
-      "//googleServicesFile": "Config de cliente de Firebase (proyecto kumo-b79fb). Va commiteado a propósito: no es un secreto —la api_key de ahí es un identificador público— y EAS solo sube al build lo que está en git. Lo secreto es la clave privada de la cuenta de servicio, que vive en las credenciales de EAS y nunca en el repo.",
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -32,6 +26,7 @@
     },
     "extra": {
       "note": "Los EXPO_PUBLIC_* van en .env para correr local y en variables de la cuenta de Expo para los builds de EAS: .env está gitignoreado y EAS solo sube lo que está en git.",
+      "notaGoogleServices": "google-services.json es la config de cliente de Firebase (proyecto kumo-b79fb). Va commiteado a propósito: no es un secreto —la api_key de ahí es un identificador público— y EAS solo sube al build lo que está en git. Lo secreto es la clave privada de la cuenta de servicio, que vive en las credenciales de EAS y nunca en el repo. (Antes esta nota estaba como clave '//googleServicesFile' dentro de android; desde el SDK 57 el schema rechaza claves desconocidas ahí, y 'extra' sí las admite.)",
       "eas": {
         "projectId": "84ac9b9a-0447-407c-b4c3-3854f1f0db83"
       }
@@ -43,6 +38,14 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#5D5491"
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#5D5491"
         }
       ]
     ],

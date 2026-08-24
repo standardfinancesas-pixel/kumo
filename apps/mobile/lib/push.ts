@@ -26,7 +26,12 @@ import { supabase } from './supabase';
  *  nada y parece que no llegó. */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
-    shouldShowAlert: true,
+    // `shouldShowAlert` quedó deprecado y ahora son dos decisiones separadas:
+    // el globo que aparece arriba (banner) y la entrada que queda en el centro
+    // de notificaciones (list). Queremos las dos: el globo por si está mirando
+    // el teléfono, y la entrada para el que lo levanta después.
+    shouldShowBanner: true,
+    shouldShowList: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
@@ -108,6 +113,11 @@ export async function registrarDispositivo(memberId: string): Promise<ResultadoR
  * antes de que existiera el listener y hay que preguntarlo.
  */
 export function alTocarNotificacion(ir: (pantalla: string) => void): () => void {
+  // En web no hay notificaciones que tocar. Hasta el SDK 51 preguntar igual era
+  // inofensivo; desde el 57 getLastNotificationResponseAsync tira ("not
+  // available on web") y el error subía hasta el useEffect que la llama, así que
+  // la app no llegaba a renderizar. Se sale sin ruido, como el resto del módulo.
+  if (Platform.OS === 'web') return () => {};
   const pantallaDe = (r: Notifications.NotificationResponse | null) => {
     const p = r?.notification.request.content.data?.pantalla;
     return typeof p === 'string' ? p : null;

@@ -362,10 +362,31 @@ de cada pantalla.
       build. Ojo: `runtimeVersion` está atado a la versión de la app, así que
       subir `version` en `app.json` corta los updates para los celulares que
       tengan la anterior.
+- [x] **Upgrade a Expo SDK 57** (desde el 51), que era condición para publicar:
+      Google exige que las apps nuevas targeteen Android 16 (API 36) y el SDK 51
+      compila contra Android 14. Arrastró React 18 → 19, React Native 0.74 → 0.86
+      y Node 20 → 22. Tres cosas que costaron encontrar:
+      **(1)** los 200 errores de "'Svg' cannot be used as a JSX component" no eran
+      de react-native-svg sino del `.npmrc`: `hoist-pattern[]=!@types/react` dejaba
+      a los paquetes anidados sin los tipos de React, y con `skipLibCheck` el error
+      no aparecía ahí sino en el código de la app. Esa exclusión existía porque
+      mobile iba en @types/react 18 y la web en 19; al unificarse en 19, se sacó.
+      **(2)** el `splash` de `app.json` se movió al plugin `expo-splash-screen`.
+      **(3)** `getLastNotificationResponseAsync` pasó de no-op a tirar excepción en
+      web, y sin guarda la app no renderizaba.
+- [ ] **Verificar el edge-to-edge en Android**. Desde el SDK 54 la app dibuja
+      abajo de la barra de estado y de la de navegación, y no se puede desactivar.
+      Se migró de `SafeAreaView` de react-native (deprecado, en Android nunca
+      reservó nada) a `react-native-safe-area-context`, con el provider en
+      `index.tsx`. Falta mirarlo en un Android real: es lo único de este upgrade
+      que no se puede verificar sin dispositivo.
 - [ ] **Publicar en Google Play**: perfil `production` (genera el .aab, que es lo
-      único que acepta la tienda). Necesita la cuenta de desarrollador de Google
-      del cliente (USD 25 únicos) y decidir si el proyecto de Expo se transfiere a
-      su nombre. Para iOS hace falta cuenta de Apple Developer.
+      único que acepta la tienda). La cuenta del cliente ya está y con permisos de
+      administrador, así que se puede crear la service account y usar `eas submit`
+      (no hace falta una primera subida manual). Falta confirmar si la cuenta es de
+      organización o personal: si es personal y es post-noviembre 2023, antes de
+      producción hay que correr un closed testing con 12 testers durante 14 días
+      corridos. Para iOS hace falta cuenta de Apple Developer.
 
 ## Pendiente de diseño
 - [x] Responsividad de las 3 superficies web. Abajo de 1024px el sidebar de la

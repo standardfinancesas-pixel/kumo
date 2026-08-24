@@ -5,12 +5,14 @@
 // cada paquete es un symlink a .pnpm/<paquete>/node_modules/<paquete> y sus
 // dependencias viven al lado, dentro de esa carpeta de .pnpm.
 //
-// Para que Metro resuelva eso necesita dos cosas:
-//   - seguir symlinks (unstable_enableSymlinks)
-//   - poder subir por el árbol desde el archivo que hace el require, así un
-//     paquete dentro de .pnpm encuentra sus propias deps (por eso
-//     disableHierarchicalLookup queda en false; con true, Expo no encuentra
-//     expo-modules-core)
+// Para que Metro resuelva eso necesita poder subir por el árbol desde el archivo
+// que hace el require, así un paquete dentro de .pnpm encuentra sus propias deps
+// (por eso disableHierarchicalLookup queda en false; con true, Expo no encuentra
+// expo-modules-core).
+//
+// Seguir symlinks ya no se configura: era unstable_enableSymlinks y desde el
+// Metro del SDK 57 viene activado de fábrica. Ponerlo a mano ahora lo marca
+// expo-doctor como override innecesario.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
@@ -24,6 +26,5 @@ config.watchFolders = [workspaceRoot];
 // con @react-native/assets-registry). Dejándolo al lookup jerárquico, cada
 // archivo resuelve subiendo desde su propia carpeta, que es como está armado
 // el layout isolated de pnpm.
-config.resolver.unstable_enableSymlinks = true;
 config.resolver.disableHierarchicalLookup = false;
 module.exports = config;

@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=18.18"
+    "node": ">=22.13"
   },
   "scripts": {
     "dev": "turbo run dev",
@@ -26,7 +26,7 @@
     "typescript-eslint": "^8.67.0"
   },
   "pnpm": {
-    "comment": "Las apps web usan React 19 (lo exige el App Router de Next 15) y mobile React 18.2.0 (lo exige Expo 51). Sin este peerDependencyRules, pnpm llena la consola de warnings por esa convivencia.",
+    "comment": "Las tres superficies están en React 19. Este peerDependencyRules quedó de cuando mobile iba en 18.2.0 (Expo 51) y pnpm llenaba la consola de warnings por la convivencia; se deja porque hay dependencias del ecosistema RN que todavía declaran react ^18 como peer.",
     "peerDependencyRules": {
       "allowedVersions": {
         "react": "19",

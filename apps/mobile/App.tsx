@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, AppState, PanResponder, SafeAreaView, ScrollView, StatusBar as BarraSistema, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { Alert, AppState, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
@@ -233,7 +234,7 @@ function PetCard({ pet, detailed }: { pet: Pet; detailed?: boolean }) {
 function EmptyPets({ go }: { go: (t: Screen) => void }) {
   return (
     <TouchableOpacity onPress={() => go('mismascotas')} style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 20, padding: 22, marginBottom: 18, alignItems: 'center' }}>
-      <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+      <View style={{ width: 54, height: 54, borderRadius: 27, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
         <Ic d="paw" size={26} color={BRAND} fill />
       </View>
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 17, color: INK }}>Todavía no cargaste mascotas</Text>
@@ -327,7 +328,7 @@ function Inicio({ pets, petIdx, setPetIdx, go, pago, desdePlan, onPlan }: { pets
       </TouchableOpacity>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
         <TouchableOpacity onPress={() => go('carnet')} style={{ width: '47%', flexGrow: 1, height: 130, borderRadius: 14, padding: 14, justifyContent: 'space-between', backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200] }}>
-          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="calendar" size={17} color={INK} /></View>
+          <View style={{ width: 32, height: 32, borderRadius: 8, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="calendar" size={17} color={INK} /></View>
           <View><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Próximas vacunas</Text><Text style={{ fontSize: 11, color: BRAND, fontWeight: '600', marginTop: 4 }}>Ver más →</Text></View>
         </TouchableOpacity>
         {/* La tarjeta no se pierde para el socio gratuito: cambia de destino y de
@@ -349,7 +350,7 @@ function Inicio({ pets, petIdx, setPetIdx, go, pago, desdePlan, onPlan }: { pets
           </ImageBackground>
         </TouchableOpacity>
         <TouchableOpacity onPress={() => go('minegocio')} style={{ width: '47%', flexGrow: 1, height: 130, borderRadius: 14, padding: 14, justifyContent: 'space-between', backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200] }}>
-          <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="store" size={17} color={INK} /></View>
+          <View style={{ width: 32, height: 32, borderRadius: 8, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="store" size={17} color={INK} /></View>
           <View><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Mi negocio</Text><Text style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>Publicá y gestioná tu servicio</Text></View>
         </TouchableOpacity>
       </View>
@@ -514,7 +515,7 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
               const tipo = (VACUNA_KINDS as string[]).includes(v.kind) ? (v.kind as VaccineKind) : 'Vacuna';
               return (
                 <View key={v.name + i} style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 12, padding: 14, flexDirection: 'row', gap: 12, alignItems: 'center' }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 8, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 8, overflow: 'hidden', backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
                     <Ic d={VAC_IC[KIND_ICON[tipo]]} size={20} color="#fff" />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -701,7 +702,7 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
           const hi = v.tone === 'lime';
           return (
             <View key={v.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: hi ? '#eef7d6' : '#f7f6fa', borderWidth: hi ? 1.5 : 1, borderColor: hi ? LIME : '#eeecf5', borderRadius: 14, padding: 13 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}><Ic d={VAC_IC[KIND_ICON[v.kind]]} size={18} color={tone.fg} /></View>
+              <View style={{ width: 34, height: 34, borderRadius: 10, overflow: 'hidden', backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}><Ic d={VAC_IC[KIND_ICON[v.kind]]} size={18} color={tone.fg} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{v.name}</Text>
                 <Text style={{ fontSize: 12, color: colors.violet[400] }}>{v.sub}</Text>
@@ -768,7 +769,7 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
           <View style={{ gap: 10 }}>
             {contacts.map((c) => (
               <View key={c.id} style={{ flexDirection: 'row', gap: 12, backgroundColor: '#fbe8ef', borderWidth: 1, borderColor: '#f5d6e3', borderRadius: 14, padding: 12 }}>
-                <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
                   <Ic d="hospital" size={19} color="#c14d7a" />
                 </View>
                 <View style={{ flex: 1, minWidth: 0 }}>
@@ -904,7 +905,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
                 <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>{p.name}</Text>
                 {p.verificado && (
-                  <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 20, height: 20, borderRadius: 10, overflow: 'hidden', backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
                     <Svg width={12} height={12} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={LIME} strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" /></Svg>
                   </View>
                 )}
@@ -962,7 +963,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
             {reviews.map((r) => (
               <View key={r.id} style={{ backgroundColor: r.propia ? colors.violet[100] : '#f7f6fa', borderWidth: 1, borderColor: r.propia ? '#e0dcec' : '#eeecf5', borderRadius: 16, padding: 14 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-                  <View style={{ width: 30, height: 30, borderRadius: 9, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 30, height: 30, borderRadius: 9, overflow: 'hidden', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
                     <Ic d="person" size={16} color="#8781a0" />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -1167,7 +1168,7 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
   return (
     <Sheet onClose={onClose}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 }}>
-        <View style={{ width: 46, height: 46, borderRadius: 13, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={22} /></View>
+        <View style={{ width: 46, height: 46, borderRadius: 13, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={22} /></View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK }}>{b.name}</Text>
           <Text style={{ fontSize: 12.5, color: '#8781a0' }}>{b.cat}</Text>
@@ -1329,7 +1330,7 @@ function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; 
       {buscado ? <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Beneficios en «{buscado}»</Text> : null}
       {/* Banner "mostrá tu carnet" */}
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: BRAND, borderRadius: 18, padding: 16, marginBottom: 18 }}>
-        <View style={{ width: 42, height: 42, borderRadius: 12, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="tag" size={22} color={INK} /></View>
+        <View style={{ width: 42, height: 42, borderRadius: 12, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="tag" size={22} color={INK} /></View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '800', fontFamily: FH, fontSize: 15, color: '#fff' }}>Mostrá tu carnet y ahorrá</Text>
           <Text style={{ fontSize: 12, color: colors.violet[300] }}>Presentá el carnet digital en cada local</Text>
@@ -1337,7 +1338,7 @@ function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; 
       </View>
       {list.length === 0 ? (
         <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 26, alignItems: 'center' }}>
-          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+          <View style={{ width: 46, height: 46, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
             <Ic d="tag" size={22} />
           </View>
           <Text style={{ fontWeight: '600', fontSize: 14.5, color: INK }}>{buscado ? `Sin beneficios para «${buscado}»` : 'Todavía no hay beneficios activos'}</Text>
@@ -1347,7 +1348,7 @@ function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; 
         <View style={{ gap: 10 }}>
           {list.map((b) => (
             <TouchableOpacity key={b.id} onPress={() => setSelId(b.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 }}>
-              <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={20} /></View>
+              <View style={{ width: 44, height: 44, borderRadius: 12, overflow: 'hidden', backgroundColor: '#fff', borderWidth: 1, borderColor: colors.violet[200], alignItems: 'center', justifyContent: 'center' }}><Ic d={b.icon} size={20} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{b.name}</Text>
                 <Text style={{ fontSize: 12, color: colors.violet[400] }}>{b.cat}{b.zone ? ` · ${b.zone}` : ''}{b.km != null ? ` · ${b.km} km` : ''}</Text>
@@ -1386,7 +1387,7 @@ function MasSheet({ onClose, onGo, pago, onPlan }: { onClose: () => void; onGo: 
         <View style={{ gap: 12 }}>
           {rows.map((r) => (
             <TouchableOpacity key={r.t} onPress={r.accion ?? (() => r.to && onGo(r.to))} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 14 }}>
-              <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ width: 44, height: 44, borderRadius: 22, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
                 <Ic d={r.icon} size={20} color={BRAND} fill={r.fill} />
               </View>
               <View style={{ flex: 1 }}>
@@ -1565,7 +1566,7 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
         * débito, esa fila es la explicación de por qué se le cortó el acceso.
         */}
       <TouchableOpacity onPress={() => setPagosOpen((v) => !v)} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 15, marginBottom: pagosOpen ? 10 : 18 }}>
-        <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
+        <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '700', fontSize: 14 }}>Mis pagos</Text>
           <Text style={{ fontSize: 12.5, color: MUTED }}>
@@ -1607,7 +1608,7 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
           no existe. */}
       {pago ? (
         <TouchableOpacity onPress={() => go('reintegros')} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 15, marginBottom: 18 }}>
-          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
+          <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={20} /></View>
           <View style={{ flex: 1 }}><Text style={{ fontWeight: '700', fontSize: 14 }}>Reintegros</Text><Text style={{ fontSize: 12.5, color: MUTED }}>Seguí tus pedidos</Text></View>
           <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
         </TouchableOpacity>
@@ -1914,7 +1915,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
               const tone = PET_EVENT_TONE[e.kind];
               return (
                 <View key={e.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 12 }}>
-                  <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  <View style={{ width: 38, height: 38, borderRadius: 11, overflow: 'hidden', backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
                     <Ic d={PET_EVENT_IC[e.kind]} size={19} color={tone.fg} />
                   </View>
                   <View style={{ flex: 1 }}>
@@ -2007,7 +2008,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
             {fotoUrl
               ? <Image source={{ uri: fotoUrl }} style={{ width: 64, height: 64, borderRadius: 16 }} />
               : (
-                <View style={{ width: 64, height: 64, borderRadius: 16, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 64, height: 64, borderRadius: 16, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
                   <Ic d="paw" size={26} color={BRAND} fill />
                 </View>
               )}
@@ -2137,7 +2138,7 @@ function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[];
       <Sub>Los prestadores que marcaste con el corazón.</Sub>
       {list.length === 0 ? (
         <View style={{ alignItems: 'center', paddingVertical: 60 }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
             <Ic d="heart" size={32} color={colors.violet[400]} />
           </View>
           <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 30 }}>Todavía no guardaste prestadores. Tocá el corazón en Servicios para tenerlos a mano.</Text>
@@ -2200,7 +2201,7 @@ function Prestar({ userId, phone, onVolver, onNegocio, reload }: { userId: strin
   if (enviado) {
     return (
       <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, alignItems: 'center' }}>
-        <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+        <View style={{ width: 72, height: 72, borderRadius: 36, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
           <Svg width={34} height={34} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={INK} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>
         </View>
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>Solicitud enviada</Text>
@@ -2640,7 +2641,7 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: N
 
       {groups.length === 0 ? (
         <View style={{ alignItems: 'center', paddingVertical: 50 }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
             <Ic d="bell" size={30} color={colors.violet[400]} />
           </View>
           <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 24, lineHeight: 20 }}>Todavía no tenés notificaciones. Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu negocio.</Text>
@@ -2654,7 +2655,7 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: N
               const unread = new Date(n.date).getTime() > vistoMs;
               return (
                 <TouchableOpacity key={n.id} onPress={() => go(NOTIF_DESTINO[n.to])} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
-                  <View style={{ width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: st.chip }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: st.chip }}>
                     <Ic d={st.ic} size={20} color={st.color} />
                   </View>
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -2924,7 +2925,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
               {(n.logo ?? n.photo) ? (
                 <Image source={{ uri: (n.logo ?? n.photo)! }} style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100] }} />
               ) : (
-                <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 46, height: 46, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
                   <Ic d={RUBRO_IC[n.category] ?? 'paw'} size={22} />
                 </View>
               )}
@@ -2950,7 +2951,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
       {state === 'sin' && (
         <View style={{ backgroundColor: BRAND, borderRadius: 20, padding: 22, marginBottom: 18, overflow: 'hidden' }}>
           <View style={{ position: 'absolute', right: -20, top: -20, opacity: 0.15 }}><Ic d="store" size={120} color="#fff" /></View>
-          <View style={{ width: 52, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}><Ic d="store" size={26} color="#fff" /></View>
+          <View style={{ width: 52, height: 52, borderRadius: 16, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}><Ic d="store" size={26} color="#fff" /></View>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: '#fff', lineHeight: 27 }}>¿Ofrecés un servicio para mascotas?</Text>
           <Text style={{ color: colors.violet[300], fontSize: 13.5, lineHeight: 20, marginTop: 10, marginBottom: 18 }}>Dá de alta tu negocio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</Text>
           {showAlta ? formAlta : (
@@ -3004,7 +3005,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
               {negocio?.logo ? (
                 <Image source={{ uri: negocio.logo }} style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100] }} />
               ) : (
-                <View style={{ width: 74, height: 74, borderRadius: 16, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 74, height: 74, borderRadius: 16, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
                   <Ic d={RUBRO_IC[negocio?.category ?? ''] ?? 'paw'} size={30} />
                 </View>
               )}
@@ -3020,7 +3021,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
               {negocio?.photo ? (
                 <Image source={{ uri: negocio.photo }} style={{ width: 116, height: 74, borderRadius: 12, backgroundColor: colors.violet[100] }} />
               ) : (
-                <View style={{ width: 116, height: 74, borderRadius: 12, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 116, height: 74, borderRadius: 12, overflow: 'hidden', backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}>
                   <Ic d={RUBRO_IC[negocio?.category ?? ''] ?? 'paw'} size={26} color="#fff" />
                 </View>
               )}
@@ -3095,7 +3096,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
 
       {([['person', 'Miles de socios buscando tu servicio'], ['shield', 'Sello "Verificado por Kumo"'], ['chat', 'Reseñas y contactos en un solo lugar']] as [IconName, string][]).map(([icon, t]) => (
         <View key={t} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, padding: 14, marginBottom: 10 }}>
-          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d={icon} size={18} color={BRAND} /></View>
+          <View style={{ width: 34, height: 34, borderRadius: 10, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d={icon} size={18} color={BRAND} /></View>
           <Text style={{ fontSize: 14, fontWeight: '600', color: INK, flex: 1 }}>{t}</Text>
         </View>
       ))}
@@ -3170,7 +3171,7 @@ function ReintegroDetalle({ r, planName, onVolver }: { r: ReintVM; planName: str
         {pasos.map((p, i) => (
           <View key={p.label} style={{ flexDirection: 'row', gap: 12 }}>
             <View style={{ alignItems: 'center' }}>
-              <View style={{ width: 22, height: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: p.done ? BRAND : '#e0dcec' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: p.done ? BRAND : '#e0dcec' }}>
                 {p.done ? <Svg width={11} height={11} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke="#fff" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round" /></Svg> : null}
               </View>
               {i < pasos.length - 1 ? <View style={{ width: 2, flex: 1, minHeight: 16, backgroundColor: pasos[i + 1]!.done ? BRAND : '#e0dcec' }} /> : null}
@@ -3305,7 +3306,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       </View>
       {enviado && (
         <View style={{ backgroundColor: '#eef7d6', borderWidth: 1.5, borderColor: '#d3e89a', borderRadius: 18, padding: 18, marginBottom: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-          <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 44, height: 44, borderRadius: 22, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}>
             <Svg width={24} height={24} viewBox="0 0 24 24"><Path d="M20 6L9 17l-5-5" fill="none" stroke={INK} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
           </View>
           <View style={{ flex: 1 }}>
@@ -3327,7 +3328,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
           <TouchableOpacity onPress={pickPhoto} style={{ borderWidth: 1.5, borderColor: colors.violet[300], borderStyle: 'dashed', borderRadius: 14, padding: 22, backgroundColor: '#fff', alignItems: 'center', gap: 8, marginBottom: 16 }}>
             {photo
               ? <Image source={{ uri: photo.uri }} style={{ width: 44, height: 44, borderRadius: 12 }} />
-              : <View style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={22} /></View>}
+              : <View style={{ width: 44, height: 44, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}><Ic d="wallet" size={22} /></View>}
             <View style={{ alignItems: 'center' }}>
               <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{photo ? 'Factura adjunta · tocá para cambiar' : 'Cargá la factura'}</Text>
               <Text style={{ fontSize: 12, color: '#a29dba' }}>Foto del ticket fiscal</Text>
@@ -3360,7 +3361,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       <Text style={{ fontWeight: '700', fontSize: 16, marginBottom: 12 }}>Historial</Text>
       {reintegros.length === 0 ? (
         <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 26, alignItems: 'center' }}>
-          <View style={{ width: 46, height: 46, borderRadius: 14, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+          <View style={{ width: 46, height: 46, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
             <Ic d="wallet" size={22} />
           </View>
           <Text style={{ fontWeight: '600', fontSize: 14.5, color: INK }}>Todavía no pediste ningún reintegro</Text>
@@ -3562,7 +3563,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: 38, height: 38, borderRadius: 11, overflow: 'hidden', backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
           <Ic d="person" size={19} color={tone.fg} />
         </View>
         <View style={{ flex: 1 }}>
@@ -3642,7 +3643,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
 
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 18, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 100, paddingLeft: 16, padding: 5 }}>
         <TextInput value={texto} onChangeText={setTexto} placeholder="Escribí una respuesta…" placeholderTextColor={colors.violet[400]} style={{ flex: 1, fontSize: 14, color: INK, paddingVertical: 6 }} />
-        <TouchableOpacity disabled={busy || !texto.trim()} onPress={responder} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: texto.trim() ? BRAND : '#c7c1de', alignItems: 'center', justifyContent: 'center' }}>
+        <TouchableOpacity disabled={busy || !texto.trim()} onPress={responder} style={{ width: 38, height: 38, borderRadius: 19, overflow: 'hidden', backgroundColor: texto.trim() ? BRAND : '#c7c1de', alignItems: 'center', justifyContent: 'center' }}>
           <Svg width={18} height={18} viewBox="0 0 24 24">
             <Line x1="12" y1="19" x2="12" y2="5" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
             <Path d="M5 12l7-7 7 7" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -3705,7 +3706,7 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
     if (listo) {
       return (
         <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 40, alignItems: 'center' }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', marginBottom: 18 }}>
             <Svg width={34} height={34} viewBox="0 0 24 24"><Path d="M20 6L9 17l-5-5" fill="none" stroke={INK} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" /></Svg>
           </View>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>¡Publicado!</Text>
@@ -3809,8 +3810,8 @@ function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPos
                 <Text style={{ fontFamily: FH, fontWeight: '700', fontSize: 16, lineHeight: 20, color: INK, marginBottom: 5 }}>{p.title}</Text>
                 <Text numberOfLines={2} style={{ fontSize: 13, color: '#8781a0', lineHeight: 19, marginBottom: 12 }}>{p.body}</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.violet[100], borderRadius: 100, paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="chat" size={14} color={BRAND} /><Text style={{ fontSize: 12, fontWeight: '700', color: BRAND }}>{p.replies}</Text></View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fbe9ee', borderRadius: 100, paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="heart" size={14} color="#c04863" fill /><Text style={{ fontSize: 12, fontWeight: '700', color: '#c04863' }}>{p.likes}</Text></View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.violet[100], borderRadius: 100, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="chat" size={14} color={BRAND} /><Text style={{ fontSize: 12, fontWeight: '700', color: BRAND }}>{p.replies}</Text></View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fbe9ee', borderRadius: 100, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="heart" size={14} color="#c04863" fill /><Text style={{ fontSize: 12, fontWeight: '700', color: '#c04863' }}>{p.likes}</Text></View>
                   <Text style={{ marginLeft: 'auto', color: BRAND, fontWeight: '700', fontSize: 12.5 }}>Ver hilo ›</Text>
                 </View>
               </TouchableOpacity>
@@ -4133,7 +4134,7 @@ export default function App() {
             </View>
           ) : <View />}
           <View style={{ flexDirection: 'row', gap: 10 }}>
-            <TouchableOpacity onPress={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: screen === 'notif' ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+            <TouchableOpacity onPress={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, overflow: 'hidden', backgroundColor: screen === 'notif' ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="bell" size={21} color={screen === 'notif' ? '#fff' : BRAND} />
               {noLeidas > 0 && screen !== 'notif' && (
                 <View style={{ position: 'absolute', top: 3, right: 3, minWidth: 18, height: 18, paddingHorizontal: 4, borderRadius: 9, backgroundColor: LIME, borderWidth: 2, borderColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
@@ -4141,7 +4142,7 @@ export default function App() {
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMasOpen(true)} style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: masOpen ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+            <TouchableOpacity onPress={() => setMasOpen(true)} style={{ width: 44, height: 44, borderRadius: 14, overflow: 'hidden', backgroundColor: masOpen ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="menu" size={22} color={masOpen ? '#fff' : BRAND} />
             </TouchableOpacity>
           </View>
@@ -4165,7 +4166,13 @@ export default function App() {
             const active = pantalla === t.k && !masOpen;
             return (
               <Pressable key={t.k} onPress={() => go(t.k as Screen)} style={styles.tabitem}>
-                <View style={{ backgroundColor: active ? LIME : 'transparent', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 4 }}>
+                {/* overflow: 'hidden' no es decorativo. En Android el fondo redondeado
+                    se dibujaba cuadrado desde que el SDK 57 prendió la New
+                    Architecture: el hijo (el SVG del ícono) no respeta el radio del
+                    contenedor y la doc de React Native manda justamente esto cuando
+                    "the rounded border is not visible". En web y en iOS no pasaba,
+                    así que solo se ve en el APK. */}
+                <View style={{ backgroundColor: active ? LIME : 'transparent', borderRadius: 10, overflow: 'hidden', paddingHorizontal: 14, paddingVertical: 4 }}>
                   <Ic d={t.icon} size={22} color={active ? BRAND : colors.violet[400]} fill={t.icon === 'paw' && active} />
                 </View>
                 <Text style={{ fontSize: 11, fontWeight: active ? '700' : '500', color: active ? BRAND : colors.violet[400], marginTop: 3 }}>{t.label}</Text>
@@ -4213,15 +4220,15 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: isWeb ? '#e7e4f0' : '#fff', alignItems: 'center' },
   phone: isWeb
     ? { flex: 1, width: '100%', maxWidth: 392, backgroundColor: '#fff', borderRadius: 40, overflow: 'hidden', marginVertical: 12 }
-    // El SafeAreaView de react-native NO reserva el alto de la barra de estado
-    // en Android: ahí es una View común, solo hace algo en iOS. Por eso el
-    // contenido quedaba debajo de la hora y la señal. Se reserva a mano con la
-    // altura real que informa el sistema, más un poco de aire. En iOS no se suma
-    // nada porque ahí el SafeAreaView ya lo hace y quedaría el doble.
-    : {
-        flex: 1, width: '100%', backgroundColor: '#fff',
-        paddingTop: Platform.OS === 'android' ? (BarraSistema.currentHeight ?? 24) + 6 : 6,
-      },
+    // Acá había un paddingTop calculado a mano con StatusBar.currentHeight,
+    // porque el SafeAreaView de react-native no reservaba nada en Android. Ese
+    // SafeAreaView quedó deprecado en el SDK 57 y lo reemplazó el de
+    // react-native-safe-area-context (ver index.tsx), que sí aplica el inset real
+    // en las dos plataformas — y además el de abajo, que antes no reservábamos y
+    // ahora importa: con edge-to-edge obligatorio, la barra de navegación de
+    // Android se comía el borde del tabbar. Así que este padding vuelve a ser
+    // solo aire, igual en Android y en iOS.
+    : { flex: 1, width: '100%', backgroundColor: '#fff', paddingTop: 6 },
   statusbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 22, paddingTop: 8, paddingBottom: 4 },
   statusTime: { fontSize: 13, fontWeight: '700', color: INK },
   screen: { padding: 20, paddingBottom: 40 },

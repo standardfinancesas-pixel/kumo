@@ -215,7 +215,7 @@ export function MapaLugares({
       {/* La casa del socio. No se dibuja si el centro no es un lugar suyo. */}
       {ancho > 0 && centro.etiqueta ? (
         <View style={{ position: 'absolute', left: (ancho || 320) / 2 - 14, top: alto / 2 - 14 }}>
-          <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.brand.lime, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.brand.lime, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
             <Svg width={14} height={14} viewBox="0 0 24 24">
               <Path d="M3 10.5 12 3l9 7.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
               <Path d="M5 9.5V20h14V9.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />

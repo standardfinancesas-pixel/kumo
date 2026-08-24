@@ -1,13 +1,20 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "jsx": "react-native",
+    // React 19 sacó el namespace JSX global y lo movió a React.JSX. El modo
+    // "react-native" (como "preserve") sigue mirando el global, así que se
+    // quedaba con una declaración vieja y TODO componente de clase —los 100
+    // usos de react-native-svg— fallaba con "cannot be used as a JSX
+    // component". "react-jsx" resuelve por jsxImportSource y es lo que usa la
+    // tsconfig base de Expo desde el SDK 53.
+    "jsx": "react-jsx",
     "noEmit": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    // Solo los @types de esta app: la raíz tiene @types/react 19 (para las
-    // apps web con Next 15) y mezclarlo con el 18 de React Native rompe
-    // ReactNode.
+    // Solo los @types de esta app. Hoy las dos superficies están en
+    // @types/react 19, pero la restricción se queda: pnpm deja un fallback en
+    // .pnpm/node_modules y sin esto el typecheck puede terminar mezclando dos
+    // versiones de los tipos de React (ver el comentario de .npmrc).
     "typeRoots": [
       "./node_modules/@types"
     ],

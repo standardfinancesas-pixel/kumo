@@ -25,7 +25,7 @@ sesión de Supabase se comparte sin configurar dominios de cookies.
 | Capa | Tecnología |
 |------|-----------|
 | Web | Next.js 15 · React 19 · TypeScript · Tailwind CSS |
-| Móvil | Expo 51 · React Native · React 18 · TypeScript |
+| Móvil | Expo 57 · React Native 0.86 · React 19 · TypeScript |
 | Backend | Supabase (Postgres, Auth, Storage, **Realtime**, RLS) |
 | Mapas | Google Maps |
 | Deploy web | Vercel |
@@ -34,7 +34,7 @@ sesión de Supabase se comparte sin configurar dominios de cookies.
 ## Puesta en marcha
 
 ```bash
-# 1. Requisitos: Node 20+, pnpm 10+
+# 1. Requisitos: Node 22+, pnpm 10+
 pnpm install
 
 # 2. Variables de entorno

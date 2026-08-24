@@ -32,8 +32,13 @@ la sesión de Supabase sin configurar nada:
   contenido cacheable) y `supabase-service` (service-role, ignora RLS: SOLO en
   route handlers).
 - **Secretos**: la `SUPABASE_SERVICE_ROLE_KEY` solo en código de servidor.
-- **React**: `apps/web` usa React 19 (lo exige el App Router de Next 15) y
-  `apps/mobile` React 18.2.0 (lo exige Expo 51). No unificar.
+- **React**: las dos superficies están en React 19 desde el SDK 57 de Expo
+  (antes mobile estaba clavado en 18.2.0 porque lo exigía Expo 51). Mantenerlas
+  alineadas: cuando se separaron hubo que excluir `@types/react` del hoist de
+  pnpm, y esa exclusión terminó rompiendo los tipos de los paquetes anidados
+  (ver el comentario en `.npmrc`).
+- **Node 22+**: lo exige el toolchain de Expo 57. Está en `.nvmrc`, así que
+  `nvm use` en la raíz alcanza.
 - **`.npmrc`**: no volver a poner `node-linker=hoisted` — rompe el build de
   producción de Next (ver el comentario en el archivo).
 
