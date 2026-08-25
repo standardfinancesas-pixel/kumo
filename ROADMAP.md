@@ -378,12 +378,25 @@ de cada pantalla.
       **(2)** el `splash` de `app.json` se movió al plugin `expo-splash-screen`.
       **(3)** `getLastNotificationResponseAsync` pasó de no-op a tirar excepción en
       web, y sin guarda la app no renderizaba.
-- [ ] **Verificar el edge-to-edge en Android**. Desde el SDK 54 la app dibuja
-      abajo de la barra de estado y de la de navegación, y no se puede desactivar.
-      Se migró de `SafeAreaView` de react-native (deprecado, en Android nunca
-      reservó nada) a `react-native-safe-area-context`, con el provider en
-      `index.tsx`. Falta mirarlo en un Android real: es lo único de este upgrade
-      que no se puede verificar sin dispositivo.
+- [x] **El edge-to-edge en Android, verificado en dispositivo.** Desde el SDK 54
+      la app dibuja abajo de la barra de estado y de la de navegación, y no se
+      puede desactivar. Se migró de `SafeAreaView` de react-native (deprecado, en
+      Android nunca reservó nada) a `react-native-safe-area-context`, con el
+      provider en `index.tsx`.
+      **El dato que importa para la próxima vez**: el `overflow: 'hidden'` que
+      arregla las esquinas cuadradas hizo falta SOLO en las vistas de tamaño fijo
+      ajustado alrededor de un ícono (los cuadraditos y los círculos). Las ~31
+      tarjetas, filas y chips que además llevan texto NUNCA estuvieron rotas y
+      quedaron sin tocar a propósito: ahí `overflow: 'hidden'` puede cortar el
+      texto, y habría sido cambiar un bug visual por uno que esconde contenido.
+      Si algún día reaparece el síntoma, mirar primero ese subconjunto, no todo.
+- [x] **Prueba de humo del upgrade en un Android real**: subir foto de mascota
+      (`expo-image-picker`, saltó 15 mayores), el mapa de Servicios
+      (`react-native-maps` 1.14 → 1.27), recibir un push (cambió la API del
+      handler), cerrar sesión y volver a entrar (`AsyncStorage` 1.x → 2.x, ahí
+      vive la sesión) y el flujo de pago (sale al navegador y vuelve por deep
+      link). Los cinco andan. Es lo que el typecheck no puede probar: el bug de
+      las esquinas pasó todos los chequeos automáticos y estaba roto igual.
 - [ ] **Publicar en Google Play**: perfil `production` (genera el .aab, que es lo
       único que acepta la tienda). La cuenta del cliente ya está y con permisos de
       administrador, así que se puede crear la service account y usar `eas submit`
