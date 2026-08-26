@@ -60,6 +60,47 @@ async function whatsappDelClub(): Promise<string> {
   }
 }
 
+/**
+ * La casilla del club: a dónde van los avisos para el ADMIN, no para el socio.
+ *
+ * Sale de `club_settings` y no de una constante por lo mismo que el WhatsApp: si
+ * el club cambia de casilla, los avisos lo siguen sin tocar código ni variables.
+ *
+ * OJO con una limitación que hoy es real: `hola@kumo.pet` NO recibe mails —el
+ * dominio no tiene MX—, así que mientras ese sea el valor cargado, estos avisos
+ * salen y rebotan. El envío no se bloquea a propósito: el día que se configure el
+ * MX o se cargue otra casilla, empiezan a llegar sin tocar nada.
+ */
+async function mailDelClub(): Promise<string | null> {
+  /*
+   * `MAIL_ADMIN` pisa el contacto público, y son dos cosas distintas.
+   *
+   * `club_settings.email` es la dirección PÚBLICA del club: la muestran la
+   * landing, /legal y /eliminar-cuenta, y es a donde le escribe un socio. Los
+   * avisos internos van a quien opera el club, que puede ser otra persona y otra
+   * casilla — hoy de hecho lo es, porque `hola@kumo.pet` todavía no recibe.
+   *
+   * Meter la casilla interna en `club_settings` sería publicarla en la web. Por
+   * eso va en variable de entorno, solo servidor y sin NEXT_PUBLIC.
+   *
+   * El día que la casilla del club reciba de verdad, se borra la variable y estos
+   * avisos vuelven solos al contacto público. No hay que tocar código.
+   */
+  const interno = process.env.MAIL_ADMIN?.trim();
+  if (interno) return interno;
+
+  try {
+    const { data: row } = await createClient()
+      .from('club_settings')
+      .select('email')
+      .eq('id', 1)
+      .single();
+    return row?.email?.trim() || data.clubSettings.email || null;
+  } catch {
+    return data.clubSettings.email || null;
+  }
+}
+
 /*
  * La tipografía del mail, y por qué no es la de la marca a secas.
  *
@@ -130,6 +171,54 @@ function layout(titulo: string, cuerpo: string, wa: string, cta?: { label: strin
   </table>
 </body></html>`;
 }
+
+/**
+ * Envoltorio para los avisos al CLUB.
+ *
+ * Es otro layout y no un parámetro del de arriba porque el pie dice cosas
+ * distintas y opuestas: al socio le explica por qué le escribimos y lo manda al
+ * WhatsApp del club; al club, mandarlo a su propio WhatsApp sería absurdo. Acá el
+ * pie aclara que es un aviso interno y el botón va al panel.
+ *
+ * Importa que se distingan de un vistazo: el admin recibe los dos tipos en la
+ * misma casilla, y confundir "te avisamos a vos" con "avisale al socio" es la
+ * clase de error que termina en un mail reenviado a quien no era.
+ */
+function layoutAdmin(titulo: string, cuerpo: string, cta?: { label: string; href: string }): string {
+  return `<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>${esc(titulo)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700;800&family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body style="margin:0;padding:0;background:#f5f4f8;font-family:${TIPO_TEXTO};color:${INK};">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f4f8;padding:28px 12px;">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;">
+        <tr><td style="background:${INK};padding:20px 26px;">
+          <img src="${LOGO}" width="124" height="40" alt="Kumo" style="display:block;width:124px;height:40px;border:0;font-family:${TIPO_TITULO};color:#ffffff;font-size:24px;font-weight:800;" />
+          <div style="margin-top:8px;color:#a29dba;font-size:12.5px;line-height:1.3;">aviso para el equipo</div>
+        </td></tr>
+        <tr><td style="padding:26px;">
+          ${cuerpo}
+          ${cta ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:24px 0 4px;"><tr>
+            <td style="background:${BRAND};border-radius:11px;">
+              <a href="${cta.href}" style="display:inline-block;padding:13px 22px;color:#ffffff;font-size:15px;font-weight:700;text-decoration:none;">${cta.label}</a>
+            </td></tr></table>` : ''}
+        </td></tr>
+        <tr><td style="padding:18px 26px 24px;border-top:1px solid #eeecf5;">
+          <p style="margin:0;font-size:12px;color:${MUTED};line-height:1.6;">
+            Este es un aviso interno de Kumo, no lo recibe el socio.
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body></html>`;
+}
+
+/** El header del admin va en tinta y no en violeta: es lo que los distingue en la
+ *  bandeja sin abrirlos. */
+const verPanel = (seccion = '') => ({ label: 'Abrir el panel', href: `${SITE}${urls.admin}${seccion}` });
 
 async function enviar(to: string, subject: string, html: string, text: string) {
   if (!KEY) {
@@ -497,4 +586,122 @@ export async function sendRecuperarClave(opts: { to: string; firstName: string; 
     ${par(`Cualquier cosa, escribinos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
   const text = `${firstName}, alguien pidió recuperar la contraseña de esta cuenta.\n\nSi fuiste vos, elegí una nueva acá: ${link}\n\nEl link vence en una hora y sirve una sola vez. Si no lo pediste, ignorá este mail: tu contraseña sigue siendo la de siempre.`;
   return enviar(to, 'Cambiá tu contraseña de Kumo', layout('Recuperar contraseña', cuerpo, wa, { label: 'Elegir una nueva', href: link }), text);
+}
+
+/* ══════════════════════════════════════════════════════════════
+ *  Avisos para el CLUB
+ * ══════════════════════════════════════════════════════════════
+ * Los 13 mails de arriba van al socio. Estos tres van al club, y existen porque
+ * son los eventos que HOY NO DEJAN RASTRO donde el admin trabaja: los reintegros
+ * y los negocios pendientes aparecen en sus colas del panel, pero estos tres no
+ * aparecen en ninguna, o aparecen donde nadie mira.
+ *
+ * Los tres son "de mejor esfuerzo": si el mail falla, la operación ya pasó y no
+ * se revierte nada. Un aviso que no sale no puede romper un borrado que el socio
+ * pidió.
+ */
+
+/**
+ * Un cobro rebotó.
+ *
+ * El más urgente de los tres, y el único que se puede accionar: Mercado Pago
+ * reintenta el mismo débito varios días, así que hay una ventana para llamar al
+ * socio antes de perderlo. Hoy el socio se entera (le llega el mail 11) y el club
+ * no, con lo que la ventana pasa sin que nadie la use.
+ */
+export async function sendAdminCobroRechazado(opts: {
+  socio: string; memberNo: number | null; email: string; cuota: number; plan: string | null; motivo: string;
+}) {
+  const to = await mailDelClub();
+  if (!to) return { skipped: true as const };
+  const { socio, memberNo, email, cuota, plan, motivo } = opts;
+  const cuerpo = `
+    ${h1('Rebotó el cobro de un socio')}
+    ${par(`La tarjeta de <strong>${esc(socio)}</strong>${memberNo ? ` (socio #${memberNo})` : ''} rechazó la cuota. Mercado Pago va a reintentar los próximos días.`)}
+    ${caja(`${filaChica('Cuota')}${filaGrande(money(cuota))}${filaMedia(`${esc(email)}${plan ? ` · plan ${esc(plan)}` : ''}`)}${filaMedia(`Motivo: ${esc(motivo)}`)}`)}
+    ${par('Al socio ya se le avisó por mail y por notificación. Si querés contactarlo antes de que se le corte la cobertura, este es el momento: después del último reintento la suscripción se cae.', true)}`;
+  const text = `Rebotó el cobro de ${socio}${memberNo ? ` (socio #${memberNo})` : ''}.\n\nCuota: ${money(cuota)}${plan ? ` · plan ${plan}` : ''}\nMail: ${email}\nMotivo: ${motivo}\n\nMercado Pago reintenta los próximos días. Al socio ya se le avisó.`;
+  return enviar(to, `Rebotó el cobro de ${socio}`, layoutAdmin('Cobro rechazado', cuerpo, verPanel('?s=cobros')), text);
+}
+
+/**
+ * Un socio borró su cuenta.
+ *
+ * No deja NADA: la fila desaparece con todo lo suyo, así que no hay cola, ni
+ * contador, ni forma de saber después que pasó. Este mail es el único registro
+ * que le queda al club, y por eso lleva los números de lo que se borró — que
+ * `borrar_socio()` devuelve justamente para esto.
+ *
+ * No es para revertir nada (no se puede) sino para que el club sepa que perdió un
+ * socio y por qué vía. Un pico de borrados es una señal que hoy sería invisible.
+ */
+export async function sendAdminCuentaEliminada(opts: {
+  socio: string; memberNo: number | null; mascotas: number; reintegros: number; pagos: number; debitoCancelado: boolean;
+}) {
+  const to = await mailDelClub();
+  if (!to) return { skipped: true as const };
+  const { socio, memberNo, mascotas, reintegros, pagos, debitoCancelado } = opts;
+  const cuerpo = `
+    ${h1('Un socio eliminó su cuenta')}
+    ${par(`<strong>${esc(socio)}</strong>${memberNo ? ` (socio #${memberNo})` : ''} borró su cuenta y todos sus datos. Es irreversible y no queda registro en el panel: este mail es el único.`)}
+    ${caja(`${filaChica('Se borró')}${filaMedia(`${mascotas} ${mascotas === 1 ? 'mascota' : 'mascotas'}`)}${filaMedia(`${reintegros} ${reintegros === 1 ? 'reintegro' : 'reintegros'}`)}${filaMedia(`${pagos} ${pagos === 1 ? 'cobro' : 'cobros'}`)}${filaMedia(debitoCancelado ? 'Su débito automático quedó cancelado' : 'No tenía débito automático')}`)}
+    ${par('Ejerció el derecho de supresión de datos, así que no hay nada que recuperar ni a quién escribirle. Queda como dato para el churn.', true)}`;
+  const text = `${socio}${memberNo ? ` (socio #${memberNo})` : ''} eliminó su cuenta.\n\nSe borró: ${mascotas} mascotas, ${reintegros} reintegros, ${pagos} cobros.\n${debitoCancelado ? 'Su débito automático quedó cancelado.' : 'No tenía débito automático.'}\n\nEs irreversible y no queda registro en el panel.`;
+  return enviar(to, `${socio} eliminó su cuenta`, layoutAdmin('Cuenta eliminada', cuerpo, verPanel('?s=socios')), text);
+}
+
+/**
+ * Un socio se dio de baja del club.
+ *
+ * Distinto del anterior: los datos quedan y la baja se revierte. Pero hoy solo
+ * cambia un campo en silencio, y es la señal de churn más importante que tiene el
+ * negocio. Un socio que se va todavía se puede recuperar; uno que se fue hace tres
+ * semanas, no.
+ */
+export async function sendAdminBajaMembresia(opts: {
+  socio: string; memberNo: number | null; email: string; plan: string | null; debitoCancelado: boolean;
+}) {
+  const to = await mailDelClub();
+  if (!to) return { skipped: true as const };
+  const { socio, memberNo, email, plan, debitoCancelado } = opts;
+  const cuerpo = `
+    ${h1('Un socio se dio de baja')}
+    ${par(`<strong>${esc(socio)}</strong>${memberNo ? ` (socio #${memberNo})` : ''} dio de baja su membresía${plan ? ` del plan ${esc(plan)}` : ''}.`)}
+    ${caja(`${filaChica('Contacto')}${filaMedia(esc(email))}${filaMedia(debitoCancelado ? 'Su débito automático quedó cancelado' : 'No tenía débito automático')}`)}
+    ${par('Sus datos y su historial quedan guardados, así que la baja se revierte si vuelve. Si querés preguntarle por qué se fue, ahora es cuando más chances hay de que conteste.', true)}`;
+  const text = `${socio}${memberNo ? ` (socio #${memberNo})` : ''} se dio de baja${plan ? ` del plan ${plan}` : ''}.\n\nContacto: ${email}\n${debitoCancelado ? 'Su débito automático quedó cancelado.' : 'No tenía débito automático.'}\n\nSus datos quedan guardados: la baja se revierte si vuelve.`;
+  return enviar(to, `${socio} se dio de baja`, layoutAdmin('Baja de membresía', cuerpo, verPanel('?s=socios')), text);
+}
+
+/**
+ * Un socio nuevo se dio de alta.
+ *
+ * Este es el único de los cuatro que SÍ deja rastro: el socio aparece en la lista
+ * del panel y el número avanza. Va igual, y con una razón concreta: distingue si
+ * eligió plan o entró gratis.
+ *
+ * El alta sin plan es una oportunidad de conversión que hoy no ve nadie — en la
+ * lista de Socios se mezcla con todos los demás y hay que ir a buscarla. En el
+ * mail salta sola.
+ *
+ * OJO cuando el volumen crezca: con dos altas por semana esto sirve para dar la
+ * bienvenida a mano; con doscientas es ruido y hay que pasarlo a un resumen
+ * diario. El día que moleste, ese es el arreglo, no borrarlo.
+ */
+export async function sendAdminAltaNueva(opts: {
+  socio: string; memberNo: number | null; email: string; mascotas: string[]; plan: string | null;
+}) {
+  const to = await mailDelClub();
+  if (!to) return { skipped: true as const };
+  const { socio, memberNo, email, mascotas, plan } = opts;
+  const conPlan = !!plan;
+  const cuerpo = `
+    ${h1(conPlan ? 'Se sumó un socio nuevo' : 'Alta nueva, sin plan')}
+    ${par(`<strong>${esc(socio)}</strong>${memberNo ? ` es el socio #${memberNo}` : ' se dio de alta'}${mascotas.length ? ` y cargó ${mascotas.length === 1 ? 'a' : 'a'} ${esc(listar(mascotas))}` : ''}.`)}
+    ${caja(`${filaChica('Contacto')}${filaMedia(esc(email))}${filaChica('Plan')}${filaMedia(conPlan ? esc(plan!) : 'Ninguno — entró gratis')}`)}
+    ${conPlan
+      ? par('Ya se le mandó la bienvenida. Si querés escribirle a mano, ahora es cuando más atención te va a dar.', true)
+      : par('Entró gratis, así que <strong>no tiene reintegros ni descuentos</strong>. Es el momento con más chances de que contrate: acaba de cargar a su mascota y todavía está mirando la app.', true)}`;
+  const text = `${socio}${memberNo ? ` es el socio #${memberNo}` : ' se dio de alta'}.\n\nContacto: ${email}\nPlan: ${conPlan ? plan : 'ninguno, entró gratis'}${mascotas.length ? `\nMascotas: ${listar(mascotas)}` : ''}`;
+  return enviar(to, conPlan ? `Socio nuevo: ${socio} (${plan})` : `Alta sin plan: ${socio}`, layoutAdmin('Alta nueva', cuerpo, verPanel('?s=socios')), text);
 }

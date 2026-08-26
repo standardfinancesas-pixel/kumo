@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { hoyISO } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
 import { quienPide } from '@/lib/quien-pide';
-import { sendReintegroRecibido, sendNegocioRecibido, sendBajaMembresia } from '@/lib/mail';
+import { sendReintegroRecibido, sendNegocioRecibido, sendBajaMembresia, sendAdminBajaMembresia } from '@/lib/mail';
 
 /**
  * Los mails que dispara una acción del socio: pidió un reintegro, dio de alta su
@@ -39,7 +39,9 @@ export async function POST(req: Request) {
   const svc = getServiceClient();
   const { data: perfil } = await svc
     .from('profiles')
-    .select('email, full_name, status, created_at')
+    // `member_no`, el plan y el estado de la suscripción los usa el aviso al club:
+    // sin ellos el mail diría "un socio se dio de baja" sin decir cuál ni de qué.
+    .select('email, full_name, member_no, status, created_at, mp_subscription_status, plans(name)')
     .eq('id', quien.id)
     .single();
   if (!perfil?.email) return NextResponse.json({ error: 'Sin perfil.' }, { status: 404 });
@@ -85,6 +87,22 @@ export async function POST(req: Request) {
         : `${nombres.slice(0, -1).join(', ')} y ${nombres.at(-1)}`,
       hasta: fechaLegible(hoyISO()),
       dentroDeLos10Dias: dias <= 10,
+    });
+    /*
+     * Y al club, que hasta ahora no se enteraba de nada.
+     *
+     * La baja es la señal de churn más importante del negocio y solo cambiaba un
+     * campo en silencio: había que entrar al panel y notarlo. Un socio que se va
+     * recién todavía se puede recuperar; uno que se fue hace tres semanas, no.
+     *
+     * Sin `await`: la respuesta al socio no espera un aviso interno.
+     */
+    void sendAdminBajaMembresia({
+      socio: perfil.full_name?.trim() || firstName,
+      memberNo: perfil.member_no ?? null,
+      email: perfil.email,
+      plan: perfil.plans ? (Array.isArray(perfil.plans) ? perfil.plans[0]?.name : (perfil.plans as { name: string }).name) ?? null : null,
+      debitoCancelado: perfil.mp_subscription_status === 'cancelled',
     });
     return NextResponse.json({ ok: true, mailEnviado: 'ok' in res && res.ok === true });
   }

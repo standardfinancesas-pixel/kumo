@@ -3,7 +3,7 @@ import { getServiceClient } from '@/lib/supabase-service';
 import { geocodificarDomicilio } from '@/lib/geocodificar';
 import { quienPide } from '@/lib/quien-pide';
 import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta, claveValida, fnacValida, fnacAISO, avisoFnac, EDAD_MINIMA, hoyISO, CLAVE_MINIMA } from '@kumo/shared';
-import { sendBienvenida } from '@/lib/mail';
+import { sendAdminAltaNueva, sendBienvenida } from '@/lib/mail';
 
 /**
  * Alta real de socio. Corre en el servidor con la service-role key e inserta el
@@ -324,6 +324,22 @@ export async function POST(req: Request) {
     mascotas: mascotas.map((m) => m.nombre),
     memberNo: profileRow.member_no,
     planName: plan,
+  });
+
+  /*
+   * Y al club. A diferencia de los otros tres avisos internos, un alta SÍ deja
+   * rastro —aparece en la lista de Socios—, pero el mail distingue lo que la
+   * lista no: si eligió plan o entró gratis. El alta sin plan es una oportunidad
+   * de conversión que ahí adentro se mezcla con todo lo demás.
+   *
+   * Sin `await`, como el resto de los internos: el alta ya está hecha.
+   */
+  void sendAdminAltaNueva({
+    socio: socio.nombre,
+    memberNo: profileRow.member_no,
+    email,
+    mascotas: mascotas.map((m) => m.nombre),
+    plan,
   });
 
   /*

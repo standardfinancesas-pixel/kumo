@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { quienPide } from '@/lib/quien-pide';
+import { sendAdminCuentaEliminada } from '@/lib/mail';
 import { getServiceClient } from '@/lib/supabase-service';
 import { cancelarSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
 
@@ -137,6 +138,26 @@ export async function POST(req: Request) {
   }
   const { error: eAuth } = await svc.auth.admin.deleteUser(memberId);
   if (eAuth) console.error('[socios/borrar] el usuario de auth quedó', memberId, eAuth.message);
+
+  /*
+   * El club se entera, porque si no, nadie.
+   *
+   * Un borrado no deja NADA: la fila desaparece con todo lo suyo, así que no queda
+   * cola, ni contador, ni forma de saber después que pasó. Este mail es el único
+   * registro, y por eso lleva los números que devuelve `borrar_socio()` — que los
+   * cuenta justo antes de borrar, para esto.
+   *
+   * Va al final y sin `await` bloqueante en la respuesta: el socio ya se borró, y
+   * un aviso que falla no puede ensuciar una operación que salió bien.
+   */
+  void sendAdminCuentaEliminada({
+    socio: (resumen as { socio?: string })?.socio ?? 'Un socio',
+    memberNo: (resumen as { numero?: number })?.numero ?? null,
+    mascotas: (resumen as { mascotas?: number })?.mascotas ?? 0,
+    reintegros: (resumen as { reintegros?: number })?.reintegros ?? 0,
+    pagos: (resumen as { pagos?: number })?.pagos ?? 0,
+    debitoCancelado: !!conDebito,
+  });
 
   console.log('[socios/borrar]', JSON.stringify(resumen), '· fotos', fotosBorradas, '· comprobantes', comprobantesBorrados, '· por', quien.id);
   return NextResponse.json({

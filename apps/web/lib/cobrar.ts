@@ -1,7 +1,7 @@
 import { tarjetaLabel } from '@kumo/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DebitoMP } from '@/lib/mp';
-import { sendCuotaRechazada, sendCuotaAcreditada } from '@/lib/mail';
+import { sendCuotaRechazada, sendCuotaAcreditada, sendAdminCobroRechazado } from '@/lib/mail';
 import { mandarPush } from '@/lib/push';
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
@@ -47,7 +47,7 @@ export async function acreditarDebito(
 
   const { data: quien } = await svc
     .from('profiles')
-    .select('id, email, full_name, monthly_fee_agreed, card_brand, card_last4, plans(name)')
+    .select('id, email, full_name, member_no, monthly_fee_agreed, card_brand, card_last4, plans(name)')
     .eq('mp_preapproval_id', debito.preapproval_id)
     .maybeSingle();
   if (!quien) {
@@ -106,6 +106,27 @@ export async function acreditarDebito(
           { pantalla: 'perfil' },
         );
       }
+    }
+    /*
+     * Y al club, que es lo que faltaba del otro lado.
+     *
+     * Mercado Pago reintenta el mismo débito varios días: esa es la ventana para
+     * llamar al socio antes de perderlo. Hasta acá el socio se enteraba y el club
+     * no, así que la ventana pasaba sin que nadie la usara — el rechazo quedaba en
+     * `payments` y nadie mira esa tabla salvo que ya sospeche algo.
+     *
+     * Va FUERA del `if (quien.email)` de arriba: que el socio no tenga mail no es
+     * motivo para que el club tampoco se entere. Justamente al revés.
+     */
+    if (rechazado) {
+      await sendAdminCobroRechazado({
+        socio: quien.full_name?.trim() || 'Un socio',
+        memberNo: quien.member_no ?? null,
+        email: quien.email ?? 'sin mail',
+        cuota: monto,
+        plan: plan?.name ?? null,
+        motivo: debito.payment?.status_detail || debito.payment?.status || 'sin detalle',
+      });
     }
     return { estado: rechazado ? 'rechazado' : 'agendado' };
   }
