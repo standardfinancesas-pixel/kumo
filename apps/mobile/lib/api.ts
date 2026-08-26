@@ -58,10 +58,34 @@ export async function postAlta(payload: BodyAlta, fotos: (FotoElegida | undefine
       body: form,
     });
     const json = (await res.json().catch(() => ({}))) as { memberNo?: number; photoError?: string | null; error?: string };
-    if (!res.ok) return { ok: false, error: json.error || 'No se pudo completar el alta.' };
+    /*
+     * El código HTTP va en el mensaje cuando el servidor no manda uno propio.
+     *
+     * Un 413 (cuerpo demasiado grande) y un 500 son problemas opuestos y hasta
+     * acá se veían iguales: "No se pudo completar el alta". El número no le dice
+     * nada a un socio, pero convierte el reporte de un tester en algo accionable
+     * en vez de una adivinanza.
+     */
+    if (!res.ok) return { ok: false, error: json.error || `No se pudo completar el alta (error ${res.status}).` };
     return { ok: true, memberNo: json.memberNo ?? 0, avisoFoto: json.photoError ?? null };
-  } catch {
-    return { ok: false, error: 'No pudimos conectar. Revisá tu conexión y probá de nuevo.' };
+  } catch (e) {
+    /*
+     * El motivo real va en el mensaje, y no es cosmético: este `catch` se comía
+     * la única pista que había.
+     *
+     * Todo lo que puede fallar acá termina en el mismo lugar —el archivo de la
+     * foto que ya no se puede leer, el cuerpo rechazado antes de llegar, un DNS
+     * que no resuelve, la conexión que se corta— y hasta ahora los cuatro se
+     * mostraban como "revisá tu conexión". Un tester quedó trabado en este paso y
+     * no había forma de saber cuál de los cuatro era, ni desde acá ni desde los
+     * logs del servidor (si el pedido no llega, no hay log).
+     *
+     * La frase de siempre queda primero porque es la que le sirve a un socio; el
+     * motivo técnico va atrás y entre paréntesis, para que entre en una captura.
+     */
+    const motivo = e instanceof Error ? e.message : String(e);
+    console.warn('[alta] el envío falló →', motivo);
+    return { ok: false, error: `No pudimos conectar. Revisá tu conexión y probá de nuevo. (${motivo})` };
   }
 }
 
