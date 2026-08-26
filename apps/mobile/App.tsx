@@ -1413,7 +1413,7 @@ function MasSheet({ onClose, onGo, pago, onPlan }: { onClose: () => void; onGo: 
  * cosas simplemente no existían. No era que "decía guardado y no guardaba":
  * faltaban.
  */
-function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile: Profile | null; planes: PlanVM[]; pagos: PagoVM[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
+function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile | null; pagos: PagoVM[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
   const [editando, setEditando] = useState(false);
   const [pagosOpen, setPagosOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -1466,22 +1466,6 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
     setBusy(false);
   };
 
-  const cambiarPlan = (p: PlanVM) => {
-    if (!profile || p.name === profile.planName) return;
-    Alert.alert(`Cambiar al plan ${p.name}`, `Vas a pasar de ${profile.planName} a ${p.name}, ${money(p.basePrice)}/mes.`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Cambiar',
-        onPress: async () => {
-          setBusy(true);
-          const { error: e } = await supabase.from('profiles').update({ plan_id: p.id }).eq('id', profile.id);
-          if (e) Alert.alert('No pudimos cambiar el plan', 'Probá de nuevo.');
-          else await reload();
-          setBusy(false);
-        },
-      },
-    ]);
-  };
 
   const darseDeBaja = () => {
     if (!profile) return;
@@ -1821,22 +1805,22 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
         )}
       </View>
 
-      <Text style={{ fontWeight: '700', fontSize: 15, marginBottom: 8 }}>Cambiar de plan</Text>
-      <View style={{ gap: 8, marginBottom: 20 }}>
-        {planes.map((p) => {
-          const actual = p.name === profile.planName;
-          return (
-            <TouchableOpacity key={p.id} disabled={actual || busy} onPress={() => cambiarPlan(p)}
-              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: actual ? colors.violet[100] : '#fff', borderWidth: 1.5, borderColor: actual ? BRAND : colors.violet[200], borderRadius: 14, padding: 14 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.name}</Text>
-                <Text style={{ fontSize: 12.5, color: MUTED }}>{money(p.basePrice)}/mes</Text>
-              </View>
-              <Text style={{ fontSize: 12.5, fontWeight: '700', color: actual ? BRAND : colors.violet[400] }}>{actual ? 'Tu plan' : 'Elegir'}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {/* Un enlace, no la lista de planes.
+          Antes cada plan era un botón que escribía `profiles.plan_id` derecho
+          desde el celular: movía el plan sin recalcular la cuota ni cobrar la
+          diferencia, así que se pasaba de AMIGO a VIP gratis. La webapp ya lo
+          había sacado; mobile se quedó con la versión vieja.
+          Tampoco vuelve como lista abriendo la hoja: la hoja arranca con el plan
+          ACTUAL seleccionado, así que tocar "VIP" y ver seleccionado "AMIGO"
+          promete algo que no cumple. Un enlace no promete nada y lleva al mismo
+          lugar, que es el único que sabe cobrar. */}
+      <TouchableOpacity onPress={onPlan} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 20 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>Cambiar de plan</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED }}>Ahora estás en {profile.planName}</Text>
+        </View>
+        <Text style={{ fontSize: 12.5, fontWeight: '700', color: BRAND }}>Ver planes</Text>
+      </TouchableOpacity>
 
       <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ backgroundColor: colors.violet[100], borderRadius: 12, padding: 14, alignItems: 'center' }}><Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cerrar sesión</Text></TouchableOpacity>
       <TouchableOpacity disabled={busy} onPress={darseDeBaja} style={{ paddingVertical: 16, alignItems: 'center' }}>
@@ -4247,7 +4231,7 @@ export default function App() {
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
-          {pantalla === 'perfil' && <Perfil profile={data.profile} planes={data.planes} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil profile={data.profile} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {pantalla === 'minegocio' && <Negocio negocios={data.negocios} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
