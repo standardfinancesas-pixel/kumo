@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
 import {
   borradorVacio, conIdentidad, mascotaVacia, cuotaMensual, data, pasoOk, pasosDelAlta, payloadAlta,
-  esGratis, planElegido, colors, type BorradorAlta, type MascotaBorrador,
+  esGratis, planElegido, colors, motivoFotosDelAltaPesan, type BorradorAlta, type MascotaBorrador,
 } from '@kumo/shared';
 import { supabase } from '../../lib/supabase';
 import { postAlta } from '../../lib/api';
@@ -98,6 +98,18 @@ export default function Alta({
   };
 
   const confirmar = async () => {
+    /*
+     * Las fotos van todas en el MISMO pedido, así que lo que importa es la suma.
+     *
+     * Vercel rechaza los cuerpos de más de 4,5 MB antes de ejecutar la función:
+     * no queda log y acá se ve como un error de conexión. Un tester quedó
+     * trabado en este paso leyendo "revisá tu conexión" con la conexión
+     * perfecta. Se corta antes y se dice qué hacer.
+     */
+    const elegidas = b.mascotas.map((m) => fotos[m.uid]).filter(Boolean) as FotoElegida[];
+    const pesan = motivoFotosDelAltaPesan(elegidas.reduce((t, f) => t + (f.bytes || 0), 0), elegidas.length);
+    if (pesan) { setError(pesan); return; }
+
     setEnviando(true);
     setError('');
     const r = await postAlta(payloadAlta(b), b.mascotas.map((m) => fotos[m.uid]));

@@ -88,6 +88,46 @@ export function motivoFotoInvalida(tipo: string, tamaño: number): string | null
 }
 
 /**
+ * Cuánto pueden pesar TODAS las fotos del alta juntas.
+ *
+ * Es un límite distinto del de arriba, y hace falta porque el alta es el único
+ * lugar que manda VARIAS fotos en UN solo pedido: una por mascota, en un
+ * multipart a `/api/onboarding`. El resto de la app sube de a una y directo al
+ * bucket de Supabase, donde `FOTO_MAX` (5 MB por foto) es correcto.
+ *
+ * El techo real lo pone Vercel: rechaza cualquier pedido con cuerpo mayor a
+ * 4,5 MB (FUNCTION_PAYLOAD_TOO_LARGE) y lo hace ANTES de ejecutar la función.
+ * Eso significa que no queda log del lado del servidor y que del lado del
+ * teléfono se ve como un error de conexión — así apareció: un tester no podía
+ * completar el alta y el mensaje decía "revisá tu conexión", con la conexión
+ * perfecta.
+ *
+ * Con 5 MB por foto permitidos, UNA SOLA mascota ya podía pasarse. Se valida la
+ * suma antes de mandar, con margen para el JSON del payload y el overhead del
+ * multipart.
+ *
+ * Si algún día el alta sube las fotos directo al bucket (como hace el resto de
+ * la app) este límite deja de tener sentido y se puede borrar.
+ */
+export const ALTA_FOTOS_MAX = 4 * 1024 * 1024;
+
+/**
+ * El motivo por el que las fotos del alta no se pueden mandar juntas, o `null`.
+ *
+ * Devuelve un mensaje que dice qué hacer: sacar alguna foto y cargarla después
+ * desde el carnet, que es donde igual se pueden cambiar. Sin esto el pedido sale
+ * igual y muere sin explicación.
+ */
+export function motivoFotosDelAltaPesan(total: number, cuantas: number): string | null {
+  if (total <= ALTA_FOTOS_MAX) return null;
+  const mb = (total / 1024 / 1024).toFixed(1);
+  const max = ALTA_FOTOS_MAX / 1024 / 1024;
+  return cuantas === 1
+    ? `La foto pesa ${mb} MB y para el alta el máximo es ${max} MB. Elegí una más liviana, o seguí sin foto y cargala después desde el carnet.`
+    : `Las ${cuantas} fotos pesan ${mb} MB juntas y para el alta el máximo es ${max} MB. Sacá alguna y cargala después desde el carnet, o elegí fotos más livianas.`;
+}
+
+/**
  * Ruta dentro del bucket. La primera carpeta TIENE que ser el id del socio: la
  * RLS del bucket se apoya en esa convención para aislar a un socio de otro. Si
  * cambia el formato, se rompe el aislamiento.

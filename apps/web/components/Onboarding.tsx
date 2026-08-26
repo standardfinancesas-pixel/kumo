@@ -7,8 +7,7 @@ import {
   data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, pasoOk, payloadAlta,
   borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
-  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador,
-} from '@kumo/shared';
+  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador, motivoFotosDelAltaPesan } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
@@ -266,6 +265,18 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
   };
 
   const confirmAlta = async () => {
+    /*
+     * Las fotos van todas en el MISMO pedido, así que lo que importa es la suma.
+     *
+     * Vercel rechaza los cuerpos de más de 4,5 MB antes de ejecutar la función:
+     * no queda log del lado del servidor y del lado del navegador se ve como un
+     * error de red. Se corta antes y se dice qué hacer. Es el mismo control que
+     * hace la app: el límite vive en @kumo/shared para que no diverjan.
+     */
+    const elegidas = mascotas.map((m) => fotos[m.uid]).filter(Boolean) as File[];
+    const pesan = motivoFotosDelAltaPesan(elegidas.reduce((t, f) => t + f.size, 0), elegidas.length);
+    if (pesan) { setSubmitError(pesan); return; }
+
     setSubmitting(true);
     setSubmitError('');
     try {
