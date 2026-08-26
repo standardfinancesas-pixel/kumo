@@ -22,6 +22,15 @@
     }
   },
   "submit": {
-    "production": {}
+    "cerrado": {
+      "android": {
+        "track": "alpha"
+      }
+    },
+    "production": {
+      "android": {
+        "track": "production"
+      }
+    }
   }
 }
