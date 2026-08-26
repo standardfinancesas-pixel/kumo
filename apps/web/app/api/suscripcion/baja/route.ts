@@ -30,7 +30,26 @@ export async function POST(req: Request) {
     .eq('id', quien.id)
     .single();
   if (!perfil) return NextResponse.json({ error: 'No encontramos tu perfil.' }, { status: 404 });
-  if (!perfil.mp_preapproval_id) {
+  /*
+   * Se mira el ESTADO, no solo que exista el id.
+   *
+   * El `mp_preapproval_id` queda escrito para siempre, también después de
+   * cancelar: sirve de rastro. Así que "tiene id" no significa "tiene débito
+   * vivo", y sin esta guarda se le pedía a Mercado Pago cancelar algo ya
+   * cancelado.
+   *
+   * Importa desde que la baja de la MEMBRESÍA llama a esta ruta y aborta si
+   * falla: un socio que primero cortó su débito desde Mi perfil y después quiso
+   * irse del club chocaba acá y no podía darse de baja. Es la misma guarda que
+   * usa `socios/borrar`, que siempre la tuvo.
+   *
+   * El 409 es la respuesta correcta para "no hay nada que cancelar", y los dos
+   * llamadores lo entienden así: el botón del débito solo aparece con la
+   * suscripción autorizada, y la baja de la membresía lo trata como "seguí".
+   */
+  const debitoVivo = perfil.mp_preapproval_id
+    && (perfil.mp_subscription_status === 'authorized' || perfil.mp_subscription_status === 'pending');
+  if (!debitoVivo) {
     return NextResponse.json({ error: 'No tenés una suscripción activa.' }, { status: 409 });
   }
 

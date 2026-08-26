@@ -1485,13 +1485,33 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
 
   const darseDeBaja = () => {
     if (!profile) return;
-    Alert.alert('Darte de baja', 'Perdés el acceso a los descuentos y a los reintegros. Tus datos y tu historial quedan guardados.', [
+    Alert.alert('Darte de baja', 'Perdés el acceso a los descuentos y a los reintegros. Si tenías débito automático se cancela ahora, así que no se te cobra más. Tus datos y tu historial quedan guardados.', [
       { text: 'Cancelar', style: 'cancel' },
       {
         text: 'Darme de baja',
         style: 'destructive',
         onPress: async () => {
           setBusy(true);
+          /*
+           * El débito se corta PRIMERO, y si no se puede no se da de baja nada.
+           *
+           * Antes esto solo escribía `status: 'baja'` y mandaba el mail — que dice
+           * "No te vamos a cobrar más"— mientras Mercado Pago seguía debitando
+           * todos los meses, sin ningún error a la vista. Marcar primero y fallar
+           * después deja al socio sin club Y pagando, que es peor que no hacer
+           * nada. El 409 no es un error: es "no tenés suscripción", lo normal en
+           * el socio gratuito y en el que paga por transferencia.
+           */
+          const { data: ses } = await supabase.auth.getSession();
+          const token = ses.session?.access_token;
+          if (!token) { Alert.alert('Se cerró tu sesión', 'Volvé a entrar y probá de nuevo.'); setBusy(false); return; }
+          const resBaja = await fetch(`${SITIO}/api/suscripcion/baja`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+          if (!resBaja.ok && resBaja.status !== 409) {
+            const d = await resBaja.json().catch(() => ({}));
+            Alert.alert('No pudimos darte de baja', d.error ?? 'No pudimos cortar tu débito, así que no dimos de baja la membresía: si la diéramos, te seguirían cobrando. Probá de nuevo en un rato.');
+            setBusy(false);
+            return;
+          }
           const { error: e } = await supabase.from('profiles').update({ status: 'baja' }).eq('id', profile.id);
           if (e) { Alert.alert('No pudimos darte de baja', 'Escribinos por WhatsApp y lo resolvemos.'); setBusy(false); return; }
           // El mail va ANTES de cerrar la sesión: el aviso viaja con el token, y

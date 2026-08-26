@@ -3039,6 +3039,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaHecha, setBajaHecha] = useState(false);
   const [pagosOpen, setPagosOpen] = useState(false);
+  const [bajaError, setBajaError] = useState('');
   const [borrarOpen, setBorrarOpen] = useState(false);
   const [palabra, setPalabra] = useState('');
   const [borrarError, setBorrarError] = useState('');
@@ -3070,7 +3071,29 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
 
 
   const confirmarBaja = async () => {
-    setBusy(true);
+    setBusy(true); setBajaError('');
+    /*
+     * El débito se corta PRIMERO, y si no se puede no se da de baja nada.
+     *
+     * Antes esto solo escribía `status: 'baja'` y mandaba el mail. El mail dice
+     * "No te vamos a cobrar más" —es su frase central— y Mercado Pago seguía
+     * debitando todos los meses: el socio perdía el acceso, tenía por escrito que
+     * no le cobraban, y le cobraban. Sin ningún error, así que nadie se enteraba
+     * hasta el resumen de la tarjeta o el contracargo.
+     *
+     * El orden importa igual que en el borrado: marcar primero y fallar después
+     * deja al socio sin club Y pagando, que es peor que no haber hecho nada.
+     *
+     * El 409 no es un error acá: es "no tenés suscripción", que es lo normal en
+     * el socio gratuito y en el que paga por transferencia. Ese sigue de largo.
+     */
+    const res = await fetch('/api/suscripcion/baja', { method: 'POST' });
+    if (!res.ok && res.status !== 409) {
+      const d = await res.json().catch(() => ({}));
+      setBajaError(d.error ?? 'No pudimos cortar tu débito automático, así que no dimos de baja la membresía: si la diéramos, te seguirían cobrando. Probá de nuevo en un rato.');
+      setBusy(false);
+      return;
+    }
     await supabase.from('profiles').update({ status: 'baja' }).eq('id', profile.id);
     // El comprobante de la baja: que no se cobra más y, si está dentro de los 10
     // días de la Ley 24.240, que se devuelve la cuota.
@@ -3333,7 +3356,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <a href="https://wa.me/5491125168802" target="_blank" rel="noopener" style={{ textAlign: 'center', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 14, padding: 14, borderRadius: 14, textDecoration: 'none' }}>Ayuda por WhatsApp</a>
         <button onClick={async () => { await supabase.auth.signOut(); window.location.href = LANDING; }} style={{ background: 'none', color: 'rgb(135,129,160)', border: 'none', fontWeight: 600, fontSize: 13, padding: 10, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Cerrar sesión</button>
-        <button onClick={() => { setBajaHecha(false); setBajaOpen(true); }} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Darme de baja</button>
+        <button onClick={() => { setBajaHecha(false); setBajaError(''); setBajaOpen(true); }} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Darme de baja</button>
         {/* Va ÚLTIMO y más apagado que "Darme de baja", a propósito: son dos cosas
             que se piden con las mismas palabras y la de arriba es la que casi
             siempre se quiere. El que llega hasta acá es porque busca borrar. */}
@@ -3407,7 +3430,11 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
           ) : (
             <>
               <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>¿Seguro que querés darte de baja?</div>
-              <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 18px' }}>Perdés el acceso a los beneficios, los reintegros y el carnet digital de {pets.length === 1 ? 'tu mascota' : 'tus mascotas'}. Los reintegros ya pedidos se siguen procesando.</p>
+              <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 12px' }}>Perdés el acceso a los beneficios, los reintegros y el carnet digital de {pets.length === 1 ? 'tu mascota' : 'tus mascotas'}. Los reintegros ya pedidos se siguen procesando.</p>
+              {/* Se dice acá y no solo en el mail: es la duda que tiene todo el que
+                  cancela algo que se debita solo. */}
+              {cuota.suscripcion === 'authorized' && <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 12px' }}>Tu débito automático se cancela ahora: no se te cobra más. Tus datos y tu historial quedan guardados.</p>}
+              {bajaError && <p style={{ fontSize: 13, color: 'rgb(176,58,58)', lineHeight: 1.5, margin: '0 0 12px' }}>{bajaError}</p>}
               <button onClick={confirmarBaja} disabled={busy} style={{ width: '100%', background: 'rgb(251,232,239)', color: 'rgb(176,72,63)', border: 'none', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 14, cursor: 'pointer', marginBottom: 8, fontFamily: '"DM Sans"', opacity: busy ? 0.6 : 1 }}>{busy ? 'Registrando…' : 'Confirmar baja'}</button>
               <button onClick={() => setBajaOpen(false)} style={{ ...sheetBtn(true), width: '100%' }}>Seguir siendo socio</button>
             </>
