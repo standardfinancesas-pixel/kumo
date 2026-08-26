@@ -39,8 +39,20 @@ const MIME: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', pn
 
 export type ResultadoFoto = { url: string } | { error: string } | { cancelado: true };
 
-/** Una foto elegida, en la forma que necesita `FormData` de React Native. */
-export type FotoElegida = { uri: string; name: string; type: string; bytes: number };
+/**
+ * Una foto elegida. Lleva el base64 ADEMÁS de la uri, y no es redundancia:
+ *
+ * El FormData de React Native aceptaba `{ uri, name, type }` como parte de
+ * archivo, y desde el runtime del SDK 57 (RN 0.86, arquitectura nueva) eso tira
+ * "Unsupported FormDataPart implementation" al armar el cuerpo — el envío muere
+ * ANTES de salir del teléfono y se ve como un error de conexión. Así se rompió
+ * el alta con foto para todos los Android, y costó encontrarlo porque no deja
+ * log en ningún servidor.
+ *
+ * Un string sí viaja bien en el FormData, así que la foto va como base64 y el
+ * servidor la decodifica. La uri se conserva para mostrar la miniatura.
+ */
+export type FotoElegida = { uri: string; name: string; type: string; bytes: number; base64?: string };
 export type ResultadoElegir = { foto: FotoElegida } | { error: string } | { cancelado: true };
 
 /**
@@ -62,6 +74,9 @@ export async function elegirFoto(): Promise<ResultadoElegir> {
   const elegida = await ImagePicker.launchImageLibraryAsync({
     mediaTypes: ImagePicker.MediaTypeOptions.Images,
     quality: 0.6,
+    // El base64 es lo que de verdad viaja al servidor (ver FotoElegida): el
+    // objeto {uri} en FormData está roto en el runtime nuevo.
+    base64: true,
   });
   if (elegida.canceled) return { cancelado: true };
 
@@ -79,7 +94,7 @@ export async function elegirFoto(): Promise<ResultadoElegir> {
   const invalida = motivoFotoInvalida(type, bytes || 1);
   if (invalida) return { error: invalida };
 
-  return { foto: { uri: asset.uri, name: `mascota.${MIME[ext] ? ext : 'jpg'}`, type, bytes } };
+  return { foto: { uri: asset.uri, name: `mascota.${MIME[ext] ? ext : 'jpg'}`, type, bytes, base64: asset.base64 ?? undefined } };
 }
 
 export async function elegirYSubirFoto(ownerId: string, prefijo = ''): Promise<ResultadoFoto> {

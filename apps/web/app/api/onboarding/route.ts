@@ -157,20 +157,51 @@ export async function POST(req: Request) {
   for (let i = 0; i < mascotas.length; i++) {
     const archivo = form.get(`photo_${i}`);
     const nombre = mascotas[i]!.nombre;
-    if (!(archivo instanceof File) || archivo.size === 0) { fotos.push(null); continue; }
-    if (!FOTO_TIPOS.includes(archivo.type as (typeof FOTO_TIPOS)[number])) {
-      avisos.push(`No pudimos guardar la foto de ${nombre}: el formato ${archivo.type || 'del archivo'} no está soportado.`);
+
+    /*
+     * Dos formas de la misma foto, según de dónde venga el alta:
+     *
+     *   · la WEB manda un File, como siempre.
+     *   · la APP manda un string: un JSON con { base64, type, name }. El objeto
+     *     de archivo del FormData de React Native quedó roto en el runtime del
+     *     SDK 57 ("Unsupported FormDataPart implementation"), así que la app
+     *     dejó de poder mandar File. Ver postAlta en apps/mobile/lib/api.ts.
+     *
+     * Acá los dos caminos convergen en (bytes, tipo, ext) y el resto no cambia.
+     */
+    let bytes: ArrayBuffer | Buffer | null = null;
+    let tipo = '';
+    let ext = 'jpg';
+    if (archivo instanceof File && archivo.size > 0) {
+      bytes = await archivo.arrayBuffer();
+      tipo = archivo.type;
+      ext = archivo.name.split('.').pop() || 'jpg';
+    } else if (typeof archivo === 'string' && archivo) {
+      try {
+        const { base64, type, name } = JSON.parse(archivo) as { base64?: string; type?: string; name?: string };
+        if (base64) {
+          bytes = Buffer.from(base64, 'base64');
+          tipo = type || 'image/jpeg';
+          ext = (name || '').split('.').pop() || 'jpg';
+        }
+      } catch {
+        /* un string que no es el JSON esperado se trata como "sin foto" */
+      }
+    }
+    if (!bytes || ('byteLength' in bytes ? bytes.byteLength : 0) === 0) { fotos.push(null); continue; }
+
+    if (!FOTO_TIPOS.includes(tipo as (typeof FOTO_TIPOS)[number])) {
+      avisos.push(`No pudimos guardar la foto de ${nombre}: el formato ${tipo || 'del archivo'} no está soportado.`);
       fotos.push(null);
       continue;
     }
-    if (archivo.size > FOTO_MAX) {
+    if (bytes.byteLength > FOTO_MAX) {
       avisos.push(`No pudimos guardar la foto de ${nombre} porque pesa más de 5 MB.`);
       fotos.push(null);
       continue;
     }
-    const ext = archivo.name.split('.').pop() || 'jpg';
     const path = `${crypto.randomUUID()}.${ext}`;
-    const { error: uploadErr } = await db.storage.from('pet-photos').upload(path, await archivo.arrayBuffer(), { contentType: archivo.type });
+    const { error: uploadErr } = await db.storage.from('pet-photos').upload(path, bytes, { contentType: tipo });
     if (uploadErr) {
       console.error('[onboarding] photo upload failed', uploadErr);
       avisos.push(`No pudimos guardar la foto de ${nombre}. La podés cargar después desde el carnet.`);

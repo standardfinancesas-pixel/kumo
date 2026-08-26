@@ -42,10 +42,23 @@ export type RespuestaAlta =
 export async function postAlta(payload: BodyAlta, fotos: (FotoElegida | undefined)[] = []): Promise<RespuestaAlta> {
   const form = new FormData();
   form.append('payload', JSON.stringify(payload));
-  // Una parte por mascota, en el mismo orden que el payload: repetir la clave
-  // la clave `photo` sería ambigua cuando solo la segunda mascota tiene foto.
+  /*
+   * Una parte por mascota, en el mismo orden que el payload: repetir la clave
+   * `photo` sería ambigua cuando solo la segunda mascota tiene foto.
+   *
+   * La foto va como STRING (un JSON con el base64), no como objeto de archivo.
+   * El `{ uri, name, type }` que el FormData de React Native aceptó siempre tira
+   * "Unsupported FormDataPart implementation" desde el runtime del SDK 57
+   * (RN 0.86): el cuerpo no se llega a armar, el fetch muere antes de salir del
+   * teléfono, y en pantalla se ve como "revisá tu conexión". Así se rompió el
+   * alta con foto para todos los Android — reproducido en un emulador, con el
+   * motivo en el logcat.
+   *
+   * Un string viaja bien en cualquier runtime, y el servidor distingue: File es
+   * la web, string es la app.
+   */
   fotos.forEach((f, i) => {
-    if (f) form.append(`photo_${i}`, { uri: f.uri, name: f.name, type: f.type } as unknown as Blob);
+    if (f?.base64) form.append(`photo_${i}`, JSON.stringify({ base64: f.base64, type: f.type, name: f.name }));
   });
 
   const { data } = await supabase.auth.getSession();

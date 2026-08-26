@@ -109,7 +109,9 @@ export function motivoFotoInvalida(tipo: string, tamaño: number): string | null
  * Si algún día el alta sube las fotos directo al bucket (como hace el resto de
  * la app) este límite deja de tener sentido y se puede borrar.
  */
-export const ALTA_FOTOS_MAX = 4 * 1024 * 1024;
+/** 3 MB y no 4: desde la app las fotos viajan en base64 (ver postAlta), que
+ *  infla un 33%. 3 MB de fotos son ~4 MB de cuerpo, y el techo de Vercel es 4,5. */
+export const ALTA_FOTOS_MAX = 3 * 1024 * 1024;
 
 /**
  * El motivo por el que las fotos del alta no se pueden mandar juntas, o `null`.
