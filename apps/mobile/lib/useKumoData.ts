@@ -255,7 +255,28 @@ export function useKumoData(userId: string | null) {
         ['pagos', pagosRes],
       ] as const
     )
-      .filter(([, res]) => res.error)
+      .filter(([que, res]) => {
+        if (!res.error) return false;
+        /*
+         * Que TODAVÍA no haya perfil no es una falla.
+         *
+         * La consulta del perfil usa `.single()`, y en PostgREST `.single()` sobre
+         * cero filas devuelve error (PGRST116), no vacío. Pero hay un caso legítimo
+         * con sesión y sin perfil: quien entró con Google y está completando el
+         * alta. A esa persona la app le mostraba un banner rojo diciendo "No
+         * pudimos traer: perfil" mientras llenaba el formulario — le pasaba a
+         * TODOS los que se registran con Google, siempre.
+         *
+         * Y el falso positivo hacía daño de verdad: cuando encima fallaba algo real
+         * —el envío del alta, por ejemplo— la persona veía dos mensajes rojos sin
+         * forma de saber cuál importaba.
+         *
+         * Se ignora solo para el perfil y solo con ese código: si el perfil falla
+         * por permisos o por una columna que no existe, se sigue avisando.
+         */
+        if (que === 'perfil' && res.error.code === 'PGRST116') return false;
+        return true;
+      })
       .map(([que, res]) => `${que}: ${res.error!.message}`);
 
     if (fallas.length) console.warn('[kumo] consultas con error →', fallas.join(' · '));

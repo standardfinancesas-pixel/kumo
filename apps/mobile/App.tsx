@@ -4165,7 +4165,13 @@ export default function App() {
         {/* Si una consulta falló, se dice. Antes el error se tragaba y la
             pantalla mostraba el estado vacío como si la cuenta no tuviera nada:
             un socio con mascota veía "todavía no cargaste mascotas". */}
-        {userId && errorDatos ? (
+        {/* Durante el alta no se muestra: quien está completándola no es socio
+            todavía, así que ningún dato de socio le falta ni le sirve. Es la
+            segunda mitad del mismo arreglo que el de useKumoData — ahí se dejó de
+            REPORTAR el perfil ausente, acá se deja de MOSTRAR cualquier otro error
+            de datos a alguien que está en medio del formulario y no puede hacer
+            nada al respecto. */}
+        {userId && errorDatos && perfilExiste !== false ? (
           <View style={{ backgroundColor: '#fbeceb', borderBottomWidth: 1, borderBottomColor: '#efd3cf', paddingHorizontal: 20, paddingVertical: 10 }}>
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#9c3b32', marginBottom: 2 }}>No pudimos traer todos tus datos</Text>
             <Text style={{ fontSize: 11.5, color: '#9c3b32', lineHeight: 16 }}>{errorDatos}</Text>
