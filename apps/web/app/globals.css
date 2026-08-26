@@ -132,6 +132,13 @@ input[type="range"]::-webkit-slider-thumb:active { cursor: grabbing; transform: 
   .r-rubro-img { height: 240px !important; }
   .r-nav { padding-left: 16px !important; padding-right: 16px !important; gap: 8px !important; }
   .r-nav-logo { font-size: 24px !important; }
+  /* El nav es logo + "Iniciar sesión" + el CTA, y en 375px la suma no entra:
+     los dos botones se partían en dos líneas y la barra crecía al doble de alto.
+     Se aprieta el interlineado en vez de acortar los textos, que dicen lo que
+     tienen que decir. El `nowrap` es lo que fuerza una sola línea; el resto es
+     para que esa línea entre. */
+  .r-nav-login { font-size: 14px !important; padding: 10px 6px !important; white-space: nowrap !important; }
+  .r-nav-cta { font-size: 14px !important; padding: 11px 14px !important; white-space: nowrap !important; }
 }
 
 /* ════════════════════════════════════════════════════════════════

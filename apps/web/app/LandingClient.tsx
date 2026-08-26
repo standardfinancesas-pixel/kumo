@@ -276,7 +276,7 @@ function Nav() {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <button onClick={() => openAuth('login')} className="r-nav-login scp9" style={{ background: 'none', border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 15, color: 'rgb(93,84,145)', padding: '10px 12px', borderRadius: 10, transition: 'background 0.15s' }}>Iniciar sesión</button>
-          <button onClick={() => openAuth('register')} className="r-nav-cta scpa" style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: '11px 22px', borderRadius: 12, boxShadow: '0 4px 12px rgba(93,84,145,0.25)', cursor: 'pointer', transition: 'background 0.15s' }}>Empezar</button>
+          <button onClick={() => openAuth('register')} className="r-nav-cta scpa" style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: '11px 22px', borderRadius: 12, boxShadow: '0 4px 12px rgba(93,84,145,0.25)', cursor: 'pointer', transition: 'background 0.15s' }}>Empezar gratis</button>
         </div>
       </div>
     </div>
