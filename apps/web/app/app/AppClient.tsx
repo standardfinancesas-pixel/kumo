@@ -3039,6 +3039,10 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaHecha, setBajaHecha] = useState(false);
   const [pagosOpen, setPagosOpen] = useState(false);
+  const [borrarOpen, setBorrarOpen] = useState(false);
+  const [palabra, setPalabra] = useState('');
+  const [borrarError, setBorrarError] = useState('');
+  const [cuentas, setCuentas] = useState<{ mascotas: number; reintegros: number; pagos: number; publicaciones: number; negocios: number } | null>(null);
 
   /** Ahora sí guarda. El nombre también: antes no se podía editar desde ningún lado. */
   const guardarDatos = async () => {
@@ -3074,6 +3078,51 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
     setBajaHecha(true);
     router.refresh();
     setBusy(false);
+  };
+
+  /**
+   * Eliminar la cuenta. NO es lo mismo que darse de baja, y por eso el diálogo
+   * insiste con la diferencia: la baja deja al socio en el sistema y se revierte
+   * escribiéndole al club; esto borra los datos y no tiene vuelta.
+   *
+   * Existe porque Google Play lo exige para publicar (una app que deja crear
+   * cuenta tiene que dejar borrarla desde adentro), pero el derecho de supresión
+   * de la Ley 25.326 ya lo pedía y hasta ahora había que pedirlo por mail.
+   *
+   * Los números se piden al abrir y no antes: son cinco consultas que no tienen
+   * sentido para quien nunca va a tocar este botón.
+   */
+  const abrirBorrar = async () => {
+    setPalabra(''); setBorrarError(''); setCuentas(null); setBorrarOpen(true);
+    const [m, r, pg, pub, neg] = await Promise.all([
+      supabase.from('pets').select('id', { count: 'exact', head: true }).eq('owner_id', profile.id),
+      supabase.from('reimbursements').select('id', { count: 'exact', head: true }).eq('member_id', profile.id),
+      supabase.from('payments').select('id', { count: 'exact', head: true }).eq('member_id', profile.id),
+      supabase.from('community_posts').select('id', { count: 'exact', head: true }).eq('author_id', profile.id),
+      supabase.from('providers').select('id', { count: 'exact', head: true }).eq('owner_id', profile.id),
+    ]);
+    setCuentas({ mascotas: m.count ?? 0, reintegros: r.count ?? 0, pagos: pg.count ?? 0, publicaciones: pub.count ?? 0, negocios: neg.count ?? 0 });
+  };
+
+  const confirmarBorrado = async () => {
+    setBusy(true); setBorrarError('');
+    try {
+      const res = await fetch('/api/socios/borrar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: profile.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setBorrarError(data.error ?? 'No pudimos borrar tu cuenta.'); setBusy(false); return; }
+      /* La cuenta ya no existe. Quedarse con la sesión abierta deja la pantalla
+         mostrando los datos de alguien que se acaba de borrar, y cualquier cosa
+         que toque falla por RLS. Se cierra y sale a la portada. */
+      await supabase.auth.signOut();
+      window.location.href = LANDING;
+    } catch {
+      setBorrarError('No pudimos borrar tu cuenta. Revisá la conexión.');
+      setBusy(false);
+    }
   };
 
   const row = (icono: ReactNode, title: string, sub: string, action: ReactNode, onClick?: () => void) => (
@@ -3285,6 +3334,10 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
         <a href="https://wa.me/5491125168802" target="_blank" rel="noopener" style={{ textAlign: 'center', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 14, padding: 14, borderRadius: 14, textDecoration: 'none' }}>Ayuda por WhatsApp</a>
         <button onClick={async () => { await supabase.auth.signOut(); window.location.href = LANDING; }} style={{ background: 'none', color: 'rgb(135,129,160)', border: 'none', fontWeight: 600, fontSize: 13, padding: 10, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Cerrar sesión</button>
         <button onClick={() => { setBajaHecha(false); setBajaOpen(true); }} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Darme de baja</button>
+        {/* Va ÚLTIMO y más apagado que "Darme de baja", a propósito: son dos cosas
+            que se piden con las mismas palabras y la de arriba es la que casi
+            siempre se quiere. El que llega hasta acá es porque busca borrar. */}
+        <button onClick={abrirBorrar} style={{ background: 'none', color: 'rgb(150,60,52)', border: 'none', fontWeight: 600, fontSize: 12.5, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"', textDecoration: 'underline' }}>Eliminar mi cuenta</button>
       </div>
 
       {/* Cambiar plan */}
@@ -3297,6 +3350,51 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
 
       {/* Darme de baja */}
       {pagosOpen && <HojaPagos pagos={pagos} onClose={() => setPagosOpen(false)} />}
+
+      {borrarOpen && (
+        <Sheet onClose={() => setBorrarOpen(false)}>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>¿Eliminar tu cuenta?</div>
+          {/* Lo primero que se lee es la diferencia con la baja, porque es el error
+              que hay que evitar: el que quería pausar el cobro no tiene que
+              enterarse acá de que perdió el carnet de sus mascotas. */}
+          <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 12px' }}>
+            Esto <strong>borra tus datos para siempre</strong> y no se puede deshacer. Si lo que querés es dejar de pagar y guardar tu historial, usá <strong>Darme de baja</strong>: eso sí se puede revertir.
+          </p>
+          <div style={{ background: 'rgb(251,232,239)', border: '1px solid rgb(245,214,227)', borderRadius: 14, padding: '12px 14px', marginBottom: 14 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: 'rgb(150,60,52)', marginBottom: 6 }}>Se borra todo esto:</div>
+            {cuentas ? (
+              <div style={{ fontSize: 13, color: 'rgb(120,60,60)', lineHeight: 1.7 }}>
+                {[['mascota', 'mascotas', cuentas.mascotas], ['reintegro', 'reintegros', cuentas.reintegros], ['pago', 'pagos', cuentas.pagos], ['publicación', 'publicaciones', cuentas.publicaciones], ['negocio', 'negocios', cuentas.negocios]]
+                  .filter(([, , n]) => (n as number) > 0)
+                  .map(([sing, plu, n]) => <div key={plu as string}>· {n as number} {(n as number) === 1 ? sing as string : plu as string}</div>)}
+                <div>· Tu perfil y tu acceso al club</div>
+              </div>
+            ) : <div style={{ fontSize: 13, color: 'rgb(120,60,60)' }}>Contando…</div>}
+          </div>
+          {cuota.suscripcion === 'authorized' && (
+            <p style={{ fontSize: 13, color: 'rgb(91,86,112)', lineHeight: 1.5, margin: '0 0 14px' }}>Tu débito automático se cancela en el mismo paso, así que no se te va a cobrar más.</p>
+          )}
+          {/* Escribir la palabra y no un botón "¿seguro?": es la única acción del
+              socio sin vuelta atrás, y un click de más no puede alcanzar. */}
+          <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'rgb(91,86,112)', marginBottom: 6 }}>Escribí BORRAR para confirmar</label>
+          <input
+            value={palabra}
+            onChange={(e) => setPalabra(e.target.value)}
+            placeholder="BORRAR"
+            autoCapitalize="characters"
+            style={{ width: '100%', boxSizing: 'border-box', border: '1px solid rgb(230,227,240)', borderRadius: 12, padding: '11px 13px', fontSize: 14, fontFamily: '"DM Sans"', marginBottom: 12 }}
+          />
+          {borrarError && <p style={{ fontSize: 13, color: 'rgb(176,58,58)', margin: '0 0 12px', lineHeight: 1.5 }}>{borrarError}</p>}
+          <button
+            onClick={confirmarBorrado}
+            disabled={palabra.trim().toUpperCase() !== 'BORRAR' || busy}
+            style={{ width: '100%', background: 'rgb(176,58,58)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 14, cursor: 'pointer', marginBottom: 8, fontFamily: '"DM Sans"', opacity: palabra.trim().toUpperCase() !== 'BORRAR' || busy ? 0.45 : 1 }}
+          >
+            {busy ? 'Borrando…' : 'Eliminar mi cuenta para siempre'}
+          </button>
+          <button onClick={() => setBorrarOpen(false)} style={{ ...sheetBtn(true), width: '100%' }}>Cancelar</button>
+        </Sheet>
+      )}
 
       {bajaOpen && (
         <Sheet onClose={() => setBajaOpen(false)}>

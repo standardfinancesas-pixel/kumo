@@ -1504,6 +1504,72 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
     ]);
   };
 
+  /**
+   * Eliminar la cuenta. NO es darse de baja, y la confirmación insiste con eso:
+   * la baja deja los datos y se revierte escribiéndole al club; esto los borra.
+   *
+   * Existe porque Google Play lo exige para publicar (una app que deja crear
+   * cuenta tiene que dejar borrarla desde adentro), y el derecho de supresión de
+   * la Ley 25.326 ya lo pedía.
+   *
+   * Van DOS confirmaciones y no un campo para escribir "BORRAR" como en la web:
+   * `Alert.prompt` existe solo en iOS, y una hoja con TextInput adentro de este
+   * ScrollView se posiciona contra el contenido que scrollea, no contra la
+   * pantalla. Dos pasos con textos distintos es el patrón nativo para esto.
+   */
+  const eliminarCuenta = () => {
+    if (!profile) return;
+    Alert.alert(
+      'Eliminar tu cuenta',
+      'Se borran para siempre tus mascotas con sus vacunas y fotos, tus reintegros, tus publicaciones y tu negocio.\n\nSi lo que querés es dejar de pagar y conservar tu historial, usá "Darme de baja del club": eso sí se puede revertir.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Continuar', style: 'destructive', onPress: confirmarEliminacion },
+      ],
+    );
+  };
+
+  const confirmarEliminacion = () => {
+    Alert.alert(
+      'No hay vuelta atrás',
+      'Tu cuenta y todo su contenido se borran ahora. Si tenías débito automático, se cancela en el mismo paso.',
+      [
+        { text: 'No, volver', style: 'cancel' },
+        { text: 'Sí, eliminar para siempre', style: 'destructive', onPress: borrarCuenta },
+      ],
+    );
+  };
+
+  const borrarCuenta = async () => {
+    if (!profile) return;
+    setBusy(true);
+    const { data: ses } = await supabase.auth.getSession();
+    const token = ses.session?.access_token;
+    if (!token) { Alert.alert('Se cerró tu sesión', 'Volvé a entrar y probá de nuevo.'); setBusy(false); return; }
+    try {
+      const res = await fetch(`${SITIO}/api/socios/borrar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ memberId: profile.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        // El error se muestra tal cual viene: el del débito que no se pudo
+        // cancelar explica por qué NO se borró nada, y resumirlo lo perdería.
+        Alert.alert('No pudimos borrar tu cuenta', data.error ?? 'Probá de nuevo en un rato.');
+        setBusy(false);
+        return;
+      }
+      /* No hace falta olvidarDispositivo(): `push_tokens.member_id` cascadea al
+         borrar el perfil, así que el token ya no existe. Llamarlo acá sería pedir
+         un DELETE de una fila que no está, con una sesión que está por morir. */
+      await supabase.auth.signOut();
+    } catch {
+      Alert.alert('No pudimos borrar tu cuenta', 'Revisá la conexión y probá de nuevo.');
+      setBusy(false);
+    }
+  };
+
   const dato = (k: string, v: string) => (
     <View key={k} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: colors.violet[200] }}>
       <Text style={{ fontSize: 13, color: MUTED }}>{k}</Text><Text style={{ fontSize: 13, fontWeight: '600' }}>{v}</Text>
@@ -1755,6 +1821,12 @@ function Perfil({ profile, planes, pagos, go, reload, pago, onPlan }: { profile:
       <TouchableOpacity onPress={() => supabase.auth.signOut()} style={{ backgroundColor: colors.violet[100], borderRadius: 12, padding: 14, alignItems: 'center' }}><Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>Cerrar sesión</Text></TouchableOpacity>
       <TouchableOpacity disabled={busy} onPress={darseDeBaja} style={{ paddingVertical: 16, alignItems: 'center' }}>
         <Text style={{ color: '#b0483f', fontWeight: '700', fontSize: 13.5 }}>Darme de baja del club</Text>
+      </TouchableOpacity>
+      {/* Último y más apagado que la baja, a propósito: son dos cosas que se
+          piden con las mismas palabras y la de arriba es la que casi siempre se
+          quiere. El que llega hasta acá es porque busca borrar. */}
+      <TouchableOpacity disabled={busy} onPress={eliminarCuenta} style={{ paddingBottom: 20, alignItems: 'center' }}>
+        <Text style={{ color: '#963c34', fontWeight: '600', fontSize: 12.5, textDecorationLine: 'underline' }}>Eliminar mi cuenta</Text>
       </TouchableOpacity>
     </ScrollView>
   );

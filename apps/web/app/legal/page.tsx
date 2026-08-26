@@ -48,7 +48,7 @@ export default async function Legal() {
         <section id="privacidad" style={{ marginBottom: 40 }}>
           <h2 style={h2}>Política de privacidad</h2>
           <p style={p}>Tus datos personales y los de tus mascotas se usan únicamente para operar el club: gestionar tu membresía, procesar reintegros y contactarte por novedades del servicio. No vendemos tus datos a terceros.</p>
-          <p style={p}>Podés pedir la actualización o eliminación de tus datos escribiendo a <a href={`mailto:${email}`} style={link}>{email}</a>.</p>
+          <p style={p}>Podés borrar tu cuenta y todos tus datos vos mismo, desde la app o desde la web: te explicamos cómo en <a href="/eliminar-cuenta" style={link}>Eliminar tu cuenta</a>. Para actualizar tus datos, o si no podés entrar a tu cuenta, escribinos a <a href={`mailto:${email}`} style={link}>{email}</a>.</p>
         </section>
 
         <section id="arrepentimiento" style={{ marginBottom: 40 }}>

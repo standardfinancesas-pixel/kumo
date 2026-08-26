@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
+import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
 import { cancelarSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
 
@@ -31,16 +31,32 @@ export async function POST(req: Request) {
   const { memberId } = (await req.json().catch(() => ({}))) as { memberId?: string };
   if (!memberId) return NextResponse.json({ error: 'Falta el socio.' }, { status: 400 });
 
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return NextResponse.json({ error: 'Sin sesión.' }, { status: 401 });
-
-  const { data: yo } = await supabase.from('profiles').select('role').eq('id', auth.user.id).single();
-  if (yo?.role !== 'admin') return NextResponse.json({ error: 'Solo un admin puede borrar socios.' }, { status: 403 });
-  // Un admin borrándose a sí mismo se queda sin panel para arreglarlo.
-  if (memberId === auth.user.id) return NextResponse.json({ error: 'No podés borrarte a vos.' }, { status: 409 });
+  /* `quienPide` y no el cliente de cookies: desde la app del celular no hay
+     cookies, la sesión viaja en `Authorization: Bearer`. Sin esto el socio podía
+     borrarse desde la webapp pero no desde la app — y el camino que exige Google
+     Play es justamente el de la app. */
+  const quien = await quienPide(req);
+  if (!quien) return NextResponse.json({ error: 'Sin sesión.' }, { status: 401 });
 
   const svc = getServiceClient();
+  const { data: yo } = await svc.from('profiles').select('role').eq('id', quien.id).single();
+  const esPropia = memberId === quien.id;
+  const esAdmin = yo?.role === 'admin';
+  /*
+   * Dos caminos legítimos, y "tener sesión" no es ninguno de los dos:
+   *
+   *   - un admin borrando a OTRO: limpiar pruebas, o cumplir un pedido de
+   *     supresión que llegó por mail (Ley 25.326).
+   *   - un socio borrándose a SÍ MISMO: lo exige Google Play para publicar, que
+   *     pide un camino de borrado dentro de la app y una URL pública.
+   *
+   * El admin sigue sin poder borrarse solo: se quedaría sin panel para
+   * arreglarlo. Antes esa era la única regla porque el socio no tenía camino;
+   * ahora hay que decir las dos cosas por separado.
+   */
+  if (esAdmin && esPropia) return NextResponse.json({ error: 'Un admin no puede borrarse a sí mismo.' }, { status: 409 });
+  if (!esAdmin && !esPropia) return NextResponse.json({ error: 'Solo podés borrar tu propia cuenta.' }, { status: 403 });
+
   const { data: socio } = await svc
     .from('profiles')
     .select('id, role, full_name, member_no, mp_preapproval_id, mp_subscription_status')
@@ -95,7 +111,7 @@ export async function POST(req: Request) {
   const { error: eAuth } = await svc.auth.admin.deleteUser(memberId);
   if (eAuth) console.error('[socios/borrar] el usuario de auth quedó', memberId, eAuth.message);
 
-  console.log('[socios/borrar]', JSON.stringify(resumen), '· fotos', fotosBorradas, '· por', auth.user.id);
+  console.log('[socios/borrar]', JSON.stringify(resumen), '· fotos', fotosBorradas, '· por', quien.id);
   return NextResponse.json({
     ok: true,
     ...(resumen as Record<string, unknown>),
