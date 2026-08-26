@@ -67,9 +67,14 @@ de cada pantalla.
       el editor de SQL, donde `is_admin()` da false.
 - [x] **Login con Google**, solo para entrar: quien no es socio recibe un aviso
       y se le cierra la sesión, porque el alta pide plan, mascota y medio de pago.
-      **Falta config**: crear las credenciales en Google Cloud (redirect
-      `https://oabkyafennfsrmnaroao.supabase.co/auth/v1/callback`) y pegarlas en
-      Supabase → Authentication → Providers → Google.
+      **La config ya está hecha** (credenciales de Google Cloud con el redirect
+      `https://oabkyafennfsrmnaroao.supabase.co/auth/v1/callback`, pegadas en
+      Supabase → Authentication → Providers → Google). Se puede verificar sin
+      entrar a ningún panel, porque Supabase publica los proveedores activos:
+      `curl "$SUPABASE_URL/auth/v1/settings" -H "apikey: $ANON_KEY"` devuelve
+      `external.google: true`. Vale la pena chequearlo antes de cada publicación
+      en Play: el botón está visible en las dos superficies, y si el proveedor se
+      cae el revisor lo toca, se rompe y rechaza la app.
 - [x] **ABM del admin**: "+ Nuevo beneficio" (inserta en `benefits`), "Editar
       plan" (precio, bajada, destacado y perks) y la ficha del socio (datos,
       mascotas y reintegros, pedidos al abrir el modal). El "Ver detalle" de la

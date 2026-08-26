@@ -19,3 +19,8 @@ supabase/.temp
 WhatsApp Image*.jpeg
 
 .vercel
+
+# Los gráficos para la ficha de Play: se generan con
+# apps/mobile/scripts/generar-graficos-play.mjs y se suben a mano al Console.
+# No los usa ningún build, así que no van al repo.
+apps/mobile/scripts/salida-play

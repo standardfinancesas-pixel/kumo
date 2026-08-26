@@ -85,7 +85,7 @@ export async function POST(req: Request) {
     }
   }
 
-  // ── 2 · Las fotos, antes de que desaparezcan las filas que las nombran ──
+  // ── 2 · Los archivos, antes de que desaparezcan las filas que los nombran ──
   const { data: mascotas } = await svc.from('pets').select('photo_url').eq('owner_id', memberId);
   const { data: posts } = await svc.from('community_posts').select('photo_url').eq('author_id', memberId);
   const rutas = [...(mascotas ?? []), ...(posts ?? [])]
@@ -93,6 +93,26 @@ export async function POST(req: Request) {
     .filter((u): u is string => !!u && u.includes('/pet-photos/'))
     // La URL pública es …/object/public/pet-photos/<ruta>, y storage quiere <ruta>.
     .map((u) => u.split('/pet-photos/')[1]!.split('?')[0]!);
+
+  /*
+   * Los comprobantes van en OTRO bucket y hay que juntarlos aparte.
+   *
+   * Se pasaban por alto: el borrado limpiaba solo `pet-photos` y las facturas de
+   * veterinaria —con nombre, importes y datos personales— quedaban en el bucket
+   * privado `receipts`. Y quedaban huérfanas: la fila que las nombraba se iba con
+   * el socio, así que después no había ni cómo encontrarlas.
+   *
+   * Para alguien que ejerce el derecho de supresión de la Ley 25.326 es
+   * exactamente lo que pidió que no pasara, y para el formulario de Play es la
+   * diferencia entre declarar que se borra todo y que sea cierto.
+   *
+   * `receipt_path` ya es la ruta dentro del bucket, no una URL: el bucket es
+   * privado y se sirve con URLs firmadas, así que no hay nada que recortar.
+   */
+  const { data: comprobantes } = await svc.from('reimbursements').select('receipt_path').eq('member_id', memberId);
+  const rutasComprobantes = (comprobantes ?? [])
+    .map((r) => r.receipt_path as string | null)
+    .filter((r): r is string => !!r);
 
   // ── 3 · El SQL, todo junto ──
   const { data: resumen, error } = await svc.rpc('borrar_socio', { p_member_id: memberId });
@@ -108,14 +128,22 @@ export async function POST(req: Request) {
     fotosBorradas = fuera?.length ?? 0;
     if (eFotos) console.error('[socios/borrar] fotos que quedaron en el bucket', rutas, eFotos);
   }
+  let comprobantesBorrados = 0;
+  if (rutasComprobantes.length) {
+    const { data: fuera, error: eComp } = await svc.storage.from('receipts').remove(rutasComprobantes);
+    comprobantesBorrados = fuera?.length ?? 0;
+    // Se loguean las rutas porque son las únicas que quedan: la fila ya no está.
+    if (eComp) console.error('[socios/borrar] comprobantes que quedaron en el bucket', rutasComprobantes, eComp);
+  }
   const { error: eAuth } = await svc.auth.admin.deleteUser(memberId);
   if (eAuth) console.error('[socios/borrar] el usuario de auth quedó', memberId, eAuth.message);
 
-  console.log('[socios/borrar]', JSON.stringify(resumen), '· fotos', fotosBorradas, '· por', quien.id);
+  console.log('[socios/borrar]', JSON.stringify(resumen), '· fotos', fotosBorradas, '· comprobantes', comprobantesBorrados, '· por', quien.id);
   return NextResponse.json({
     ok: true,
     ...(resumen as Record<string, unknown>),
     fotos: fotosBorradas,
+    comprobantes: comprobantesBorrados,
     debitoCancelado: !!conDebito,
     // Si el usuario de auth quedó, el mail no se puede reusar para un alta nueva: el
     // club tiene que saberlo, porque el socio va a chocar con "ya existe una cuenta".

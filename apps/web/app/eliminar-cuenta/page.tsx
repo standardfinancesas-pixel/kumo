@@ -85,7 +85,7 @@ export default async function EliminarCuenta() {
           <ul style={{ margin: '0 0 12px', paddingLeft: 20 }}>
             <li style={li}>Tu perfil y tus datos personales</li>
             <li style={li}>Tus mascotas, sus vacunas y sus fotos</li>
-            <li style={li}>Tus reintegros y tus comprobantes</li>
+            <li style={li}>Tus reintegros y los comprobantes que subiste</li>
             <li style={li}>Tus publicaciones y respuestas del foro</li>
             <li style={li}>Tu negocio, si diste uno de alta</li>
             <li style={li}>Tu usuario de acceso</li>
@@ -94,6 +94,37 @@ export default async function EliminarCuenta() {
               tocar el botón: si borrar la cuenta lo deja pagando para siempre. */}
           <p style={p}>Si tenías débito automático, <strong>se cancela en el mismo paso</strong>: Mercado Pago no te vuelve a cobrar. Si el cobro no se puede cancelar, no borramos nada y te avisamos, para que no quede una cuenta borrada con un débito vivo.</p>
           <p style={p}>El borrado es definitivo: no guardamos una copia para restaurarla después.</p>
+        </section>
+
+        {/* Esta sección responde el punto OPCIONAL del formulario de Play sobre
+            borrado parcial. Se declara que sí porque es verdad —el socio borra
+            estas cosas él mismo desde cualquiera de las dos superficies— pero
+            declararlo obliga a documentarlo en esta misma URL. */}
+        <section style={{ marginBottom: 40 }}>
+          <h2 style={h2}>Borrar solo una parte, sin cerrar la cuenta</h2>
+          <p style={p}>No hace falta eliminar la cuenta para borrar cosas. Desde la app o desde la web, en la sección donde está cada una, podés borrar vos mismo:</p>
+          <ul style={{ margin: '0 0 12px', paddingLeft: 20 }}>
+            <li style={li}>Una mascota, con sus vacunas y su foto</li>
+            <li style={li}>Un contacto de emergencia</li>
+            <li style={li}>Una publicación o una respuesta del foro</li>
+            <li style={li}>Una reseña que hayas dejado</li>
+            <li style={li}>Los prestadores que guardaste</li>
+            <li style={li}>Tu negocio, si diste uno de alta</li>
+          </ul>
+          <p style={p}>Tus datos personales —teléfono, domicilio, cuenta bancaria— se editan o se vacían desde <strong>Mi perfil</strong>. Y los avisos push se apagan desde el interruptor de Notificaciones en la app, que borra el registro de tu teléfono.</p>
+          {/* Se dice qué NO puede borrar solo, porque prometer de más acá es peor
+              que no prometer: los reintegros y los cobros son el registro de una
+              operación entre dos partes, no contenido del socio. */}
+          <p style={p}>Los reintegros y los cobros no se borran por separado: son el registro de una operación entre vos y el club. Si necesitás que se borre alguno en particular, escribinos a <a href={`mailto:${email}`} style={link}>{email}</a> y lo vemos.</p>
+        </section>
+
+        {/* Google exige que esta página diga qué se CONSERVA y por cuánto tiempo,
+            no solo qué se borra. Sin esta sección el formulario del Play Console
+            se puede rechazar aunque la URL exista y funcione. */}
+        <section style={{ marginBottom: 40 }}>
+          <h2 style={h2}>Qué se conserva</h2>
+          <p style={p}>Kumo no conserva nada. No hay período de retención ni copias de respaldo del contenido borrado: el borrado corre en una sola operación sobre la base de datos y sobre los archivos, y no guardamos una versión previa para restaurar.</p>
+          <p style={p}>Lo único que queda fuera de nuestro alcance son los registros que <strong>Mercado Pago</strong> mantiene por su cuenta sobre los pagos que procesó, porque está obligado a conservarlos como procesador de pagos. Esos registros son de Mercado Pago, no de Kumo, y podés consultarlos o reclamarlos directamente ante ellos.</p>
         </section>
 
         <section style={{ marginBottom: 40 }}>
