@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { ScrollView, TouchableOpacity, View } from 'react-native';
 import {
   borradorVacio, conIdentidad, mascotaVacia, cuotaMensual, data, pasoOk, pasosDelAlta, payloadAlta,
@@ -38,6 +38,17 @@ export default function Alta({
 }) {
   const conGoogle = !!identidad;
   const [paso, setPaso] = useState(1);
+
+  /*
+   * Al cambiar de paso, el scroll vuelve arriba.
+   *
+   * Los cinco pasos comparten el MISMO ScrollView, así que la posición quedaba
+   * donde el paso anterior la dejó: se tocaba "Continuar" al final de "Tus datos"
+   * y los planes aparecían empezados por la mitad, con el título afuera. Cada
+   * paso es una pantalla nueva y tiene que arrancar desde el título.
+   */
+  const scrollRef = useRef<ScrollView>(null);
+  useEffect(() => { scrollRef.current?.scrollTo({ y: 0, animated: false }); }, [paso]);
   const [b, setB] = useState<BorradorAlta>(() => borradorVacio({ nombre: identidad?.nombre, email: identidad?.email }));
   /* Igual que en la web: la identidad de Google puede llegar después del montaje,
      y el inicializador de `useState` corre una sola vez. Acá el orden hoy ayuda (la
@@ -161,7 +172,7 @@ export default function Alta({
         ))}
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
+      <ScrollView ref={scrollRef} contentContainerStyle={{ padding: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         {paso === 1 ? (
           <PasoMascotas
             mascotas={b.mascotas}

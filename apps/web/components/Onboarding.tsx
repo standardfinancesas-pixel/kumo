@@ -1,7 +1,7 @@
 'use client';
 import type { CSSProperties, ReactNode } from 'react';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
@@ -195,6 +195,14 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
   const router = useRouter();
   const conGoogle = !!identidad;
   const [step, setStep] = useState(1);
+
+  /*
+   * Al cambiar de paso, el scroll vuelve arriba. Mismo arreglo que en la app:
+   * los pasos comparten el contenedor que scrollea, así que "Continuar" al final
+   * de un paso dejaba el siguiente empezado por la mitad, con el título afuera.
+   */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { scrollRef.current?.scrollTo({ top: 0 }); }, [step]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -328,7 +336,7 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
     : 'Continuar';
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 900, background: '#f5f4f8', overflowY: 'auto' }}>
+    <div ref={scrollRef} style={{ position: 'fixed', inset: 0, zIndex: 900, background: '#f5f4f8', overflowY: 'auto' }}>
       {/* Top bar */}
       <div style={{ position: 'sticky', top: 0, zIndex: 5, background: 'rgba(245,244,248,0.9)', backdropFilter: 'blur(10px)', borderBottom: '1px solid #e6e3f0' }}>
         <div style={{ maxWidth: 560, margin: '0 auto', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
