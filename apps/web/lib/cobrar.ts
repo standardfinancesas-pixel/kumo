@@ -1,6 +1,6 @@
 import { tarjetaLabel } from '@kumo/shared';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { DebitoMP } from '@/lib/mp';
+import { traerSuscripcion, type DebitoMP } from '@/lib/mp';
 import { sendCuotaRechazada, sendCuotaAcreditada, sendAdminCobroRechazado } from '@/lib/mail';
 import { mandarPush } from '@/lib/push';
 
@@ -45,11 +45,49 @@ export async function acreditarDebito(
 ): Promise<ResultadoDebito> {
   const pagoOk = debito.payment?.status === 'approved';
 
-  const { data: quien } = await svc
+  const COLUMNAS = 'id, email, full_name, member_no, monthly_fee_agreed, card_brand, card_last4, plans(name)';
+  let { data: quien } = await svc
     .from('profiles')
-    .select('id, email, full_name, member_no, monthly_fee_agreed, card_brand, card_last4, plans(name)')
+    .select(COLUMNAS)
     .eq('mp_preapproval_id', debito.preapproval_id)
     .maybeSingle();
+
+  /*
+   * ¿El perfil todavía no conoce esta suscripción? Puede pasar de verdad: con el
+   * flujo por plan la suscripción la crea Mercado Pago, y el aviso del PRIMER
+   * débito puede llegar antes de que el de la suscripción haya escrito el
+   * `mp_preapproval_id` en el perfil (MP manda los avisos sin orden garantizado,
+   * y duplicados). Sin este rescate, ese primer cobro se ignoraba con un log —
+   * plata que entró y un mes que no se acreditó.
+   *
+   * El rescate es el mismo cruce que hace el webhook de suscripciones: la
+   * suscripción trae `preapproval_plan_id`, y `mp_member_plans` dice de quién es
+   * ese plan. De paso se deja el perfil marcado, así el próximo aviso entra
+   * directo.
+   */
+  if (!quien) {
+    try {
+      const sus = await traerSuscripcion(debito.preapproval_id);
+      if (sus.preapproval_plan_id) {
+        const { data: mapeo } = await svc
+          .from('mp_member_plans')
+          .select('member_id')
+          .eq('mp_plan_id', sus.preapproval_plan_id)
+          .maybeSingle();
+        if (mapeo) {
+          await svc.rpc('marcar_suscripcion', {
+            p_member_id: mapeo.member_id,
+            p_preapproval_id: debito.preapproval_id,
+            p_status: sus.status,
+          });
+          ({ data: quien } = await svc.from('profiles').select(COLUMNAS).eq('id', mapeo.member_id).maybeSingle());
+          console.log('[cobrar] suscripción atribuida por el plan', debito.preapproval_id, '→', mapeo.member_id);
+        }
+      }
+    } catch (e) {
+      console.error('[cobrar] no pudimos rescatar la suscripción por el plan', debito.preapproval_id, e);
+    }
+  }
   if (!quien) {
     console.error('[cobrar] no encontramos socio para la suscripción', debito.preapproval_id);
     return { estado: 'ignorado', motivo: 'suscripción desconocida' };

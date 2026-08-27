@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { MercadoPagoConfig, Preference, PreApproval, Invoice, Payment } from 'mercadopago';
+import { MercadoPagoConfig, Preference, PreApproval, PreApprovalPlan, Invoice, Payment } from 'mercadopago';
 
 /**
  * Mercado Pago: cobro de la cuota mensual con Checkout Pro + Suscripciones.
@@ -99,35 +99,42 @@ export async function crearPreferencia(opts: {
   }
 }
 
-export type Suscripcion = { id: string; init_point: string; status: string };
-
 /**
- * Crea la suscripción: el socio autoriza una vez y Mercado Pago le debita todos
- * los meses.
+ * Crea el plan de suscripción DE UN SOCIO y devuelve su link de pago.
  *
- * Es el producto "Suscripciones" (preapproval), no Checkout Pro: acá no se cobra
- * nada en el momento, se guarda una autorización. El primer débito lo hace MP
- * enseguida y avisa por webhook, igual que todos los que siguen.
+ * Acá vivía `crearSuscripcion`, que creaba el PreApproval desde el servidor. Eso
+ * obligaba a declarar `payer_email`, y ese campo no es una etiqueta: Mercado
+ * Pago lo resuelve contra cuentas reales y en el checkout exige iniciar sesión
+ * con una cuenta cuyo email coincida EXACTAMENTE. El socio con otro mail en
+ * Mercado Pago no podía pagar, y el que tiene la cuenta en otro país ni llegaba
+ * al checkout (400 "Payer is associated with a different site"). Y no hay email
+ * astuto que lo esquive: uno sintético pasa la CREACIÓN y recién falla al
+ * autorizar ("Tu e-mail no coincide con el de la suscripción"), así que probar
+ * la creación no prueba nada — la restricción se aplica al autorizar.
  *
- * `status: 'pending'` es a propósito: la suscripción nace pendiente y pasa a
- * `authorized` cuando el socio pone la tarjeta en el sitio de MP. Nosotros nos
- * enteramos por el aviso, no por la vuelta del navegador.
+ * Con un PreApprovalPlan la suscripción la crea MERCADO PAGO cuando el socio
+ * pasa por el checkout del plan, con la cuenta que el socio tenga: nunca
+ * nombramos al pagador, así que no hay email ni país que puedan no coincidir.
+ * El costo es la atribución (la suscripción nace sin external_reference), y lo
+ * paga la tabla `mp_member_plans`: por eso el plan es POR SOCIO, no por
+ * producto.
+ *
+ * La clave de idempotencia es aleatoria a propósito: un socio crea varios planes
+ * a lo largo del tiempo (cambia el precio, cambia de superficie), así que acá no
+ * hay ningún identificador natural que repetir.
  */
-export async function crearSuscripcion(opts: {
-  referencia: string;
+export type PlanDeSocio = { id: string; init_point: string };
+
+export async function crearPlanDeSocio(opts: {
   motivo: string;
   monto: number;
-  emailSocio: string;
   volverA: string;
-}): Promise<Suscripcion> {
+}): Promise<PlanDeSocio> {
   try {
-    const res = await new PreApproval(cliente()).create({
+    const res = await new PreApprovalPlan(cliente()).create({
       body: {
         reason: opts.motivo,
-        external_reference: opts.referencia,
-        payer_email: opts.emailSocio,
         back_url: opts.volverA,
-        status: 'pending',
         auto_recurring: {
           frequency: 1,
           frequency_type: 'months',
@@ -135,13 +142,53 @@ export async function crearSuscripcion(opts: {
           currency_id: 'ARS',
         },
       },
-      requestOptions: { idempotencyKey: opts.referencia },
+      requestOptions: { idempotencyKey: crypto.randomUUID() },
     });
-    if (!res.id || !res.init_point || !res.status) throw new Error('Mercado Pago no devolvió los datos de la suscripción');
-    return { id: res.id, init_point: res.init_point, status: res.status };
+    if (!res.id || !res.init_point) throw new Error('Mercado Pago no devolvió el plan');
+    return { id: res.id, init_point: res.init_point };
   } catch (e) {
     if (e instanceof MercadoPagoSinConfigurar) throw e;
-    return relanzar('/preapproval', e);
+    return relanzar('/preapproval_plan', e);
+  }
+}
+
+/** El plan, preguntado a Mercado Pago: para reutilizar su init_point entre
+ *  clicks en lugar de fabricar un plan nuevo por cada intento. */
+export async function traerPlanDeSocio(id: string): Promise<PlanDeSocio> {
+  try {
+    const res = await new PreApprovalPlan(cliente()).get({ preApprovalPlanId: id });
+    if (!res.id || !res.init_point) throw new Error('Mercado Pago no devolvió el plan');
+    return { id: res.id, init_point: res.init_point };
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/preapproval_plan/${id}`, e);
+  }
+}
+
+/**
+ * Escribe nuestra referencia (el id del socio) en una suscripción que creó
+ * Mercado Pago.
+ *
+ * Las suscripciones nacidas del flujo por plan llegan sin `external_reference`.
+ * El webhook las atribuye por `mp_member_plans` UNA vez y después escribe la
+ * referencia acá: así todos los avisos siguientes —y `pagos/confirmar`—
+ * resuelven por el mismo campo que usaba el flujo viejo, sin depender de la
+ * tabla de mapeo.
+ *
+ * El cast es porque el SDK no declara `external_reference` en el body del
+ * update, pero la API lo acepta (verificado contra producción). Es el mismo
+ * SDK que tipa los ocho campos del create como opcionales: el tipado acá no
+ * garantiza nada en ningún sentido.
+ */
+export async function ponerReferenciaEnSuscripcion(id: string, referencia: string): Promise<void> {
+  const api = new PreApproval(cliente()) as unknown as {
+    update(args: { id: string; body: Record<string, unknown> }): Promise<unknown>;
+  };
+  try {
+    await api.update({ id, body: { external_reference: referencia } });
+  } catch (e) {
+    if (e instanceof MercadoPagoSinConfigurar) throw e;
+    return relanzar(`/preapproval/${id}#referencia`, e);
   }
 }
 
@@ -150,7 +197,12 @@ export type SuscripcionMP = {
   status: 'pending' | 'authorized' | 'paused' | 'cancelled';
   external_reference: string | null;
   payer_email: string;
+  /** El plan del que nació, si nació de uno. El SDK no lo tipa en el get pero la
+   *  API lo devuelve: es el único identificador de una suscripción del flujo por
+   *  plan, y `mp_member_plans` dice de quién es. Tolerar null. */
+  preapproval_plan_id?: string | null;
   auto_recurring?: { transaction_amount: number };
+  next_payment_date?: string;
 };
 
 /** El estado de una suscripción, preguntado a Mercado Pago. */

@@ -1432,8 +1432,19 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
       });
       const r = await res.json().catch(() => ({}));
       if (!res.ok) { setError(r.error ?? 'No pudimos guardar el precio.'); setBusy(false); return; }
-      if (r.debitosFallidos > 0) {
-        setError(`El precio se guardó, pero ${r.debitosFallidos} ${r.debitosFallidos === 1 ? 'débito no se pudo actualizar' : 'débitos no se pudieron actualizar'} en Mercado Pago. Guardá de nuevo para reintentar.`);
+      /*
+       * "3 actualizadas, 2 esperan aprobación" en lugar de un éxito liso: son
+       * resultados distintos que piden cosas distintas. Los fallidos se
+       * reintentan guardando de nuevo; los que esperan aprobación dependen del
+       * SOCIO (Mercado Pago le pide aprobar el monto nuevo y hasta entonces le
+       * debita el anterior), así que al admin no le sirve reintentar — le sirve
+       * saber quiénes siguen pagando lo viejo.
+       */
+      const partes: string[] = [];
+      if (r.debitosFallidos > 0) partes.push(`${r.debitosFallidos} ${r.debitosFallidos === 1 ? 'débito no se pudo actualizar' : 'débitos no se pudieron actualizar'} (guardá de nuevo para reintentar)`);
+      if (r.debitosEsperandoAprobacion > 0) partes.push(`${r.debitosEsperandoAprobacion} ${r.debitosEsperandoAprobacion === 1 ? 'espera que el socio apruebe' : 'esperan que el socio apruebe'} el monto nuevo en Mercado Pago — hasta entonces se les debita el anterior`);
+      if (partes.length) {
+        setError(`El precio se guardó, pero ${partes.join(', y ')}.`);
         setBusy(false);
         return;
       }

@@ -234,10 +234,39 @@ de cada pantalla.
       `TESTUSER328791889392025651` → `test_user_328791889392025651@testuser.com`.
       Verificado contra la API: con ese email la suscripción se crea (201, con su
       `init_point`); dos variantes inventadas dieron 500, así que sirve exactamente
-      el derivado del usuario comprador. Va en `MP_PAYER_EMAIL_PRUEBA`, que ya lee
-      `api/pagos/crear/route.ts`: si está, es el pagador; si no está, va el email
-      real del socio. **El día que se cobre de verdad se BORRA esa variable y no se
-      toca código.**
+      el derivado del usuario comprador. Iba en `MP_PAYER_EMAIL_PRUEBA`.
+      **OBSOLETO desde el flujo por plan (27/08)**: el servidor ya no declara
+      ningún pagador —la suscripción la crea Mercado Pago con la cuenta con la que
+      el socio inicia sesión en el checkout—, así que la variable no la lee nadie.
+      **Borrarla de Vercel**; para probar en sandbox alcanza con entrar al checkout
+      como el comprador de prueba. El email derivado sigue siendo el dato para ESE
+      login.
+- [x] **Cobro por plan-por-socio (27/08): el mail de Mercado Pago ya no tiene que
+      coincidir con el de Kumo.** El flujo viejo creaba el PreApproval desde el
+      servidor con `payer_email`, y MP valida ese campo contra cuentas reales: en
+      el checkout exige iniciar sesión con una cuenta cuyo email coincida
+      exactamente, y el que tiene la cuenta en otro país ni llega (400 «Payer is
+      associated with a different site»). Tampoco hay email astuto: uno sintético
+      pasa la CREACIÓN y falla recién al autorizar («Tu e-mail no coincide con el
+      de la suscripción») — probar la creación no prueba nada.
+      Ahora se crea un **PreApprovalPlan POR SOCIO** (`mp_member_plans` mapea
+      `mp_plan_id` → socio) y se lo manda al init_point del plan: la suscripción
+      la crea MP con la cuenta que el socio tenga. La atribución va por el mapeo
+      —el webhook resuelve por `preapproval_plan_id` y después escribe
+      `external_reference` en la suscripción, así los avisos siguientes no
+      dependen de la tabla—. Los mapeos NO se borran al recrear un plan: un
+      checkout abierto en una pestaña vieja puede terminar en una suscripción
+      real, y sin la fila ese cobro queda sin dueño. Si aun así llega una
+      suscripción inatribuible, sale una ALERTA por mail al club, no un log.
+      Guardas nuevas en el webhook: una cancelación de una suscripción ya
+      reemplazada no pisa el perfil, y una suscripción nueva autorizada cancela a
+      la anterior viva (MP acepta dos y cobra dos).
+      **FALTA para darlo por bueno**: correr la migración
+      `20260827120000_un_plan_de_mp_por_socio.sql` (antes de deployar: el código
+      corta el pago con error si la tabla no está, a propósito), y al menos un
+      pago COMPLETO en sandbox — la mitad de las restricciones de MP se aplican
+      al autorizar, así que crear el plan no prueba nada. Ojo en local: el
+      `back_url` de MP rechaza `localhost` (400) pero acepta `127.0.0.1`.
 - [ ] **Las credenciales de MP que hacen falta son DOS, y ninguna es la que
       probamos el 18/08.** Con el token de **prueba de la cuenta real** del club
       (`TEST-…`) las suscripciones no funcionan de ninguna forma, y MP lo dice
@@ -267,7 +296,10 @@ de cada pantalla.
       después del cobro. Falta la capa que evita el olvido: un cartel en el panel
       cuando la cuenta de cobro configurada es de prueba — el dato sale de
       preguntarle a MP por la cuenta del token (`/users/me` devuelve el mail y si
-      es `test_user`). Son veinte minutos.
+      es `test_user`). Son veinte minutos. Con el flujo por plan (27/08) las
+      variables a tocar el día del cambio quedaron en DOS: el token
+      (`MP_ACCESS_TOKEN` → `APP_USR-…`) y borrar `MP_WEBHOOK_SECRET_TEST`.
+      `MP_PAYER_EMAIL_PRUEBA` ya no la lee nadie.
 - [ ] **Autorizar la GitHub App de Vercel en la organización** para tener
       deploys automáticos y preview URLs. Lo tiene que hacer un owner de la org
       del cliente; hoy cada deploy sale a mano desde el CLI.

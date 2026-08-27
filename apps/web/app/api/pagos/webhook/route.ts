@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
-import { firmaValida, traerDebito, traerSuscripcion } from '@/lib/mp';
+import { firmaValida, traerDebito, traerSuscripcion, ponerReferenciaEnSuscripcion, cancelarSuscripcion } from '@/lib/mp';
+import { sendAdminSuscripcionSinDueno } from '@/lib/mail';
 import { acreditarDebito } from '@/lib/cobrar';
 
 /**
@@ -77,13 +78,94 @@ export async function POST(req: Request) {
       console.error('[pagos/webhook] no pudimos traer la suscripción', dataId, e);
       return NextResponse.json({ error: 'No pudimos consultar la suscripción.' }, { status: 500 });
     }
-    // `external_reference` es el id del socio (lo pusimos al crearla).
-    if (!sus.external_reference) {
-      console.error('[pagos/webhook] suscripción sin external_reference', sus.id);
+    /*
+     * De quién es.
+     *
+     * Las del flujo viejo traen `external_reference` (la pusimos al crearlas).
+     * Las nacidas del flujo por plan llegan SIN referencia y sin payer_email —
+     * las crea Mercado Pago, no nosotros— y el único identificador que viaja es
+     * `preapproval_plan_id`. Como cada plan es DE UN SOCIO, `mp_member_plans`
+     * dice de quién es.
+     */
+    let memberId = sus.external_reference;
+    if (!memberId && sus.preapproval_plan_id) {
+      const { data: mapeo } = await svc
+        .from('mp_member_plans')
+        .select('member_id')
+        .eq('mp_plan_id', sus.preapproval_plan_id)
+        .maybeSingle();
+      if (mapeo) {
+        memberId = mapeo.member_id as string;
+        /*
+         * Y la referencia se escribe DE VUELTA en la suscripción: los avisos
+         * siguientes —y pagos/confirmar— resuelven por `external_reference` como
+         * siempre, sin depender de la tabla de mapeo. Si falla no pasa nada: el
+         * próximo aviso vuelve a entrar por el mapeo y lo intenta de nuevo.
+         */
+        try {
+          await ponerReferenciaEnSuscripcion(sus.id, mapeo.member_id as string);
+        } catch (e) {
+          console.error('[pagos/webhook] no pudimos escribir la referencia', sus.id, e);
+        }
+      }
+    }
+    if (!memberId) {
+      /*
+       * Suscripción sin dueño: un débito recurrente REAL que no se puede
+       * atribuir. En silencio se convierte en plata que entra sin que ningún
+       * socio reciba nada — y nadie puede reclamarla ni cancelarla. Por eso es
+       * una ALERTA al club, no un log perdido. Se contesta 200 igual: reintentar
+       * no va a hacer aparecer el mapeo.
+       */
+      console.error('[pagos/webhook] SUSCRIPCIÓN SIN DUEÑO', sus.id, '· plan', sus.preapproval_plan_id ?? 'sin plan', '· estado', sus.status);
+      void sendAdminSuscripcionSinDueno({ preapprovalId: sus.id, planMp: sus.preapproval_plan_id ?? null, estado: sus.status });
       return NextResponse.json({ ok: true, ignorado: 'sin referencia' });
     }
+
+    const { data: antes } = await svc
+      .from('profiles')
+      .select('mp_preapproval_id, mp_subscription_status')
+      .eq('id', memberId)
+      .maybeSingle();
+
+    /*
+     * Una cancelación de una suscripción que YA NO es la del socio no toca nada.
+     *
+     * Pasa de verdad: al confirmarse una suscripción nueva se cancela la
+     * anterior (acá abajo), y Mercado Pago avisa esa cancelación DESPUÉS. Sin
+     * esta guarda, ese aviso tardío pisaría en el perfil a la suscripción nueva
+     * con el estado de la vieja, y el socio que acaba de pagar aparecería como
+     * cancelado.
+     */
+    if (sus.status === 'cancelled' && antes?.mp_preapproval_id && antes.mp_preapproval_id !== sus.id) {
+      console.log('[pagos/webhook] cancelación de una suscripción reemplazada, se ignora', sus.id);
+      return NextResponse.json({ ok: true, ignorado: 'suscripción reemplazada' });
+    }
+
+    /*
+     * Red contra el doble débito: si esta suscripción quedó autorizada y el
+     * socio tenía OTRA viva, la vieja se cancela. Mercado Pago acepta las dos y
+     * cobra las dos — y un init_point viejo en una pestaña abierta llega acá
+     * sin pasar por pagos/crear, así que este es el único lugar que ve el
+     * conflicto con certeza.
+     */
+    if (
+      sus.status === 'authorized'
+      && antes?.mp_preapproval_id
+      && antes.mp_preapproval_id !== sus.id
+      && (antes.mp_subscription_status === 'authorized' || antes.mp_subscription_status === 'pending')
+    ) {
+      try {
+        await cancelarSuscripcion(antes.mp_preapproval_id);
+        console.log('[pagos/webhook] suscripción anterior cancelada', antes.mp_preapproval_id, '→ la reemplaza', sus.id);
+      } catch (e) {
+        // Si no se pudo, el socio queda con dos débitos: eso TIENE que verse.
+        console.error('[pagos/webhook] NO pudimos cancelar la suscripción anterior', antes.mp_preapproval_id, e);
+      }
+    }
+
     await svc.rpc('marcar_suscripcion', {
-      p_member_id: sus.external_reference,
+      p_member_id: memberId,
       p_preapproval_id: sus.id,
       p_status: sus.status,
     });

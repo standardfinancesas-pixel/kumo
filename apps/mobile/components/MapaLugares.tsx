@@ -37,6 +37,11 @@ export type PinMapa = {
 
 const TESELA = 256;
 const TESELAS = 'https://a.basemaps.cartocdn.com/light_all';
+/** La clave de las teselas de CARTO, que dejó de servirlas sin clave (27/08/2026):
+ *  sin esto cada tesela llega con "API KEY REQUIRED" dibujado adentro. Es pública
+ *  a propósito —viaja horneada en el bundle, atada al dominio declarado— y si
+ *  falta, el mapa muestra el cartel pero nada se rompe. */
+const CLAVE_TESELAS = process.env.EXPO_PUBLIC_CARTO_KEY ?? '';
 
 /* ── La proyección ─────────────────────────────────────────────────── */
 
@@ -189,7 +194,7 @@ export function MapaLugares({
       {teselas.map((t) => (
         <Image
           key={`${z}/${t.x}/${t.y}/${t.left}`}
-          source={{ uri: `${TESELAS}/${z}/${t.x}/${t.y}.png` }}
+          source={{ uri: `${TESELAS}/${z}/${t.x}/${t.y}.png${CLAVE_TESELAS ? `?key=${CLAVE_TESELAS}` : ''}` }}
           style={{ position: 'absolute', left: t.left, top: t.top, width: TESELA, height: TESELA }}
         />
       ))}

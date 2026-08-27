@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { cuotaMensual, urls, SITIO } from '@kumo/shared';
 import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
-import { crearSuscripcion, traerSuscripcion, cancelarSuscripcion, actualizarMontoSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
+import { crearPlanDeSocio, traerPlanDeSocio, traerSuscripcion, cancelarSuscripcion, actualizarMontoSuscripcion, MercadoPagoSinConfigurar } from '@/lib/mp';
 
 /**
  * La suscripción del socio que está pidiendo: el link para autorizar el débito
@@ -50,6 +50,8 @@ export async function POST(req: Request) {
   const svc = getServiceClient();
   let plan = Array.isArray(perfil.plans) ? perfil.plans[0] : perfil.plans;
   let odonto = perfil.addon_odonto === true;
+  // El id del plan del club (no el de MP): el mapeo de `mp_member_plans` lo lleva.
+  let planId = (perfil.plan_id as string | null) ?? null;
 
   /*
    * Si eligió plan (o tocó el add-on) en el muro, se lo guarda en el perfil: es
@@ -64,6 +66,7 @@ export async function POST(req: Request) {
     if (!planRow) return NextResponse.json({ error: 'Ese plan no existe.' }, { status: 400 });
     odonto = elegido.odonto === true;
     plan = { name: planRow.name, base_price: planRow.base_price };
+    planId = planRow.id;
     await svc.from('profiles').update({
       plan_id: planRow.id,
       addon_odonto: odonto,
@@ -116,7 +119,7 @@ export async function POST(req: Request) {
        */
       if (!mismoMonto && vieja.status === 'authorized') {
         try {
-          await actualizarMontoSuscripcion(vieja.id, monto, `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}`);
+          await actualizarMontoSuscripcion(vieja.id, monto, `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}${odonto ? ' + odontología' : ''}`);
           console.log('[pagos/crear] débito actualizado', vieja.id, '→', monto);
           return NextResponse.json({ actualizada: true, monto, hasta: perfil.paid_until });
         } catch (e) {
@@ -144,67 +147,110 @@ export async function POST(req: Request) {
     }
   }
 
+  /*
+   * Sin plan del club identificado no se arma nada: el mapeo que sostiene la
+   * atribución (`mp_member_plans`) necesita saber QUÉ contrató, y un link de pago
+   * sin ese dato es una suscripción que después no se puede explicar. En la
+   * práctica no pasa —el muro y la hoja mandan siempre el nombre del plan— pero
+   * si pasa, mejor este error que un cobro huérfano.
+   */
+  if (!planId) {
+    return NextResponse.json({ error: 'Elegí un plan antes de pagar.' }, { status: 409 });
+  }
+
+  /*
+   * A dónde vuelve al terminar. Si vino de la app, NO a la webapp: en el
+   * navegador del teléfono no hay sesión, así que /app lo rebotaba a la portada.
+   * Y el del alta no es un lujo: si la vuelta fuera a /app, el socio que recién
+   * se dio de alta nunca vería la pantalla final con el carnet de sus mascotas.
+   *
+   * OJO: sin query propia. Mercado Pago agrega SUS parámetros con `?` aunque ya
+   * haya uno, y la vuelta se reconoce por el `preapproval_id` que agrega MP.
+   */
+  const volverA = quien.desdeLaApp
+    ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/suscripcion/listo`
+    : elegido.desde === 'alta'
+      ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/alta/listo`
+      : `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}`;
+
+  /*
+   * El link de pago es el checkout de UN PLAN DE ESTE SOCIO, no una suscripción
+   * creada por nosotros (el porqué completo está en `crearPlanDeSocio`: el
+   * payer_email del flujo viejo exigía que el mail de Mercado Pago coincidiera
+   * con el de Kumo, y eso dejaba afuera a gente real).
+   *
+   * ¿Ya le habíamos armado un plan igual? Se reutiliza: mismo plan del club,
+   * mismo add-on, mismo monto y misma vuelta. Si cambió cualquiera de esos, se
+   * crea otro — los planes viejos quedan en Mercado Pago como filas inertes, y
+   * sus mapeos NO se borran: un checkout abierto en otra pestaña sobre un link
+   * viejo puede terminar en una suscripción real, y sin el mapeo ese cobro no
+   * se podría atribuir a nadie.
+   */
+  const { data: previos, error: ePrevios } = await svc
+    .from('mp_member_plans')
+    .select('mp_plan_id, amount, back_url')
+    .eq('member_id', perfil.id)
+    .eq('plan_id', planId)
+    .eq('addon_odonto', odonto)
+    .order('created_at', { ascending: false })
+    .limit(1);
+  if (ePrevios) {
+    // Si la tabla no está o no se puede leer, acá se corta: seguir de largo
+    // terminaría creando un plan al que después no se le puede poner dueño.
+    console.error('[pagos/crear] no pudimos leer mp_member_plans', ePrevios);
+    return NextResponse.json({ error: 'No pudimos preparar el pago. Probá de nuevo en un rato.' }, { status: 500 });
+  }
+
+  const previo = previos?.[0];
+  if (previo && previo.amount === Math.round(monto) && previo.back_url === volverA) {
+    try {
+      const actual = await traerPlanDeSocio(previo.mp_plan_id);
+      return NextResponse.json({ initPoint: actual.init_point, monto });
+    } catch (e) {
+      // El plan guardado no se pudo traer: se crea otro. El mapeo viejo queda.
+      console.error('[pagos/crear] plan guardado ilegible, se crea otro', previo.mp_plan_id, e);
+    }
+  }
+
   try {
-    const sus = await crearSuscripcion({
-      // La referencia es el socio: los avisos de los débitos vienen con el id de la
-      // suscripción, y así se puede cruzar por los dos lados.
-      referencia: perfil.id,
-      motivo: `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}`,
+    const creado = await crearPlanDeSocio({
+      // Con el add-on, el cargo es $12.000 más alto que el precio publicado del
+      // plan: si el resumen de la tarjeta no dice por qué, ese es exactamente el
+      // cargo que el socio desconoce.
+      motivo: `Cuota Kumo${plan?.name ? ` · plan ${plan.name}` : ''}${odonto ? ' + odontología' : ''}`,
       monto,
-      /*
-       * En sandbox el pagador tiene que ser el COMPRADOR de prueba: Mercado Pago
-       * exige que cobrador y pagador sean los dos reales o los dos de prueba, y
-       * con el email real del socio la creación da 400/500 (Biomea chocó con
-       * esto). `MP_PAYER_EMAIL_PRUEBA` se setea SOLO mientras el token cargado es
-       * el del vendedor de prueba; en producción no existe y va el email real.
-       */
-      emailSocio: process.env.MP_PAYER_EMAIL_PRUEBA || perfil.email,
-      /*
-       * A dónde vuelve al terminar. Si vino de la app, NO a la webapp: en el
-       * navegador del teléfono no hay sesión, así que /app lo rebotaba a la
-       * portada y quedaba mirando la landing sin saber si el pago salió. Va a una
-       * página que le dice que vuelva a la app, con un botón que la abre.
-       */
-      /*
-       * OJO: sin query propia.
-       *
-       * Mercado Pago le agrega SUS parámetros a esta URL, y los agrega con `?`
-       * aunque ya haya uno. Con `?suscripcion=ok` la vuelta terminaba en
-       * `...?suscripcion=ok?preapproval_id=xxx`, que para el navegador es un solo
-       * parámetro llamado `suscripcion` con valor `ok?preapproval_id=xxx`: se pierde
-       * lo que MP quiso decir y tampoco se puede leer lo nuestro.
-       *
-       * La webapp reconoce la vuelta por el `preapproval_id` que agrega MP, así que
-       * no hace falta marcarla nosotros.
-       */
-      /*
-       * Tres destinos, y el del alta no es un lujo: si la vuelta del pago fuera a
-       * /app, el socio que recien se dio de alta nunca veria la pantalla final con el
-       * carnet de sus mascotas — se la saltearia justo despues de pagar.
-       */
-      volverA: quien.desdeLaApp
-        ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/suscripcion/listo`
-        : elegido.desde === 'alta'
-          ? `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}/alta/listo`
-        : `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${urls.webapp}`,
+      volverA,
     });
 
-    // El estado y el id los escribe el servidor con la service-role key, y el
-    // trigger del perfil solo lo deja pasar con el flag: el socio no puede
-    // declararse suscripto desde el navegador.
-    await svc.rpc('marcar_suscripcion', {
-      p_member_id: perfil.id,
-      p_preapproval_id: sus.id,
-      p_status: sus.status ?? 'pending',
+    /*
+     * El mapeo se guarda ANTES de entregar el link, y si no se puede guardar el
+     * link NO se entrega: un pago que entra por un plan sin mapeo es un débito
+     * recurrente real que no se puede atribuir a nadie. El plan recién creado
+     * queda huérfano en Mercado Pago, pero huérfano e INERTE — nadie tiene su
+     * init_point.
+     */
+    const { error: eMapeo } = await svc.from('mp_member_plans').insert({
+      mp_plan_id: creado.id,
+      member_id: perfil.id,
+      plan_id: planId,
+      addon_odonto: odonto,
+      amount: Math.round(monto),
+      back_url: volverA,
     });
+    if (eMapeo) {
+      console.error('[pagos/crear] no pudimos guardar el mapeo del plan', creado.id, eMapeo);
+      return NextResponse.json({ error: 'No pudimos preparar el pago. Probá de nuevo en un rato.' }, { status: 500 });
+    }
 
-    return NextResponse.json({ initPoint: sus.init_point, monto });
+    // Nada de `marcar_suscripcion` acá: todavía no HAY suscripción. La crea
+    // Mercado Pago cuando el socio pasa por el checkout, y nos llega por webhook.
+    return NextResponse.json({ initPoint: creado.init_point, monto });
   } catch (e) {
     if (e instanceof MercadoPagoSinConfigurar) {
       console.error('[pagos/crear]', e.message);
       return NextResponse.json({ error: 'El cobro todavía no está configurado. Escribinos por WhatsApp y lo resolvemos.' }, { status: 503 });
     }
-    console.error('[pagos/crear] suscripción', e);
+    console.error('[pagos/crear] plan del socio', e);
     return NextResponse.json({ error: 'No pudimos abrir la suscripción. Probá de nuevo en un rato.' }, { status: 502 });
   }
 }

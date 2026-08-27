@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { quienPide } from '@/lib/quien-pide';
 import { getServiceClient } from '@/lib/supabase-service';
-import { MercadoPagoSinConfigurar, buscarDebitos, traerSuscripcion } from '@/lib/mp';
+import { MercadoPagoSinConfigurar, buscarDebitos, traerSuscripcion, ponerReferenciaEnSuscripcion } from '@/lib/mp';
 import { acreditarDebito } from '@/lib/cobrar';
 
 /**
@@ -67,8 +67,36 @@ export async function POST(req: Request) {
   }
 
   if (sus.external_reference !== socio.id) {
-    console.error('[pagos/confirmar] suscripción de otro socio', id, sus.external_reference, '≠', socio.id);
-    return NextResponse.json({ error: 'Esa suscripción no es tuya.' }, { status: 403 });
+    /*
+     * Sin referencia no es (todavía) de nadie: una suscripción nacida del flujo
+     * por plan llega SIN external_reference, y la referencia la escribe el
+     * webhook al atribuirla. Esta pantalla existe justamente para ganarle a esa
+     * latencia (2,9 segundos medidos entre que MP crea la suscripción y que el
+     * webhook la deja lista), así que acá se resuelve igual que allá: el
+     * `preapproval_plan_id` contra `mp_member_plans`, que dice de quién es el
+     * plan. Y tiene que dar ESTE socio — el preapproval_id vino por la URL, así
+     * que sigue siendo texto que escribe cualquiera.
+     */
+    let dueno: string | null = null;
+    if (!sus.external_reference && sus.preapproval_plan_id) {
+      const { data: mapeo } = await svc
+        .from('mp_member_plans')
+        .select('member_id')
+        .eq('mp_plan_id', sus.preapproval_plan_id)
+        .maybeSingle();
+      dueno = (mapeo?.member_id as string | undefined) ?? null;
+    }
+    if (dueno !== socio.id) {
+      console.error('[pagos/confirmar] suscripción de otro socio', id, sus.external_reference ?? 'sin referencia', '≠', socio.id);
+      return NextResponse.json({ error: 'Esa suscripción no es tuya.' }, { status: 403 });
+    }
+    // Es suya: se deja escrita la referencia, como haría el webhook. Mejor
+    // esfuerzo — si falla, el webhook lo reintenta con el próximo aviso.
+    try {
+      await ponerReferenciaEnSuscripcion(sus.id, socio.id);
+    } catch (e) {
+      console.error('[pagos/confirmar] no pudimos escribir la referencia', sus.id, e);
+    }
   }
 
   // El estado de la suscripción se guarda siempre, incluso si todavía no hay cobro:

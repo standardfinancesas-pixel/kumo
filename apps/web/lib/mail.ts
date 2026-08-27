@@ -705,3 +705,32 @@ export async function sendAdminAltaNueva(opts: {
   const text = `${socio}${memberNo ? ` es el socio #${memberNo}` : ' se dio de alta'}.\n\nContacto: ${email}\nPlan: ${conPlan ? plan : 'ninguno, entró gratis'}${mascotas.length ? `\nMascotas: ${listar(mascotas)}` : ''}`;
   return enviar(to, conPlan ? `Socio nuevo: ${socio} (${plan})` : `Alta sin plan: ${socio}`, layoutAdmin('Alta nueva', cuerpo, verPanel('?s=socios')), text);
 }
+
+/**
+ * Llegó una suscripción y no sabemos de quién es.
+ *
+ * Es el caso más serio del flujo de cobro por plan: un débito recurrente REAL
+ * sin socio asociado. En silencio se convierte en plata que entra todos los
+ * meses sin que nadie reciba nada a cambio — y la persona que paga no figura en
+ * ningún lado, así que ni el club puede cancelarle el débito ni ella puede
+ * reclamar. Por eso esto es un mail y no un log: un log perdido entre el ruido
+ * es exactamente cómo este caso se vuelve invisible.
+ *
+ * No debería pasar nunca: pagos/crear no entrega un link sin guardar antes el
+ * mapeo. Si pasó, algo se rompió en el medio y hay que mirarlo YA — la
+ * suscripción se cancela desde el panel de Mercado Pago con el id que va acá.
+ */
+export async function sendAdminSuscripcionSinDueno(opts: {
+  preapprovalId: string; planMp: string | null; estado: string;
+}) {
+  const to = await mailDelClub();
+  if (!to) return { skipped: true as const };
+  const { preapprovalId, planMp, estado } = opts;
+  const cuerpo = `
+    ${h1('Llegó una suscripción sin dueño')}
+    ${par('Mercado Pago avisó de una suscripción que <strong>no podemos atribuir a ningún socio</strong>. Es un débito recurrente real: alguien va a pagar todos los meses sin recibir nada, y no figura en el panel.')}
+    ${caja(`${filaChica('Suscripción (preapproval)')}${filaMedia(esc(preapprovalId))}${filaChica('Plan de Mercado Pago')}${filaMedia(planMp ? esc(planMp) : 'sin plan — tampoco nació del flujo por plan')}${filaChica('Estado')}${filaMedia(esc(estado))}`)}
+    ${par('Qué hacer: buscar la suscripción por ese id en el panel de Mercado Pago para ver quién la pagó, y si no se puede resolver, cancelarla ahí mismo — es preferible devolver un mes que seguir debitándole a alguien invisible.', true)}`;
+  const text = `Llegó una suscripción sin dueño.\n\nPreapproval: ${preapprovalId}\nPlan MP: ${planMp ?? 'sin plan'}\nEstado: ${estado}\n\nBuscarla en el panel de Mercado Pago y, si no se puede atribuir, cancelarla ahí.`;
+  return enviar(to, 'Suscripción sin dueño en Mercado Pago', layoutAdmin('Suscripción sin dueño', cuerpo), text);
+}

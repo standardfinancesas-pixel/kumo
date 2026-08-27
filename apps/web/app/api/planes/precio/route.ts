@@ -59,6 +59,7 @@ export async function POST(req: Request) {
 
   let debitosActualizados = 0;
   let debitosFallidos = 0;
+  let debitosEsperandoAprobacion = 0;
   let mails = 0;
 
   for (const socio of socios ?? []) {
@@ -72,8 +73,39 @@ export async function POST(req: Request) {
     let debitoOk = true;
     if (viva) {
       try {
-        await actualizarMontoSuscripcion(socio.mp_preapproval_id as string, cuota);
-        debitosActualizados++;
+        /*
+         * El motivo se manda SIEMPRE, no solo cuando cambia el plan del socio: es
+         * lo que la persona ve en su resumen de la tarjeta, y este update es la
+         * única oportunidad de refrescarlo. Sin esto, una suscripción vieja seguía
+         * diciendo el nombre de antes —o callándose el add-on— por años.
+         */
+        const r = await actualizarMontoSuscripcion(
+          socio.mp_preapproval_id as string,
+          cuota,
+          `Cuota Kumo · plan ${plan.name}${socio.addon_odonto === true ? ' + odontología' : ''}`,
+        );
+        /*
+         * El estado que DEVUELVE el update es la verdad, no una formalidad: un
+         * aumento puede sacar la suscripción de `authorized` y dejarla esperando
+         * que el socio apruebe el monto nuevo — hasta entonces Mercado Pago le
+         * sigue debitando el anterior. A esos NO se les escribe la cuota nueva ni
+         * se les manda el mail: el perfil tiene que decir lo que MP va a debitar
+         * de verdad. El reintento es el mismo de los fallidos (guardar el precio
+         * de nuevo re-pregunta), y el estado real queda en el perfil, que es de
+         * donde la app le muestra al socio que tiene algo pendiente.
+         */
+        if (r.status === 'authorized') {
+          debitosActualizados++;
+        } else {
+          debitoOk = false;
+          debitosEsperandoAprobacion++;
+          await svc.rpc('marcar_suscripcion', {
+            p_member_id: socio.id,
+            p_preapproval_id: socio.mp_preapproval_id,
+            p_status: r.status,
+          });
+          console.warn('[planes/precio] la suscripción de', socio.id, 'quedó', r.status, ': espera aprobación del socio');
+        }
       } catch (e) {
         debitoOk = false;
         debitosFallidos++;
@@ -108,6 +140,6 @@ export async function POST(req: Request) {
     }
   }
 
-  console.log(`[planes/precio] ${plan.name}: $${plan.base_price} → $${monto} · ${socios?.length ?? 0} socios · ${debitosActualizados} débitos ok · ${debitosFallidos} fallidos · ${mails} mails`);
-  return NextResponse.json({ ok: true, socios: socios?.length ?? 0, debitosActualizados, debitosFallidos, mails });
+  console.log(`[planes/precio] ${plan.name}: $${plan.base_price} → $${monto} · ${socios?.length ?? 0} socios · ${debitosActualizados} débitos ok · ${debitosEsperandoAprobacion} esperan aprobación · ${debitosFallidos} fallidos · ${mails} mails`);
+  return NextResponse.json({ ok: true, socios: socios?.length ?? 0, debitosActualizados, debitosEsperandoAprobacion, debitosFallidos, mails });
 }

@@ -117,6 +117,27 @@ export type Payment = {
 };
 
 /**
+ * Un PreApprovalPlan de Mercado Pago creado para UN socio (`mp_member_plans`).
+ *
+ * Es la pieza que sostiene la atribución del flujo de suscripción por plan: una
+ * suscripción nacida del checkout de un plan llega al webhook sin
+ * `external_reference` y sin `payer_email` — el único identificador que viaja es
+ * el id del plan. Esta fila dice de quién es. Solo la toca el servidor.
+ */
+export type MpMemberPlan = {
+  /** El id del plan en Mercado Pago: lo que vuelve como `preapproval_plan_id`. */
+  mpPlanId: string;
+  memberId: string;
+  planId: string;
+  addonOdonto: boolean;
+  /** La cuota con la que se creó (ARS). Si el precio cambió, el plan no se reutiliza. */
+  amount: number;
+  /** A dónde vuelve el socio: el plan lo fija al crearse y cambia por superficie. */
+  backUrl: string;
+  createdAt: string;
+};
+
+/**
  * Declaración jurada de salud firmada en el alta. Inmutable: se inserta y se
  * lee, nunca se edita (ver las políticas de `health_declarations`).
  */

@@ -133,7 +133,15 @@ export function MapaPrestadores({
         scrollWheelZoom: false,
         attributionControl: true,
       });
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+      /*
+       * La clave va en la URL y es PÚBLICA a propósito: CARTO dejó de servir
+       * teselas sin clave (27/08/2026 — de un día para otro los mapas de las dos
+       * superficies mostraron "API KEY REQUIRED" dibujado en cada tesela) y su
+       * clave es de las que viajan al navegador, atada al dominio declarado al
+       * pedirla. Sin la variable, el mapa muestra ese cartel — feo pero no rompe
+       * nada, y así el deploy no depende de tener la clave ya.
+       */
+      L.tileLayer(`https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png${process.env.NEXT_PUBLIC_CARTO_KEY ? `?key=${process.env.NEXT_PUBLIC_CARTO_KEY}` : ''}`, {
         subdomains: 'abcd',
         maxZoom: 20,
         // En pantallas retina pide las teselas @2x: sin esto el mapa se ve borroso

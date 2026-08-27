@@ -400,6 +400,37 @@ create table if not exists push_tokens (
 );
 create index if not exists push_tokens_member_idx on push_tokens(member_id);
 
+-- ============================================================
+--  Mercado Pago: un plan de suscripción POR SOCIO
+-- ============================================================
+create table if not exists mp_member_plans (
+  -- Lo que devuelve el webhook en `preapproval_plan_id`: es la llave del cruce.
+  mp_plan_id   text primary key,
+  member_id    uuid    not null references profiles(id) on delete cascade,
+  plan_id      uuid    not null references plans(id)    on delete cascade,
+  addon_odonto boolean not null default false,
+  -- La cuota con la que se creó el plan (ARS). Si el precio cambió, el plan
+  -- guardado ya no sirve y se crea otro: comparar este número es lo que lo dice.
+  amount       integer not null,
+  -- A dónde vuelve el socio al terminar. Va acá porque el plan lo fija al
+  -- crearse y la vuelta es distinta según la superficie (webapp, app, alta):
+  -- reutilizar un plan con otra vuelta mandaría al socio al lugar equivocado.
+  back_url     text    not null,
+  created_at   timestamptz not null default now()
+);
+
+create index if not exists mp_member_plans_member_idx on mp_member_plans(member_id);
+
+-- Sin políticas a propósito: esta tabla la leen y escriben solo los route
+-- handlers con la service-role (pagos/crear, el webhook y pagos/confirmar).
+-- Ningún cliente tiene nada que hacer acá — un socio que pudiera escribirla se
+-- atribuiría los pagos de otro.
+alter table mp_member_plans enable row level security;
+
+comment on table mp_member_plans is
+  'Un PreApprovalPlan de Mercado Pago por socio. El webhook resuelve de quién es una suscripción nacida del flujo por plan cruzando preapproval_plan_id contra esta tabla. Solo service-role.';
+
+
 -- El cron de vacunas corre todos los días y una vacuna vence una sola vez: sin
 -- esta marca, el socio recibiría el mismo aviso cada mañana durante un mes.
 create table if not exists vaccine_reminders (
