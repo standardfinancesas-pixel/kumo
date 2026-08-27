@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, TextInput, TouchableOpacity, View, Image, type ImageSourcePropType } from 'react-native';
+import { ScrollView, TextInput, TouchableOpacity, View, Image, type ImageSourcePropType, Platform } from 'react-native';
 import { colors } from '@kumo/shared';
 import { supabase } from '../lib/supabase';
 import { Texto as Text, FH, FREG, BRAND, LIME, INK, MUTED } from './ui/Texto';
@@ -79,13 +79,23 @@ export default function Login({ onAlta, onRecuperar }: { onAlta: () => void; onR
         <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>{busy ? 'Ingresando…' : 'Ingresar'}</Text>
       </TouchableOpacity>
 
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 }}>
-        <View style={{ flex: 1, height: 1, backgroundColor: colors.violet[100] }} />
-        <Text style={{ fontSize: 12.5, color: MUTED }}>o</Text>
-        <View style={{ flex: 1, height: 1, backgroundColor: colors.violet[100] }} />
-      </View>
+      {/* Google NO se ofrece en iOS, y no es una falta de cariño por Apple: su
+          regla 4.8 dice que una app con login de terceros TIENE que ofrecer
+          también "Sign in with Apple", y no lo tenemos (todavía). Sin login de
+          terceros, la regla no aplica: en iOS se entra con mail y contraseña, y
+          Google sigue en Android y en la web. El día que se agregue Sign in with
+          Apple, este Platform.OS se saca y vuelven los dos. */}
+      {Platform.OS !== 'ios' && (
+        <>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginVertical: 20 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.violet[100] }} />
+            <Text style={{ fontSize: 12.5, color: MUTED }}>o</Text>
+            <View style={{ flex: 1, height: 1, backgroundColor: colors.violet[100] }} />
+          </View>
 
-      <BotonGoogle onError={setErr} />
+          <BotonGoogle onError={setErr} />
+        </>
+      )}
 
       <View style={{ backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 14, padding: 16, marginTop: 24 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>

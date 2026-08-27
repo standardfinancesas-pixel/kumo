@@ -10,8 +10,11 @@
     "backgroundColor": "#F7F6FA",
     "icon": "./assets/icon.png",
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "pet.kumo.app"
+      "supportsTablet": false,
+      "bundleIdentifier": "pet.kumo.app",
+      "config": {
+        "usesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "pet.kumo.app",
@@ -29,7 +32,8 @@
       "notaGoogleServices": "google-services.json es la config de cliente de Firebase (proyecto kumo-b79fb). Va commiteado a propósito: no es un secreto —la api_key de ahí es un identificador público— y EAS solo sube al build lo que está en git. Lo secreto es la clave privada de la cuenta de servicio, que vive en las credenciales de EAS y nunca en el repo. (Antes esta nota estaba como clave '//googleServicesFile' dentro de android; desde el SDK 57 el schema rechaza claves desconocidas ahí, y 'extra' sí las admite.)",
       "eas": {
         "projectId": "84ac9b9a-0447-407c-b4c3-3854f1f0db83"
-      }
+      },
+      "notaIOS": "supportsTablet en false a propósito: la app está diseñada para teléfono, y con true App Store Connect exige capturas de iPad y el revisor la evalúa en iPad. usesNonExemptEncryption en false declara que solo se usa HTTPS estándar (la exención de exportación de siempre): sin esto, App Store Connect pregunta por el cifrado en CADA build que se sube."
     },
     "plugins": [
       "expo-font",
@@ -47,7 +51,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#5D5491"
         }
-      ]
+      ],
+      "expo-asset"
     ],
     "runtimeVersion": {
       "policy": "appVersion"
