@@ -23,7 +23,7 @@ import { useEsperarPago } from './lib/esperarPago';
 import { resolverFuente } from './lib/tipografia';
 import { elegirYSubirFoto } from './lib/subirFoto';
 import { avisar } from './lib/avisos';
-import { recalcularUbicacion, ubicarNegocio } from './lib/api';
+import { confirmarSuscripcion, recalcularUbicacion, ubicarNegocio } from './lib/api';
 import { CampoDomicilio, CampoZona } from './components/ui/CampoDomicilio';
 import { SelloCarnet } from './components/ui/SelloCarnet';
 import { MapaLugares } from './components/MapaLugares';
@@ -3993,6 +3993,11 @@ export default function App() {
    * (la app estaba cerrada y el link la abrió) y el listener, cuando ya estaba
    * abierta en segundo plano. Con uno solo, la mitad de los casos no anda.
    */
+  /** `reload` cambia por render y el efecto de los links corre una sola vez: la
+   *  ref es lo que deja llamar a la versión viva sin re-suscribir el listener. */
+  const refReload = useRef<(() => void) | null>(null);
+  refReload.current = reload;
+
   useEffect(() => {
     let vivo = true;
     const atender = async (url: string | null) => {
@@ -4001,6 +4006,21 @@ export default function App() {
       if (!r || !vivo) return;
       if (r.tipo === 'error') { setLinkFallado(r.motivo); setRecuperando(true); return; }
       if (r.tipo === 'recuperar') { setLinkFallado(null); setRecuperando(true); }
+      /*
+       * La vuelta del pago. El id viaja en el link porque con el cobro por plan
+       * el perfil no conoce la suscripción hasta el webhook (~25 segundos): sin
+       * esto, la app recargaba desde la base, la base no sabía nada todavía, y
+       * el socio veía su plan inactivo hasta refrescar a mano. `confirmar` le
+       * pregunta a Mercado Pago directo con este id, acredita en el momento
+       * (verifica del lado del servidor que la suscripción sea de esta sesión)
+       * y recién entonces se recarga — el orden importa: recargar primero es
+       * volver a leer el estado viejo.
+       */
+      if (r.tipo === 'pago') {
+        await confirmarSuscripcion(r.preapprovalId);
+        refReload.current?.();
+        return;
+      }
       // Google no necesita nada más: la sesión ya quedó puesta y
       // `onAuthStateChange` se encarga del resto.
     };
@@ -4026,7 +4046,17 @@ export default function App() {
    */
   useEffect(() => {
     const sub = AppState.addEventListener('change', (estado) => {
-      if (estado === 'active' && userId) reload();
+      if (estado !== 'active' || !userId) return;
+      /*
+       * Confirmar ANTES de recargar, no solo recargar. El que vuelve del
+       * navegador sin tocar el botón de /suscripcion/listo (cambió de app a
+       * mano) no trae deep link, y recargar solo lee la base — que hasta que
+       * llega el webhook no sabe del pago. `confirmar` sin id le pregunta a
+       * Mercado Pago por la suscripción que el perfil ya tenga, acredita lo que
+       * esté aprobado y de paso repone cualquier aviso que se haya perdido. Para
+       * el socio sin suscripción es un pedido que vuelve enseguida vacío.
+       */
+      void confirmarSuscripcion().finally(() => reload());
     });
     return () => sub.remove();
   }, [userId, reload]);

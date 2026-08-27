@@ -18,11 +18,25 @@ import { useEffect, useState } from 'react';
  */
 export default function SuscripcionListo() {
   const [saltoFallado, setSaltoFallado] = useState(false);
+  /*
+   * El `preapproval_id` que Mercado Pago agrega a esta URL VIAJA a la app dentro
+   * del deep link, y no es un adorno: con el cobro por plan, el perfil no conoce
+   * la suscripción hasta que llega el webhook (~25 segundos medidos). La web se
+   * confirma sola porque manda este id a /api/pagos/confirmar; la app lo tiraba
+   * acá —el link era `kumo://` pelado— y volvía ciega: recargaba desde la base,
+   * la base todavía no sabía nada, y el socio veía su plan inactivo hasta
+   * refrescar a mano. Con el id adentro, la app confirma contra Mercado Pago en
+   * el acto, igual que la web.
+   */
+  const [linkApp, setLinkApp] = useState('kumo://pago');
 
   useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('preapproval_id');
+    const destino = id ? `kumo://pago?preapproval_id=${encodeURIComponent(id)}` : 'kumo://pago';
+    setLinkApp(destino);
     // El intento automático. Si el navegador lo bloquea no hay error que capturar:
     // simplemente no pasa nada, y por eso a los 2 segundos se muestra el botón.
-    const t = setTimeout(() => { window.location.href = 'kumo://'; }, 400);
+    const t = setTimeout(() => { window.location.href = destino; }, 400);
     const t2 = setTimeout(() => setSaltoFallado(true), 2400);
     return () => { clearTimeout(t); clearTimeout(t2); };
   }, []);
@@ -44,7 +58,7 @@ export default function SuscripcionListo() {
           Tu acceso se activa en cuanto Mercado Pago nos confirme el pago. Si tarda un momento, <strong>no hace falta pagar de nuevo</strong>.
         </p>
         <a
-          href="kumo://"
+          href={linkApp}
           style={{ display: 'block', background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, textDecoration: 'none' }}
         >
           Abrir Kumo

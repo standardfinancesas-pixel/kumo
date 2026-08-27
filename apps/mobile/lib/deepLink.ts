@@ -17,6 +17,7 @@ import { supabase } from './supabase';
 
 export type LinkEntrante =
   | { tipo: 'recuperar' | 'google' }
+  | { tipo: 'pago'; preapprovalId: string | null }
   | { tipo: 'error'; motivo: string }
   | null;
 
@@ -38,6 +39,19 @@ export async function resolverURL(url: string): Promise<LinkEntrante> {
 
   const p = parametros(url);
   const camino = ruta(url);
+
+  /*
+   * La vuelta de Mercado Pago (`kumo://pago?preapproval_id=…`, la arma
+   * /suscripcion/listo). Trae el id de la suscripción recién autorizada, y hace
+   * falta DE VERDAD: con el cobro por plan, el perfil no conoce la suscripción
+   * hasta el webhook, así que sin este id la app no tiene qué preguntarle a
+   * Mercado Pago y se queda mostrando el plan inactivo. El id no da acceso —el
+   * servidor verifica que la suscripción sea de quien pregunta— así que traerlo
+   * en una URL no es un riesgo, igual que en la web.
+   */
+  if (camino.startsWith('pago')) {
+    return { tipo: 'pago', preapprovalId: p.get('preapproval_id') };
+  }
   // `nueva-clave` viene del mail; cualquier otra cosa con sesión es Google.
   const tipo = camino.startsWith('nueva-clave') ? 'recuperar' : 'google';
 
@@ -70,7 +84,7 @@ export async function resolverURL(url: string): Promise<LinkEntrante> {
       : { tipo: 'recuperar' };
   }
 
-  // Abrió la app por el esquema pero sin nada adentro (por ejemplo, la vuelta de
-  // Mercado Pago, que es solo `kumo://`). No es un error: no hay nada que hacer.
+  // Abrió la app por el esquema pero sin nada adentro (un `kumo://` pelado, como
+  // era la vuelta de Mercado Pago antes de que trajera el id). No es un error.
   return null;
 }

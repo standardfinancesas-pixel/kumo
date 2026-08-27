@@ -183,7 +183,14 @@ export async function crearSuscripcion(opts: { plan: string; odonto: boolean; de
  * curso y el webhook termina el trabajo. Que la consulta falle no es un pago
  * fallido, y decírselo al socio sería asustarlo por nada.
  */
-export async function confirmarSuscripcion(): Promise<{ hasta: string | null; acreditado: boolean } | null> {
+/**
+ * `preapprovalId` viene del deep link de la vuelta de Mercado Pago, y le sirve al
+ * servidor cuando el perfil todavía no tiene ninguna suscripción guardada — que
+ * con el cobro por plan es SIEMPRE en la primera vuelta: la suscripción la crea
+ * MP y el perfil se entera por el webhook, segundos después. Es el mismo dato que
+ * la web ya mandaba (lib/confirmarPago.ts lo saca de su URL).
+ */
+export async function confirmarSuscripcion(preapprovalId?: string | null): Promise<{ hasta: string | null; acreditado: boolean } | null> {
   try {
     const { data: ses } = await supabase.auth.getSession();
     const token = ses.session?.access_token;
@@ -191,7 +198,7 @@ export async function confirmarSuscripcion(): Promise<{ hasta: string | null; ac
     const res = await fetch(`${apiKumo}/api/pagos/confirmar`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({}),
+      body: JSON.stringify(preapprovalId ? { preapprovalId } : {}),
     });
     if (!res.ok) return null;
     return (await res.json()) as { hasta: string | null; acreditado: boolean };
