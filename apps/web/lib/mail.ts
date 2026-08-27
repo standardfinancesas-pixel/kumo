@@ -695,15 +695,24 @@ export async function sendAdminAltaNueva(opts: {
   if (!to) return { skipped: true as const };
   const { socio, memberNo, email, mascotas, plan } = opts;
   const conPlan = !!plan;
+  /*
+   * OJO con lo que este mail puede y no puede afirmar: al momento del alta el
+   * pago NUNCA ocurrió todavía — la pantalla final manda a Mercado Pago recién
+   * después. "Plan FAMILIA" acá es lo que ELIGIÓ, no lo que tiene: hasta que el
+   * primer cobro se acredite, el panel lo muestra como gratuito, y decir "se
+   * sumó un socio FAMILIA" hacía que el club fuera a mirarlo y encontrara otra
+   * cosa (pasó, con el socio #17). El texto ahora dice las dos verdades y qué
+   * significa cada una.
+   */
   const cuerpo = `
-    ${h1(conPlan ? 'Se sumó un socio nuevo' : 'Alta nueva, sin plan')}
+    ${h1(conPlan ? 'Alta nueva, eligió plan' : 'Alta nueva, sin plan')}
     ${par(`<strong>${esc(socio)}</strong>${memberNo ? ` es el socio #${memberNo}` : ' se dio de alta'}${mascotas.length ? ` y cargó ${mascotas.length === 1 ? 'a' : 'a'} ${esc(listar(mascotas))}` : ''}.`)}
-    ${caja(`${filaChica('Contacto')}${filaMedia(esc(email))}${filaChica('Plan')}${filaMedia(conPlan ? esc(plan!) : 'Ninguno — entró gratis')}`)}
+    ${caja(`${filaChica('Contacto')}${filaMedia(esc(email))}${filaChica('Plan')}${filaMedia(conPlan ? `Eligió ${esc(plan!)} — el pago se hace a continuación, por Mercado Pago` : 'Ninguno — entró gratis')}`)}
     ${conPlan
-      ? par('Ya se le mandó la bienvenida. Si querés escribirle a mano, ahora es cuando más atención te va a dar.', true)
+      ? par('Hasta que el primer cobro se acredite, en el panel figura como <strong>gratuito</strong>: es lo esperado, no un error. Si mañana sigue así, eligió el plan pero no terminó el pago — y esa es la llamada que más vale la pena hacer.', true)
       : par('Entró gratis, así que <strong>no tiene reintegros ni descuentos</strong>. Es el momento con más chances de que contrate: acaba de cargar a su mascota y todavía está mirando la app.', true)}`;
-  const text = `${socio}${memberNo ? ` es el socio #${memberNo}` : ' se dio de alta'}.\n\nContacto: ${email}\nPlan: ${conPlan ? plan : 'ninguno, entró gratis'}${mascotas.length ? `\nMascotas: ${listar(mascotas)}` : ''}`;
-  return enviar(to, conPlan ? `Socio nuevo: ${socio} (${plan})` : `Alta sin plan: ${socio}`, layoutAdmin('Alta nueva', cuerpo, verPanel('?s=socios')), text);
+  const text = `${socio}${memberNo ? ` es el socio #${memberNo}` : ' se dio de alta'}.\n\nContacto: ${email}\nPlan: ${conPlan ? `eligió ${plan} (el pago se hace a continuación; hasta acreditarse figura como gratuito)` : 'ninguno, entró gratis'}${mascotas.length ? `\nMascotas: ${listar(mascotas)}` : ''}`;
+  return enviar(to, conPlan ? `Alta nueva: ${socio} (eligió ${plan})` : `Alta sin plan: ${socio}`, layoutAdmin('Alta nueva', cuerpo, verPanel('?s=socios')), text);
 }
 
 /**
