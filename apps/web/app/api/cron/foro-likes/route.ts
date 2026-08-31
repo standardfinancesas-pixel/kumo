@@ -11,6 +11,12 @@ import { mandarPush, CON_ACCESO } from '@/lib/push';
  * rápida de que alguien apague los avisos de Kumo para siempre. Acá se manda uno
  * por publicación y por día: "A 12 personas les gustó tu publicación".
  *
+ * Corre a las 22:00 UTC, o sea 19:00 de Buenos Aires: al final del día, cuando el
+ * foro ya tuvo movimiento, y sin pisarse con el recordatorio de vacunas de la
+ * mañana. La agenda vive en `apps/web/vercel.json`, que es JSON estricto y no
+ * admite comentarios —el schema de Vercel rechaza hasta una clave "//"—, así que
+ * el porqué del horario se explica acá.
+ *
  * La ventana es de 24 horas porque el cron corre una vez por día. Si algún día
  * corre dos veces, el peor caso es un aviso repetido — no se pierde ninguno, que
  * es el error que sí importaría.
