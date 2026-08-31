@@ -2304,6 +2304,9 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
     const { error } = await supabase.rpc('reportar_post', { p_post_id: p.id, p_motivo: motivo });
     setBusy(false);
     if (error) { alert('No pudimos reportarla. Probá de nuevo.'); return; }
+    /* Le avisa al club por mail. Sin esperar: el reporte ya quedó guardado, y
+       que el mail falle no es motivo para decirle al socio que no se reportó. */
+    void avisar('post-reportado', p.id);
     setReportando(false);
     setReportado(true);
   };
@@ -2547,10 +2550,19 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
 }
 
 /* ── Pantalla: Foros / Comunidad ───────────────────────────────── */
-function Foros({ initialPosts, profile, misLikes }: { initialPosts: ForumPost[]; profile: Profile; misLikes: MisLikes }) {
+function Foros({ initialPosts, profile, misLikes, abrirHilo, onHiloAbierto }: { initialPosts: ForumPost[]; profile: Profile; misLikes: MisLikes; abrirHilo?: string | null; onHiloAbierto?: () => void }) {
   const posts = initialPosts;
   const [vista, setVista] = useState<'lista' | 'componer'>('lista');
   const [hiloId, setHiloId] = useState<string | null>(null);
+  /* Llegó desde una notificación: se abre esa publicación y no la lista. Se
+     avisa que ya se consumió para que volver al foro por el menú no vuelva a
+     meterte en el mismo hilo. */
+  useEffect(() => {
+    if (!abrirHilo) return;
+    setHiloId(abrirHilo);
+    setVista('lista');
+    onHiloAbierto?.();
+  }, [abrirHilo, onHiloAbierto]);
   const [q, setQ] = useState('');
   const [cat, setCat] = useState('Todos');
   const [zona, setZona] = useState('Todas');
@@ -4144,7 +4156,7 @@ const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath, chat, heart: hear
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
 const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros' };
 
-function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void }) {
+function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; onAbrirHilo: (id: string | null) => void }) {
   const vistoMs = visto ? new Date(visto).getTime() : 0;
   return (
     <div style={{ padding: '8px 20px 24px' }}>
@@ -4167,7 +4179,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) =
               const st = NOTIF_STYLE[n.kind];
               const unread = new Date(n.date).getTime() > vistoMs;
               return (
-                <button key={n.id} onClick={() => go(NOTIF_DESTINO[n.to])} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: '13px 14px', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: '"DM Sans"', background: unread ? '#faf9fd' : '#fff', border: unread ? '1px solid #e6e1f2' : '1px solid #eeecf5' }}>
+                <button key={n.id} onClick={() => { onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: '13px 14px', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: '"DM Sans"', background: unread ? '#faf9fd' : '#fff', border: unread ? '1px solid #e6e1f2' : '1px solid #eeecf5' }}>
                   <div style={{ width: 40, height: 40, borderRadius: 12, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: st.chip, color: st.color }}>{ic(NOTIF_IC[st.ic], false, 20)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#211E33', marginBottom: 2 }}>{n.title}</div>
@@ -4228,6 +4240,10 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
   const pantalla: Screen = !pago && FEATURES_PAGAS.includes(screen as FeaturePaga) ? 'inicio' : screen;
   const current = NAV.find((n) => n.key === pantalla);
 
+  /* Qué publicación del foro abrir al llegar desde una notificación. Vive en el
+     shell y no en Foros porque lo decide la campanita, que es otra pantalla. */
+  const [hiloDesdeAviso, setHiloDesdeAviso] = useState<string | null>(null);
+
   const notifGroups = useMemo(() => buildNotifs(notifInput), [notifInput]);
   // El "visto" vive en localStorage, así que solo se conoce después de montar:
   // hasta entonces no se pinta el punto, si no el HTML del server no coincide.
@@ -4272,11 +4288,11 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} profile={profile} />}
-          {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} />}
+          {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
           {pantalla === 'negocio' && <Negocio go={go} negocios={negocios} profile={profile} misReviews={negocios.flatMap((n) => reviews[n.id] ?? [])} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
           {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocios={negocios} cuota={cuota} pago={pago} pagos={pagos} onPlan={() => setPlanAbierto(true)} />}
-          {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} />}
+          {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} onAbrirHilo={setHiloDesdeAviso} />}
         </div>
       </div>
     </div>

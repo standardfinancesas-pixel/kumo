@@ -3,7 +3,7 @@ import { hoyISO } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
 import { mandarPush } from '@/lib/push';
 import { quienPide } from '@/lib/quien-pide';
-import { sendReintegroRecibido, sendNegocioRecibido, sendBajaMembresia, sendAdminBajaMembresia } from '@/lib/mail';
+import { sendReintegroRecibido, sendNegocioRecibido, sendBajaMembresia, sendAdminBajaMembresia, sendAdminPostReportado } from '@/lib/mail';
 
 /**
  * Los mails que dispara una acción del socio: pidió un reintegro, dio de alta su
@@ -103,6 +103,37 @@ export async function POST(req: Request) {
         { pantalla: 'foros' },
       );
     }
+    return NextResponse.json({ ok: true, avisado: true });
+  }
+
+  /*
+   * Reportaron una publicación. El aviso va al CLUB, no al socio.
+   *
+   * El reporte ya quedaba marcado y aparecía en Moderación, pero en silencio:
+   * se descubría cuando algún admin entraba a mirar. Un contenido reportado el
+   * viernes a la noche esperaba al lunes.
+   *
+   * Los datos se leen de la base y no del body: el pedido trae el id de la
+   * publicación y nada más. Y sólo se avisa si quedó efectivamente reportada —
+   * `reportar_post` ignora el pedido cuando ya estaba reportada o cuando alguien
+   * intenta reportarse a sí mismo, y no hay que mandar un mail por algo que la
+   * base decidió no hacer.
+   */
+  if (tipo === 'post-reportado') {
+    if (!id) return NextResponse.json({ error: 'Falta la publicación.' }, { status: 400 });
+    const { data: post } = await svc
+      .from('community_posts')
+      .select('id, title, category, author_name, reported, report_reason')
+      .eq('id', id)
+      .single();
+    if (!post?.reported) return NextResponse.json({ ok: true, avisado: false });
+
+    await sendAdminPostReportado({
+      titulo: post.title as string,
+      autor: (post.author_name as string | null)?.trim() || 'un socio',
+      motivo: (post.report_reason as string | null)?.trim() || 'Sin motivo',
+      categoria: (post.category as string | null) ?? '—',
+    });
     return NextResponse.json({ ok: true, avisado: true });
   }
 

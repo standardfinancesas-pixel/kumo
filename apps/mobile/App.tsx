@@ -2725,7 +2725,7 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
 const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros' };
 
-function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null }) {
+function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null; onAbrirHilo: (id: string | null) => void }) {
   const vistoMs = visto ? new Date(visto).getTime() : 0;
 
   /*
@@ -2792,7 +2792,7 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: N
               const st = NOTIF_STYLE[n.kind];
               const unread = new Date(n.date).getTime() > vistoMs;
               return (
-                <TouchableOpacity key={n.id} onPress={() => go(NOTIF_DESTINO[n.to])} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
+                <TouchableOpacity key={n.id} onPress={() => { onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
                   <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: st.chip }}>
                     <Ic d={st.ic} size={20} color={st.color} />
                   </View>
@@ -3736,6 +3736,10 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
             const { error } = await supabase.rpc('reportar_post', { p_post_id: p.id, p_motivo: motivo });
             setBusy(false);
             if (error) { Alert.alert('No pudimos reportarla', 'Probá de nuevo.'); return; }
+            /* Le avisa al club por mail. Sin esperar: el reporte ya quedó
+               guardado, y que el mail falle no es motivo para decirle al socio
+               que no se reportó. */
+            void avisar('post-reportado', p.id);
             setReportado(true);
           },
         })),
@@ -3866,9 +3870,18 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
 }
 
 /* ── Sub-pantalla: Foros ───────────────────────────────────────── */
-function Foros({ posts, userId, firstName, misLikes, reload }: { posts: ForumPost[]; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void }) {
+function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAbierto }: { posts: ForumPost[]; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void; abrirHilo?: string | null; onHiloAbierto?: () => void }) {
   const [vista, setVista] = useState<'lista' | 'componer'>('lista');
   const [hiloId, setHiloId] = useState<string | null>(null);
+  /* Llegó desde una notificación: se abre esa publicación y no la lista. Se avisa
+     que ya se consumió para que volver al foro por el menú no vuelva a meterte en
+     el mismo hilo. */
+  useEffect(() => {
+    if (!abrirHilo) return;
+    setHiloId(abrirHilo);
+    setVista('lista');
+    onHiloAbierto?.();
+  }, [abrirHilo, onHiloAbierto]);
   const [q, setQ] = useState('');
   const [filtro, setFiltro] = useState('Todos');
   // Compose
@@ -4063,6 +4076,9 @@ const VISTO_KEY = 'kumo:notif-visto';
 export default function App() {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
+  /* Qué publicación del foro abrir al llegar desde una notificación. Vive acá y
+     no en Foros porque lo decide la campanita, que es otra pantalla. */
+  const [hiloDesdeAviso, setHiloDesdeAviso] = useState<string | null>(null);
   const [masOpen, setMasOpen] = useState(false);
   /** La hoja para elegir plan y pagar. Antes era un muro que tapaba todo, tabbar
    *  incluida; ahora se abre a pedido, porque el socio ya está adentro del club. */
@@ -4429,12 +4445,12 @@ export default function App() {
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
-          {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} />}
+          {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
           {pantalla === 'perfil' && <Perfil profile={data.profile} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {pantalla === 'minegocio' && <Negocio negocios={data.negocios} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
-          {pantalla === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} />}
+          {pantalla === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} onAbrirHilo={setHiloDesdeAviso} />}
         </View>
         <View style={styles.tabbar}>
           {TABS.map((t) => {

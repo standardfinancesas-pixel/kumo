@@ -716,6 +716,34 @@ export async function sendAdminAltaNueva(opts: {
 }
 
 /**
+ * Alguien reportó una publicación del foro.
+ *
+ * El reporte ya funcionaba de punta a punta —queda marcado y aparece en
+ * Moderación con el motivo— pero en silencio: se descubría cuando algún admin
+ * entraba a mirar. Un contenido reportado un viernes a la noche esperaba hasta
+ * el lunes, y es más urgente que cualquiera de los otros avisos que sí mandan
+ * mail (un alta, una baja, un cobro rebotado).
+ *
+ * No incluye el TEXTO de la publicación a propósito: el mail va a una casilla
+ * que puede reenviarse, y el club necesita ir al panel igual para decidir. Lo
+ * que va es lo justo para saber si hay que abrirlo ya.
+ */
+export async function sendAdminPostReportado(opts: {
+  titulo: string; autor: string; motivo: string; categoria: string;
+}) {
+  const to = await mailDelClub();
+  if (!to) return { skipped: true as const };
+  const { titulo, autor, motivo, categoria } = opts;
+  const cuerpo = `
+    ${h1('Reportaron una publicación')}
+    ${par(`Un socio reportó <strong>"${esc(titulo)}"</strong>, publicada por ${esc(autor)}.`)}
+    ${caja(`${filaChica('Motivo del reporte')}${filaMedia(esc(motivo))}${filaChica('Categoría')}${filaMedia(esc(categoria))}`)}
+    ${par('Está esperando en <strong>Moderación</strong>, donde se puede mantener o eliminar. Mientras tanto <strong>sigue visible para todos los socios</strong>: reportar no la esconde.', true)}`;
+  const text = `Reportaron "${titulo}", de ${autor}.\n\nMotivo: ${motivo}\nCategoría: ${categoria}\n\nEstá en Moderación. Sigue visible para los socios hasta que se decida.`;
+  return enviar(to, `Reportaron una publicación: "${titulo}"`, layoutAdmin('Moderación', cuerpo, verPanel('?s=moderacion')), text);
+}
+
+/**
  * Llegó una suscripción y no sabemos de quién es.
  *
  * Es el caso más serio del flujo de cobro por plan: un débito recurrente REAL

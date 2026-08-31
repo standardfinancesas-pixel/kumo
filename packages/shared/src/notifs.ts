@@ -27,6 +27,12 @@ export type Notif = {
   timeLabel?: string;
   /** A qué pantalla lleva al tocarla. */
   to: 'carnet' | 'reintegros' | 'minegocio' | 'foros';
+  /**
+   * Qué abrir dentro de esa pantalla. Hoy sólo el foro lo usa: sin esto, tocar
+   * "respondieron tu publicación" te dejaba en la lista del foro a buscar cuál
+   * era tuya — y con el foro lleno, eso es peor que no avisar.
+   */
+  targetId?: string;
 };
 
 export type NotifGroup = { label: string; items: Notif[] };
@@ -200,6 +206,7 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
         : `${ultimo.autor} y ${personas - 1} ${personas === 2 ? 'persona más' : 'personas más'} respondieron "${ultimo.postTitle}".`,
       date: ultimo.createdAt,
       to: 'foros',
+      targetId: ultimo.postId,
     });
   }
 
@@ -216,6 +223,7 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
         : `A ${personas} personas les gustó ${donde} "${ultimo.postTitle}".`,
       date: ultimo.createdAt,
       to: 'foros',
+      targetId: ultimo.postId,
     });
   }
 
