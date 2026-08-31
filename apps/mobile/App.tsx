@@ -395,10 +395,14 @@ function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode
  * El ancho se mide con `onLayout` porque hay que traducir píxeles a valores, y en
  * React Native no hay forma de saberlo antes de que se dibuje.
  */
-function Slider({ valor, min, max, onCambio }: { valor: number; min: number; max: number; onCambio: (v: number) => void }) {
+function Slider({ valor, min, max, onCambio, onFin }: { valor: number; min: number; max: number; onCambio: (v: number) => void; onFin?: (v: number) => void }) {
   const [ancho, setAncho] = useState(0);
   const anchoRef = useRef(0);
   const ALTO_TOQUE = 34;
+  /* El PanResponder se crea UNA vez (useRef): sin estas refs, onCambio/onFin
+     quedarían congelados en los del primer render. */
+  const refCambio = useRef(onCambio); refCambio.current = onCambio;
+  const refFin = useRef(onFin); refFin.current = onFin;
 
   const valorDesdeX = (x: number) => {
     const w = anchoRef.current;
@@ -413,8 +417,18 @@ function Slider({ valor, min, max, onCambio }: { valor: number; min: number; max
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
       onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e) => onCambio(valorDesdeX(e.nativeEvent.locationX)),
-      onPanResponderMove: (e) => onCambio(valorDesdeX(e.nativeEvent.locationX)),
+      onPanResponderGrant: (e) => refCambio.current(valorDesdeX(e.nativeEvent.locationX)),
+      onPanResponderMove: (e) => refCambio.current(valorDesdeX(e.nativeEvent.locationX)),
+      /*
+       * Al soltar (o si el sistema corta el gesto) se avisa aparte: hay
+       * consumidores que no pueden seguir el dedo. El mapa es el caso — cada
+       * cambio de km puede cruzar un umbral de zoom, y cruzar un umbral descarta
+       * TODAS las teselas y las vuelve a pedir a la red en pleno gesto: eso era
+       * el parpadeo al arrastrar. El número de km sí sigue el dedo (onCambio);
+       * lo caro se aplica al soltar (onFin).
+       */
+      onPanResponderRelease: (e) => refFin.current?.(valorDesdeX(e.nativeEvent.locationX)),
+      onPanResponderTerminate: (e) => refFin.current?.(valorDesdeX(e.nativeEvent.locationX)),
     }),
   ).current;
 
@@ -1026,11 +1040,15 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radius, setRadius] = useState(5);
+  /* El radio APLICADO va aparte del que sigue el dedo: el mapa y la lista se
+     recalculan al soltar el slider, no en cada milímetro del arrastre (ver el
+     comentario del Slider: recalcular en vivo hacía parpadear las teselas). */
+  const [radiusAplicado, setRadiusAplicado] = useState(5);
   const [selId, setSelId] = useState<string | null>(null);
   const ql = q.trim().toLowerCase();
   // El radio descarta al que SABEMOS que está lejos; el que no tiene coordenadas no
   // entra ni sale del radio, así que se muestra sin distancia en vez de esconderlo.
-  const list = providers.filter((p) => (!cat || p.category === cat) && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql)) && (p.km == null || p.km <= radius));
+  const list = providers.filter((p) => (!cat || p.category === cat) && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql)) && (p.km == null || p.km <= radiusAplicado));
   /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
   const masCerca = providers.reduce<number | null>((min, p) => (p.km != null && (min == null || p.km < min) ? p.km : min), null);
 
@@ -1067,7 +1085,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         <Text style={{ fontSize: 13, color: MUTED, fontWeight: '600' }}>Radio de búsqueda</Text>
         <Text style={{ fontSize: 13, fontWeight: '800', color: BRAND }}>{radius} km</Text>
       </View>
-      <Slider valor={radius} min={1} max={25} onCambio={setRadius} />
+      <Slider valor={radius} min={1} max={25} onCambio={setRadius} onFin={(v) => { setRadius(v); setRadiusAplicado(v); }} />
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
         <Text style={{ fontSize: 11, color: '#a29dba' }}>1 km</Text><Text style={{ fontSize: 11, color: '#a29dba' }}>25 km</Text>
       </View>
@@ -1083,7 +1101,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         <MapaLugares
           pins={list.filter((p) => p.lat != null && p.lng != null).map((p) => ({ id: p.id, nombre: p.name, lat: p.lat as number, lng: p.lng as number }))}
           centro={centro}
-          radioKm={radius}
+          radioKm={radiusAplicado}
           onPin={(id) => setSelId(id)}
         />
       </View>
@@ -1113,7 +1131,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         </View>
       )}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <Text style={{ fontSize: 13, color: INK }}><Text style={{ fontWeight: '700' }}>{list.length} prestadores</Text> en {radius} km</Text>
+        <Text style={{ fontSize: 13, color: INK }}><Text style={{ fontWeight: '700' }}>{list.length} prestadores</Text> en {radiusAplicado} km</Text>
         <Text style={{ fontSize: 12.5, color: MUTED }}>≡ Más cercano</Text>
       </View>
       {list.length === 0 && (
@@ -1122,8 +1140,8 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
               es un consejo inútil para alguien de Tandil: el radio llega a 25 km y el
               prestador más cercano está a 350. Que lo diga el número. */}
           <Text style={{ fontSize: 13.5, color: MUTED, textAlign: 'center' }}>
-            Sin resultados en {radius} km.{' '}
-            {masCerca != null && masCerca > radius
+            Sin resultados en {radiusAplicado} km.{' '}
+            {masCerca != null && masCerca > radiusAplicado
               ? `El más cercano está a ${masCerca} km ${providers[0]?.kmDesde ?? ''}.`
               : 'Ampliá el radio o cambiá de servicio.'}
           </Text>
@@ -4226,9 +4244,28 @@ export default function App() {
           <Alta
             identidad={identidad}
             onSalir={() => { supabase.auth.signOut(); }}
-            onListo={(r) => { setAltaListo(r); setPerfilExiste(null); }}
+            /*
+             * Los datos se RECARGAN acá, y no es opcional: con Google la sesión
+             * existe desde antes del alta, así que useKumoData ya había cargado
+             * con el perfil inexistente (perfil null, cero mascotas) y nada la
+             * vuelve a disparar — el usuario no cambió. Sin el reload, la
+             * pantalla final ni aparecía (está gateada por data.profile) y el
+             * socio caía a la app vieja: "no tenés mascotas" recién después de
+             * cargar a su mascota. Se curaba solo al pasar por segundo plano,
+             * así que parecía un fantasma. Con contraseña no pasa: el login es
+             * posterior al alta y dispara la recarga por el cambio de usuario.
+             *
+             * `setPerfilExiste(true)` en vez de null por lo mismo: el recheck
+             * solo corre cuando cambia el usuario, así que un null acá se
+             * quedaba null. Y que existe lo sabemos con certeza: el alta
+             * acaba de crearlo.
+             */
+            onListo={(r) => { setAltaListo(r); setPerfilExiste(true); refReload.current?.(); }}
           />
-        ) : loading || !data ? (
+        ) : loading || !data || (altaListo && !data.profile) ? (
+          /* La tercera condición cubre el segundo que separa el fin del alta con
+             Google de la recarga: sin ella, ese segundo mostraba la app con los
+             datos de antes del alta (vacíos), que es peor que un spinner. */
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
             <ActivityIndicator color={BRAND} />
           </View>
