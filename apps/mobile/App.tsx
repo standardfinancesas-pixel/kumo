@@ -9,7 +9,7 @@ import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
-  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup,
+  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
@@ -2723,7 +2723,7 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
 
 /* ── Sub-pantalla: Notificaciones ──────────────────────────────── */
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
-const NOTIF_DESTINO: Record<'carnet' | 'reintegros' | 'minegocio', Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio' };
+const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros' };
 
 function Notificaciones({ groups, visto, marcarLeidas, go, userId }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null }) {
   const vistoMs = visto ? new Date(visto).getTime() : 0;
@@ -3639,7 +3639,13 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
     if (!texto.trim()) return;
     setBusy(true);
     // El contador `replies` lo actualiza el trigger, no se toca desde acá.
-    await supabase.from('community_answers').insert({ post_id: p.id, author_id: userId, author_name: firstName, text: texto.trim() });
+    const { data: resp } = await supabase.from('community_answers')
+      .insert({ post_id: p.id, author_id: userId, author_name: firstName, text: texto.trim() })
+      .select('id').single();
+    /* Le suena el teléfono a quien preguntó, y en el momento: una respuesta que
+       llega al día siguiente ya no sirve para una conversación. Sin esperar: si
+       el aviso falla, la respuesta ya quedó publicada igual. */
+    if (resp?.id) void avisar('foro-respuesta', resp.id);
     setTexto('');
     await reload();
     setBusy(false);

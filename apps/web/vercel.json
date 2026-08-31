@@ -5,6 +5,11 @@
     {
       "path": "/api/cron/vacunas",
       "schedule": "0 12 * * *"
+    },
+    {
+      "//": "El resumen de me gusta del foro. 22:00 UTC = 19:00 de Buenos Aires: llega al final del día, cuando el foro ya tuvo movimiento, y no compite con el recordatorio de vacunas de la mañana.",
+      "path": "/api/cron/foro-likes",
+      "schedule": "0 22 * * *"
     }
   ]
 }

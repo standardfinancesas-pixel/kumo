@@ -211,7 +211,7 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async (esReintento = false) => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
@@ -235,6 +235,10 @@ export function useKumoData(userId: string | null) {
         .eq('member_id', userId)
         .order('created_at', { ascending: false })
         .limit(24),
+      /* Las reacciones del foro sobre lo que escribió el socio. Va por función y
+         no por consultas sueltas: son tres cruces contra "lo mío" que necesitan
+         también la webapp y el cron del push (ver `avisos_del_foro`). */
+      supabase.rpc('avisos_del_foro', { p_member: userId }),
     ]);
 
     /**
@@ -434,6 +438,11 @@ export function useKumoData(userId: string | null) {
       status: n.status, rating: n.rating, reviews: n.reviews, photo: n.photo_url, logo: n.logo_url,
     }));
 
+    /** Lo que devuelve `avisos_del_foro`. Sin el tipo las filas entran como `any`
+     *  y el mapeo deja de estar chequeado. */
+    type ForoRow = { id: string; tipo: string; post_id: string; post_title: string; sobre: string; autor: string; created_at: string };
+    const foro = (foroRes.data ?? []) as ForoRow[];
+
     const notifInput: NotifInput = {
       pets: (petsRes.data ?? []).map((row) => ({
         name: row.name,
@@ -443,6 +452,16 @@ export function useKumoData(userId: string | null) {
         id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
       })),
       negocios: (negocioRes.data ?? []).map((n) => ({ id: n.id, name: n.name, status: n.status, createdAt: n.created_at })),
+      /* Sin agrupar: agrupar es decisión de `buildNotifs`, así la app y la webapp
+         cuentan igual. */
+      foro: {
+        respuestas: foro.filter((f) => f.tipo === 'respuesta').map((f) => ({
+          id: f.id, postId: f.post_id, postTitle: f.post_title, autor: f.autor, createdAt: f.created_at,
+        })),
+        likes: foro.filter((f) => f.tipo === 'like').map((f) => ({
+          id: f.id, postId: f.post_id, postTitle: f.post_title, sobre: f.sobre === 'respuesta' ? 'respuesta' as const : 'publicacion' as const, autor: f.autor, createdAt: f.created_at,
+        })),
+      },
     };
 
     const guardados: string[] = (favRes.data ?? []).map((f) => f.provider_id);

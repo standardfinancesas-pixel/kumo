@@ -213,6 +213,7 @@ export default async function Page() {
     { data: favRows },
     { data: planRows },
     { data: pagoRows },
+    { data: foroRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -273,6 +274,10 @@ export default async function Page() {
       .eq('member_id', auth.user.id)
       .order('created_at', { ascending: false })
       .limit(24),
+    /* Las reacciones del foro sobre lo que escribió el socio. Va por función y no
+       por consulta suelta porque son tres cruces contra "lo mío" que necesitan
+       también la app y el cron del push (ver la migración `avisos_del_foro`). */
+    supabase.rpc('avisos_del_foro', { p_member: auth.user.id })
   ]);
   if (!profileRow) redirect(LANDING);
 
@@ -440,6 +445,11 @@ export default async function Page() {
   // Las notificaciones se derivan de estas mismas filas (no hay tabla propia).
   // Se manda la materia prima y no la lista armada: los textos de tiempo
   // ("Hace 2 h") se calculan en el cliente, donde se ven.
+  /** Lo que devuelve `avisos_del_foro`. Sin esto las filas entran como `any` y el
+   *  mapeo de abajo deja de estar chequeado. */
+  type ForoRow = { id: string; tipo: string; post_id: string; post_title: string; sobre: string; autor: string; created_at: string };
+  const foro = (foroRows ?? []) as ForoRow[];
+
   const notifInput: NotifInput = {
     pets: (petsRows ?? []).map((p) => ({
       name: p.name,
@@ -449,6 +459,16 @@ export default async function Page() {
       id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
     })),
     negocios: (negocioRows ?? []).map((n) => ({ id: n.id, name: n.name, status: n.status, createdAt: n.created_at })),
+    /* Las reacciones llegan sin agrupar: agrupar es decisión de `buildNotifs`,
+       así que la webapp y la app cuentan igual. Ver la función `avisos_del_foro`. */
+    foro: {
+      respuestas: foro.filter((f) => f.tipo === 'respuesta').map((f) => ({
+        id: f.id, postId: f.post_id, postTitle: f.post_title, autor: f.autor, createdAt: f.created_at,
+      })),
+      likes: foro.filter((f) => f.tipo === 'like').map((f) => ({
+        id: f.id, postId: f.post_id, postTitle: f.post_title, sobre: f.sobre === 'respuesta' ? 'respuesta' as const : 'publicacion' as const, autor: f.autor, createdAt: f.created_at,
+      })),
+    },
   };
 
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);

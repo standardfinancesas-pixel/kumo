@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { hoyISO } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
+import { mandarPush } from '@/lib/push';
 import { quienPide } from '@/lib/quien-pide';
 import { sendReintegroRecibido, sendNegocioRecibido, sendBajaMembresia, sendAdminBajaMembresia } from '@/lib/mail';
 
@@ -68,6 +69,41 @@ export async function POST(req: Request) {
     if (!n || n.owner_id !== quien.id) return NextResponse.json({ error: 'No encontrado.' }, { status: 404 });
     const res = await sendNegocioRecibido({ to: perfil.email, firstName, negocio: n.name });
     return NextResponse.json({ ok: true, mailEnviado: 'ok' in res && res.ok === true });
+  }
+
+  /*
+   * Alguien respondió una publicación: se le avisa AL DUEÑO de la publicación.
+   *
+   * Va por acá y no por el cron diario porque una respuesta pierde sentido si
+   * llega mañana: la gracia de un foro es contestarle a alguien que está.
+   *
+   * Quien pide tiene que ser el AUTOR de la respuesta. Sin ese chequeo,
+   * cualquiera con sesión podría pasar el id de una respuesta ajena y hacer
+   * sonar el teléfono de otro socio las veces que quisiera.
+   */
+  if (tipo === 'foro-respuesta') {
+    if (!id) return NextResponse.json({ error: 'Falta la respuesta.' }, { status: 400 });
+    const { data: resp } = await svc
+      .from('community_answers')
+      .select('id, author_id, author_name, community_posts(id, title, author_id)')
+      .eq('id', id)
+      .single();
+    const post = Array.isArray(resp?.community_posts) ? resp?.community_posts[0] : resp?.community_posts;
+    if (!resp || !post) return NextResponse.json({ error: 'Esa respuesta no existe.' }, { status: 404 });
+    if (resp.author_id !== quien) return NextResponse.json({ error: 'Esa respuesta no es tuya.' }, { status: 403 });
+    // Responderse a uno mismo no se avisa.
+    if (post.author_id === quien || !post.author_id) return NextResponse.json({ ok: true, avisado: false });
+
+    const { data: tokens } = await svc.from('push_tokens').select('token').eq('member_id', post.author_id);
+    if (tokens?.length) {
+      await mandarPush(
+        tokens.map((t) => t.token as string),
+        'Respondieron tu publicación',
+        `${resp.author_name || 'Alguien'} respondió "${post.title}".`,
+        { pantalla: 'foros' },
+      );
+    }
+    return NextResponse.json({ ok: true, avisado: true });
   }
 
   if (tipo === 'baja') {

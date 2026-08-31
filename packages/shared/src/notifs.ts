@@ -14,7 +14,7 @@ import { diasHasta, diaISO } from './fechas';
  *  de mails y push, así que el aviso de la app y el del teléfono coinciden. */
 export const DIAS_AVISO_CARNET = 2;
 
-export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision';
+export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like';
 
 export type Notif = {
   id: string;
@@ -26,19 +26,21 @@ export type Notif = {
   /** Texto del pie. Si no está, se muestra el tiempo relativo a `date`. */
   timeLabel?: string;
   /** A qué pantalla lleva al tocarla. */
-  to: 'carnet' | 'reintegros' | 'minegocio';
+  to: 'carnet' | 'reintegros' | 'minegocio' | 'foros';
 };
 
 export type NotifGroup = { label: string; items: Notif[] };
 
 /** Ícono, fondo del chip y color del trazo por tipo, como en el prototipo. */
-export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield'; chip: string; color: string }> = {
+export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield' | 'chat' | 'heart'; chip: string; color: string }> = {
   vacuna: { ic: 'bell', chip: '#eef7d6', color: '#5f7d10' },
   'reintegro-ok': { ic: 'wallet', chip: '#e2f5ea', color: '#2f8f5b' },
   'reintegro-no': { ic: 'wallet', chip: '#fbe8ef', color: '#b0483f' },
   'reintegro-revision': { ic: 'wallet', chip: '#fbf3e2', color: '#92690a' },
   'negocio-ok': { ic: 'shield', chip: '#e2f5ea', color: '#2f8f5b' },
   'negocio-revision': { ic: 'shield', chip: '#fbf3e2', color: '#92690a' },
+  'foro-respuesta': { ic: 'chat', chip: '#e8e5f5', color: '#5d5491' },
+  'foro-like': { ic: 'heart', chip: '#fbe9ee', color: '#c04863' },
 };
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
@@ -69,6 +71,19 @@ export type NotifInput = {
   reintegros: { id: string; providerName: string; refund: number; status: string; createdAt: string; resolvedAt: string | null }[];
   /** Los negocios del socio. Son varios: puede tener un servicio y un comercio. */
   negocios: { id: string; name: string; status: string; createdAt: string }[];
+  /**
+   * Lo que pasó en el foro sobre lo que el socio escribió: respuestas a sus
+   * publicaciones y "me gusta" a sus publicaciones y a sus respuestas.
+   *
+   * Llegan SIN agrupar y se agrupan acá, no en la consulta, por lo mismo que el
+   * resto: si cada superficie agrupara por su cuenta, terminarían contando
+   * distinto. Quien las trae ya se encarga de excluir lo que hizo el socio mismo
+   * —nadie necesita que le avisen que se dio me gusta solo—.
+   */
+  foro: {
+    respuestas: { id: string; postId: string; postTitle: string; autor: string; createdAt: string }[];
+    likes: { id: string; postId: string; postTitle: string; sobre: 'publicacion' | 'respuesta'; autor: string; createdAt: string }[];
+  };
 };
 
 /**
@@ -141,6 +156,67 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
     } else if (n.status === 'pendiente') {
       items.push({ id: `negocio-rev-${n.id}`, kind: 'negocio-revision', title: 'Tu negocio está en revisión', body: `Estamos validando los datos de "${n.name}". Te avisamos cuando quede publicado.`, date: n.createdAt, to: 'minegocio' });
     }
+  }
+
+  /*
+   * El foro, agrupado POR PUBLICACIÓN y no por hecho.
+   *
+   * Sin agrupar, una publicación que junta veinte "me gusta" produce veinte
+   * avisos y tapa todo lo demás —el reintegro acreditado queda enterrado—. Con
+   * uno por publicación, la campanita dice cuánto pasó sin volverse un ruido que
+   * la gente aprende a ignorar, que es la forma más rápida de que un aviso deje
+   * de servir.
+   *
+   * Se fecha con el hecho MÁS RECIENTE del grupo: es lo que hace que una
+   * publicación que sigue recibiendo respuestas vuelva a subir en la lista.
+   */
+  const agrupar = <T extends { postId: string; postTitle: string; createdAt: string; autor: string }>(
+    xs: T[],
+    /* La clave la decide quien llama y no es siempre el post: un "me gusta" a tu
+       publicación y otro a TU RESPUESTA en el mismo hilo son dos cosas distintas
+       y tienen que dar dos avisos. Agrupando solo por publicación se fusionaban
+       y uno de los dos desaparecía. */
+    clave: (x: T) => string = (x) => x.postId,
+  ) => {
+    const por = new Map<string, T[]>();
+    for (const x of xs) { const k = clave(x); por.set(k, [...(por.get(k) ?? []), x]); }
+    return [...por.values()].map((g) => {
+      const ordenado = [...g].sort((a, b) => asDate(b.createdAt).getTime() - asDate(a.createdAt).getTime());
+      const ultimo = ordenado[0]!;
+      /* Cuántas PERSONAS, no cuántos hechos: si alguien responde tres veces la
+         misma publicación, sigue siendo una persona respondiendo. */
+      const personas = new Set(g.map((x) => x.autor)).size;
+      return { ultimo, cuantos: g.length, personas };
+    });
+  };
+
+  for (const { ultimo, personas } of agrupar(input.foro.respuestas)) {
+    items.push({
+      id: `foro-resp-${ultimo.postId}`,
+      kind: 'foro-respuesta',
+      title: 'Respondieron tu publicación',
+      body: personas === 1
+        ? `${ultimo.autor} respondió "${ultimo.postTitle}".`
+        : `${ultimo.autor} y ${personas - 1} ${personas === 2 ? 'persona más' : 'personas más'} respondieron "${ultimo.postTitle}".`,
+      date: ultimo.createdAt,
+      to: 'foros',
+    });
+  }
+
+  for (const { ultimo, personas } of agrupar(input.foro.likes, (x) => `${x.postId}|${x.sobre}`)) {
+    /* El texto dice si el me gusta fue a la publicación o a una respuesta tuya:
+       "le gustó tu publicación" cuando en realidad comentaste, confunde. */
+    const donde = ultimo.sobre === 'respuesta' ? 'tu respuesta en' : 'tu publicación';
+    items.push({
+      id: `foro-like-${ultimo.postId}-${ultimo.sobre}`,
+      kind: 'foro-like',
+      title: 'Le gustó lo que escribiste',
+      body: personas === 1
+        ? `A ${ultimo.autor} le gustó ${donde} "${ultimo.postTitle}".`
+        : `A ${personas} personas les gustó ${donde} "${ultimo.postTitle}".`,
+      date: ultimo.createdAt,
+      to: 'foros',
+    });
   }
 
   items.sort((a, b) => asDate(b.date).getTime() - asDate(a.date).getTime());

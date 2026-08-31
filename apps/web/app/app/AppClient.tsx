@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
-  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
+  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
@@ -2234,9 +2234,13 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
     if (!texto.trim()) return;
     setBusy(true);
     // El contador `replies` lo actualiza el trigger, no se toca desde acá.
-    await supabase.from('community_answers').insert({
+    const { data: resp } = await supabase.from('community_answers').insert({
       post_id: p.id, author_id: profile.id, author_name: profile.firstName, text: texto.trim(),
-    });
+    }).select('id').single();
+    /* Le suena el teléfono a quien preguntó, y en el momento: una respuesta que
+       llega al día siguiente ya no sirve para una conversación. Sin esperar: si
+       el aviso falla, la respuesta ya quedó publicada igual. */
+    if (resp?.id) void avisar('foro-respuesta', resp.id);
     setTexto('');
     router.refresh();
     setBusy(false);
@@ -4136,9 +4140,9 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
 }
 
 /* ── Pantalla: Notificaciones ──────────────────────────────────── */
-const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath } as const;
+const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath, chat, heart: heartPath } as const;
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
-const NOTIF_DESTINO: Record<'carnet' | 'reintegros' | 'minegocio', Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio' };
+const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros' };
 
 function Notificaciones({ go, groups, visto, marcarLeidas }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void }) {
   const vistoMs = visto ? new Date(visto).getTime() : 0;
