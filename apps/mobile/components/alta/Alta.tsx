@@ -116,6 +116,9 @@ export default function Alta({
      * no queda log y acá se ve como un error de conexión. Un tester quedó
      * trabado en este paso leyendo "revisá tu conexión" con la conexión
      * perfecta. Se corta antes y se dice qué hacer.
+     *
+     * Con el control al adjuntar (ver PasoMascotas) acá no debería entrar nunca:
+     * queda de red, porque el precio de equivocarse es un alta perdida entera.
      */
     const elegidas = b.mascotas.map((m) => fotos[m.uid]).filter(Boolean) as FotoElegida[];
     const pesan = motivoFotosDelAltaPesan(elegidas.reduce((t, f) => t + (f.bytes || 0), 0), elegidas.length);

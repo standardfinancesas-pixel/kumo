@@ -216,7 +216,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_cuit, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
+      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -349,7 +349,9 @@ export default async function Page() {
     dni: profileRow.dni,
     banco: {
       holder: profileRow.bank_holder,
+      holderDni: profileRow.bank_holder_dni,
       cuit: profileRow.bank_cuit,
+      banco: profileRow.bank_name,
       cbu: profileRow.bank_cbu,
       alias: profileRow.bank_alias,
     },

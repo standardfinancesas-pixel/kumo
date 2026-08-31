@@ -4,18 +4,20 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  urls, FOTO_TIPOS, FOTO_MAX, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
+  urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion, motivoFotoInvalida, rutaFoto, MOTIVOS_REPORTE,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO, FORO_FILTROS,
+  destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, parchePerfilBancario, hayDatosBancarios, pareceCbu, cbuValido,
   type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
+import { prepararFoto } from '@/lib/foto';
 import { confirmarPago } from '@/lib/confirmarPago';
 import { MapaPrestadores } from '@/components/MapaPrestadores';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
@@ -150,7 +152,7 @@ export type PlanVM = { id: string; name: string; price: number; tagline: string 
 /** Datos del socio logueado, resueltos en el Server Component (app/page.tsx). */
 /** La cuenta donde el club le transfiere los reintegros. Se pide en el alta y el
  *  formulario de reintegro la prefija, así no se retipea en cada solicitud. */
-export type ProfileBanco = { holder: string | null; cuit: string | null; cbu: string | null; alias: string | null };
+export type ProfileBanco = { holder: string | null; holderDni: string | null; cuit: string | null; banco: string | null; cbu: string | null; alias: string | null };
 
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
@@ -482,6 +484,10 @@ function BannerPlan({ desde, onPlan }: { desde: number; onPlan: () => void }) {
 }
 
 function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => void; pets: Pet[] }) {
+  /* Con una sola mascota el selector no selecciona nada: es una tab siempre
+     encendida que ocupa lugar y sugiere que hay algo más para elegir. Aparece
+     recién cuando hay de verdad entre qué elegir. */
+  if (pets.length <= 1) return null;
   return (
     <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
       {pets.map((p, i) => (
@@ -641,16 +647,11 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
 
   /** Cambiar la foto de la mascota. Antes no se podía desde ninguna pantalla:
    *  si en el alta salía mal, había que tocar la base a mano. */
-  const cambiarFoto = async (f?: File) => {
-    if (!f || !pet) return;
-    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) {
-      setFotoError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`);
-      return;
-    }
-    if (f.size > FOTO_MAX) {
-      setFotoError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`);
-      return;
-    }
+  const cambiarFoto = async (elegida?: File) => {
+    if (!elegida || !pet) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setFotoError(listo.error); return; }
+    const f = listo.file;
     setFotoBusy(true);
     setFotoError('');
     const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
@@ -1379,10 +1380,11 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
 
   /** Valida y previsualiza. Una sola función para las dos: mismos formatos, mismo
    *  máximo, y así no se separan por descuido. */
-  const elegirImagen = (cual: 'logo' | 'portada') => (f?: File) => {
-    if (!f) return;
-    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
-    if (f.size > FOTO_MAX) { setError(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+  const elegirImagen = (cual: 'logo' | 'portada') => async (elegida?: File) => {
+    if (!elegida) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setError(listo.error); return; }
+    const f = listo.file;
     setError('');
     if (cual === 'logo') { setLogo(f); setLogoPreview(URL.createObjectURL(f)); }
     else { setPortada(f); setPortadaPreview(URL.createObjectURL(f)); }
@@ -1671,11 +1673,14 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
   const [detail, setDetail] = useState('');
   const [spent, setSpent] = useState('');
   const [petId, setPetId] = useState(pets[0]?.id ?? '');
-  // Prefijados con la cuenta del perfil, que se pide en el alta: antes había que
-  // retipear titular, CUIT y CBU en cada solicitud.
+  // Prefijados con la cuenta del perfil: el alta ya no pide datos bancarios, así
+  // que la primera solicitud es donde se cargan y de ahí quedan guardados. Antes
+  // había que retipear todo en cada pedido.
   const [titular, setTitular] = useState(banco.holder ?? '');
+  const [titularDni, setTitularDni] = useState(banco.holderDni ?? '');
   const [cuit, setCuit] = useState(banco.cuit ?? '');
-  const [cbu, setCbu] = useState(banco.cbu ?? banco.alias ?? '');
+  const [nombreBanco, setNombreBanco] = useState(banco.banco ?? '');
+  const [cbu, setCbu] = useState(destinoParaMostrar(banco.cbu, banco.alias));
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1687,7 +1692,8 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!file) { setError('Cargá la factura: sin comprobante el club no puede validar el gasto.'); return; }
-    if (!titular.trim() || !cbu.trim()) { setError('Completá el titular y el CBU/CVU o alias: son los datos con los que se acredita.'); return; }
+    const falta = motivoDatosBancariosIncompletos({ titular, titularDni, banco: nombreBanco, destino: cbu });
+    if (falta) { setError(falta); return; }
     const s = Number(spent) || 0;
     setBusy(true);
     setError('');
@@ -1707,21 +1713,17 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
       member_id: memberId, pet_id: petId || null, plan_name: planName,
       provider_name: place || 'Comprobante', concept: detail || 'Comprobante',
       amount: s, refund: Math.round(s * 0.5), refund_pct: 50, status: 'en_revision', receipt_path: path,
-      bank_holder: titular.trim() || null, bank_cuit: cuit.trim() || null,
+      bank_holder: titular.trim() || null, bank_holder_dni: titularDni.replace(/\D/g, '') || null,
+      bank_cuit: cuit.trim() || null, bank_name: nombreBanco.trim() || null,
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
-      ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
+      ...destinoDeTransferencia(cbu),
     }).select('id').single();
 
-    // Si el socio no tenía cuenta en el perfil (se dio de alta antes de que se
-    // pidiera), queda guardada para la próxima solicitud y para que el admin la
-    // vea en la ficha sin abrir el reintegro.
-    if (!insErr && !banco.cbu && !banco.alias) {
-      await supabase.from('profiles').update({
-        bank_holder: titular.trim() || null,
-        bank_cuit: cuit.trim() || null,
-        ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.replace(/\D/g, '') } : { bank_alias: cbu.trim() }),
-      }).eq('id', memberId);
-    }
+    // La cuenta queda en el perfil para la próxima solicitud y para que el admin
+    // la vea en la ficha sin abrir el reintegro. Completa huecos, no pisa: ver
+    // `parchePerfilBancario`.
+    const parche = parchePerfilBancario(banco, { titular, titularDni, cuit, banco: nombreBanco, destino: cbu });
+    if (!insErr && parche) await supabase.from('profiles').update(parche).eq('id', memberId);
     if (insErr) {
       // Si falla la solicitud, no dejamos el archivo huérfano en el bucket.
       await supabase.storage.from('receipts').remove([path]);
@@ -1733,7 +1735,7 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
     // Acuse del pedido: el socio se entera de que llegó sin tener que preguntar.
     if (nuevo?.id) void avisar('reintegro-recibido', nuevo.id);
 
-    setPlace(''); setDetail(''); setSpent(''); setTitular(''); setCuit(''); setCbu(''); setFile(null);
+    setPlace(''); setDetail(''); setSpent(''); setPetId(pets[0]?.id ?? ''); setTitular(''); setTitularDni(''); setCuit(''); setNombreBanco(''); setCbu(''); setFile(null);
     setOpen(false); setEnviado(true);
     router.refresh();
     setBusy(false);
@@ -1793,17 +1795,29 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
             <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Concepto (ej: Consulta)" style={{ ...sheetInput, flex: '1 1 150px', width: 'auto' }} />
             <input value={spent} onChange={(e) => setSpent(e.target.value)} type="number" inputMode="numeric" placeholder="Monto gastado" style={{ ...sheetInput, flex: '1 1 120px', width: 'auto' }} />
           </div>
+          {/* Con una sola mascota no hay nada que elegir y el reintegro va a la
+              única que tiene. Con más de una hay que preguntarlo: el club reparte
+              los reintegros por mascota, así que atribuirlo mal desordena el
+              historial de las dos. Antes el desplegable no tenía etiqueta y se
+              veía como un nombre suelto, sin decir qué se estaba eligiendo. */}
           {pets.length > 1 && (
-            <select value={petId} onChange={(e) => setPetId(e.target.value)} style={{ ...sheetInput, marginBottom: 16 }}>
-              {pets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+            <>
+              <label style={sheetLabel} htmlFor="re-pet">¿Para cuál de tus mascotas?</label>
+              <select id="re-pet" value={petId} onChange={(e) => setPetId(e.target.value)} style={{ ...sheetInput, marginBottom: 16 }}>
+                {pets.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </>
           )}
 
           {grupo('Datos para la acreditación')}
-          <label style={sheetLabel} htmlFor="re-tit">Titular / Alias</label>
-          <input id="re-tit" value={titular} onChange={(e) => { setTitular(e.target.value); setError(''); }} placeholder="Nombre del titular de la cuenta" style={{ ...sheetInput, marginBottom: 12 }} />
-          <label style={sheetLabel} htmlFor="re-cuit">CUIT / CUIL</label>
+          <label style={sheetLabel} htmlFor="re-tit">Titular de la cuenta</label>
+          <input id="re-tit" value={titular} onChange={(e) => { setTitular(e.target.value); setError(''); }} placeholder="Nombre y apellido" style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel} htmlFor="re-tit-dni">DNI del titular</label>
+          <input id="re-tit-dni" value={titularDni} onChange={(e) => { setTitularDni(e.target.value); setError(''); }} inputMode="numeric" placeholder="12345678" style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel} htmlFor="re-cuit">CUIT / CUIL <span style={{ fontWeight: 500, opacity: 0.6 }}>(opcional)</span></label>
           <input id="re-cuit" value={cuit} onChange={(e) => setCuit(e.target.value)} inputMode="numeric" placeholder="20-12345678-9" style={{ ...sheetInput, marginBottom: 12 }} />
+          <label style={sheetLabel} htmlFor="re-banco">Banco</label>
+          <input id="re-banco" value={nombreBanco} onChange={(e) => setNombreBanco(e.target.value)} placeholder="Galicia, Mercado Pago, Ualá…" style={{ ...sheetInput, marginBottom: 12 }} />
           <label style={sheetLabel} htmlFor="re-cbu">CBU / CVU o alias</label>
           <input id="re-cbu" value={cbu} onChange={(e) => { setCbu(e.target.value); setError(''); }} placeholder="0000003100010000000001 o mi.alias.mp" style={{ ...sheetInput, marginBottom: 16 }} />
 
@@ -2100,6 +2114,46 @@ const foroChips = FORO_FILTROS;
 
 const sendIcon = <><line x1="12" y1="19" x2="12" y2="5" /><path d="M5 12l7-7 7 7" /></>;
 
+/**
+ * La foto de una publicación, en grande.
+ *
+ * En el hilo la foto va recortada a 320 px de alto (`object-fit: cover`) para que
+ * un post no se coma la pantalla, pero eso esconde parte de la imagen: si alguien
+ * sube la radiografía de su perro o la etiqueta de un alimento, lo que importa
+ * puede estar justo en lo recortado. Tocarla la abre entera, sin recortar.
+ */
+function FotoGrande({ src, onCerrar }: { src: string; onCerrar: () => void }) {
+  /* Escape para cerrar y el scroll del fondo trabado mientras está abierta: sin
+     esto, scrollear sobre la foto movía el hilo de atrás. */
+  useEffect(() => {
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') onCerrar(); };
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', tecla);
+    return () => { window.removeEventListener('keydown', tecla); document.body.style.overflow = overflow; };
+  }, [onCerrar]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Foto de la publicación"
+      onClick={onCerrar}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(20,17,36,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}
+    >
+      {/* `contain` y no `cover`: acá el punto es justamente verla entera. */}
+      <img src={src} alt="Foto de la publicación" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 10, display: 'block' }} />
+      <button
+        onClick={onCerrar}
+        aria-label="Cerrar"
+        style={{ position: 'absolute', top: 14, right: 16, width: 40, height: 40, borderRadius: 999, border: 'none', background: 'rgba(255,255,255,0.16)', color: '#fff', fontSize: 22, lineHeight: 1, cursor: 'pointer', fontFamily: '"DM Sans"' }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
 /* ── Hilo del foro ─────────────────────────────────────────────── */
 /** El hilo del prototipo: post original, me gusta, respuestas y la caja para
  *  responder. Antes el hilo era un acordeón de solo lectura dentro de la tarjeta:
@@ -2112,6 +2166,7 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
   const [likes, setLikes] = useState({ post: misLikes.posts.includes(p.id), answers: new Set(misLikes.answers) });
   const [reportando, setReportando] = useState(false);
   const [reportado, setReportado] = useState(false);
+  const [fotoAbierta, setFotoAbierta] = useState<string | null>(null);
 
   /** Optimista: el corazón responde al toque y la base va atrás. */
   const togglePostLike = async () => {
@@ -2261,8 +2316,18 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
       {/* `<img>` y no `next/image`: la URL sale del bucket y el dominio no está
           en la whitelist de next.config, igual que el comprobante en el panel. */}
       {p.photo && (
-        <img src={p.photo} alt="Foto de la publicación" style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 14, display: 'block', marginBottom: 14, background: 'rgb(240,237,249)' }} />
+        /* Botón y no `<img onClick>`: así se llega con el teclado y el lector de
+           pantalla lo anuncia como algo que se puede activar. */
+        <button
+          type="button"
+          onClick={() => setFotoAbierta(p.photo)}
+          aria-label="Ver la foto completa"
+          style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', marginBottom: 14 }}
+        >
+          <img src={p.photo} alt="Foto de la publicación" style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 14, display: 'block', background: 'rgb(240,237,249)' }} />
+        </button>
       )}
+      {fotoAbierta && <FotoGrande src={fotoAbierta} onCerrar={() => setFotoAbierta(null)} />}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         <button onClick={togglePostLike} style={{ display: 'flex', alignItems: 'center', gap: 7, background: likes.post ? 'rgb(251,232,239)' : 'rgb(240,237,249)', border: 'none', color: likes.post ? 'rgb(192,72,99)' : 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, padding: '9px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>
@@ -2351,10 +2416,11 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
   /** El prototipo mostraba la foto elegida y la perdía al publicar (era un
    *  data-URL en memoria): acá se sube al bucket y queda la URL pública, que es
    *  lo que guarda `community_posts.photo_url`. */
-  const elegirFoto = async (f?: File) => {
-    if (!f) return;
-    const invalida = motivoFotoInvalida(f.type, f.size);
-    if (invalida) { setError(invalida); return; }
+  const elegirFoto = async (elegida?: File) => {
+    if (!elegida) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setError(listo.error); return; }
+    const f = listo.file;
     setFotoBusy(true); setError('');
     const path = rutaFoto(profile.id, f.name.split('.').pop() ?? 'jpg', 'foro-');
     const { error: subida } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
@@ -2586,10 +2652,11 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
   const [altaPortadaPreview, setAltaPortadaPreview] = useState<string | null>(null);
 
   /** Valida y previsualiza una de las dos imágenes del alta. */
-  const elegirAlta = (cual: 'logo' | 'portada') => (f?: File) => {
-    if (!f) return;
-    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
-    if (f.size > FOTO_MAX) { setError(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+  const elegirAlta = (cual: 'logo' | 'portada') => async (elegida?: File) => {
+    if (!elegida) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setError(listo.error); return; }
+    const f = listo.file;
     setError('');
     if (cual === 'logo') { setAltaLogo(f); setAltaLogoPreview(URL.createObjectURL(f)); }
     else { setAltaPortada(f); setAltaPortadaPreview(URL.createObjectURL(f)); }
@@ -2633,10 +2700,11 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
   /** El logo o la portada del negocio: se suben y se guardan en el acto, igual que
    *  la foto de la mascota. Antes la portada solo se podía elegir en el alta larga y
    *  nunca más, y el logo no existía. */
-  const cambiarImagen = async (cual: 'logo' | 'portada', f?: File) => {
-    if (!f || !negocio) return;
-    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) { setFotoError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP.`); return; }
-    if (f.size > FOTO_MAX) { setFotoError(`La imagen pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB.`); return; }
+  const cambiarImagen = async (cual: 'logo' | 'portada', elegida?: File) => {
+    if (!elegida || !negocio) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setFotoError(listo.error); return; }
+    const f = listo.file;
     setFotoBusy(cual); setFotoError('');
     const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
     // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
@@ -2953,7 +3021,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
               <input type="file" accept={FOTO_TIPOS.join(',')} disabled={!!fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarImagen('portada', e.target.files?.[0])} />
             </label>
             <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', lineHeight: 1.45 }}>
-              {negocio.photoUrl ? 'Tocá la portada para cambiarla.' : 'Todavía no subiste portada.'} Es la banda de arriba de tu ficha. JPG, PNG o WEBP, hasta 5 MB.
+              {negocio.photoUrl ? 'Tocá la portada para cambiarla.' : 'Todavía no subiste portada.'} Es la banda de arriba de tu ficha. JPG, PNG o WEBP; la achicamos sola al subirla.
               {fotoError && <div style={{ color: 'rgb(176,72,63)', fontWeight: 600, marginTop: 4 }}>{fotoError}</div>}
             </div>
           </div>
@@ -3035,7 +3103,9 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(false);
-  const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email });
+  const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email,
+    bancoTitular: profile.banco.holder ?? '', bancoTitularDni: profile.banco.holderDni ?? '', bancoCuit: profile.banco.cuit ?? '',
+    bancoNombre: profile.banco.banco ?? '', bancoCbu: destinoParaMostrar(profile.banco.cbu, profile.banco.alias) });
   const [bajaOpen, setBajaOpen] = useState(false);
   const [bajaHecha, setBajaHecha] = useState(false);
   const [pagosOpen, setPagosOpen] = useState(false);
@@ -3048,6 +3118,12 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
   /** Ahora sí guarda. El nombre también: antes no se podía editar desde ningún lado. */
   const guardarDatos = async () => {
     if (!datos.nombre.trim()) { setError('El nombre no puede quedar vacío.'); return; }
+    /* La cuenta es opcional, pero a medias no sirve: ver `hayDatosBancarios`. */
+    const banco = { titular: datos.bancoTitular, titularDni: datos.bancoTitularDni, cuit: datos.bancoCuit, banco: datos.bancoNombre, destino: datos.bancoCbu };
+    if (hayDatosBancarios(banco)) {
+      const falta = motivoDatosBancariosIncompletos(banco);
+      if (falta) { setError(falta); return; }
+    }
     setBusy(true); setError('');
     const { error: e } = await supabase.from('profiles').update({
       full_name: datos.nombre.trim(), dni: datos.dni.trim() || null,
@@ -3055,6 +3131,15 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
       city: datos.localidad.trim() || null,
       province: datos.provincia.trim() || null,
       phone: datos.tel.trim() || null, email: datos.email.trim(),
+      /* Acá SÍ se pisa lo que había, al revés que el parche de la solicitud: esto
+         es el socio cambiando su cuenta a propósito. Sin esta sección, desde la
+         web no había ninguna forma de cambiarla —Mi perfil solo la mostraba y la
+         solicitud no pisa la que ya está—: quedaba clavada para siempre. */
+      bank_holder: datos.bancoTitular.trim() || null,
+      bank_holder_dni: datos.bancoTitularDni.replace(/\D/g, '') || null,
+      bank_cuit: datos.bancoCuit.trim() || null,
+      bank_name: datos.bancoNombre.trim() || null,
+      ...destinoDeTransferencia(datos.bancoCbu),
     }).eq('id', profile.id);
     if (e) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
     /* Si se mudó, el mapa tiene que mudarse con él: sin esto las coordenadas quedan
@@ -3329,6 +3414,29 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
             <input id="pf-tel" value={datos.tel} onChange={(e) => setDatos((d) => ({ ...d, tel: e.target.value }))} style={inputEdit} />
             <label style={sheetLabel} htmlFor="pf-mail">Email</label>
             <input id="pf-mail" value={datos.email} onChange={(e) => setDatos((d) => ({ ...d, email: e.target.value }))} style={inputEdit} />
+
+            {/* Solo para quien puede pedir reintegros: al socio gratuito la cuenta
+                le pide datos sensibles para algo que no puede usar. Mismo criterio
+                que la fila de arriba y que Mi perfil de la app. */}
+            {pago && (
+              <>
+                <div style={{ fontWeight: 700, fontSize: 14, marginTop: 14, marginBottom: 2 }}>Dónde cobrás tus reintegros</div>
+                <div style={{ fontSize: 12.5, color: 'rgb(130,124,160)', marginBottom: 10, lineHeight: 1.45 }}>El club transfiere a esta cuenta. Si la completás acá, no te la volvemos a pedir en cada solicitud.</div>
+                <label style={sheetLabel} htmlFor="pf-btit">Titular de la cuenta</label>
+                <input id="pf-btit" value={datos.bancoTitular} onChange={(e) => { setDatos((d) => ({ ...d, bancoTitular: e.target.value })); setError(''); }} placeholder="Nombre y apellido" style={inputEdit} />
+                <label style={sheetLabel} htmlFor="pf-bdni">DNI del titular</label>
+                <input id="pf-bdni" value={datos.bancoTitularDni} onChange={(e) => { setDatos((d) => ({ ...d, bancoTitularDni: e.target.value })); setError(''); }} inputMode="numeric" placeholder="12345678" style={inputEdit} />
+                <label style={sheetLabel} htmlFor="pf-bcuit">CUIT / CUIL <span style={{ fontWeight: 500, opacity: 0.6 }}>(opcional)</span></label>
+                <input id="pf-bcuit" value={datos.bancoCuit} onChange={(e) => setDatos((d) => ({ ...d, bancoCuit: e.target.value }))} inputMode="numeric" placeholder="20-12345678-9" style={inputEdit} />
+                <label style={sheetLabel} htmlFor="pf-bbanco">Banco</label>
+                <input id="pf-bbanco" value={datos.bancoNombre} onChange={(e) => { setDatos((d) => ({ ...d, bancoNombre: e.target.value })); setError(''); }} placeholder="Galicia, Mercado Pago, Ualá…" style={inputEdit} />
+                <label style={sheetLabel} htmlFor="pf-bcbu">CBU / CVU o alias</label>
+                <input id="pf-bcbu" value={datos.bancoCbu} onChange={(e) => { setDatos((d) => ({ ...d, bancoCbu: e.target.value })); setError(''); }} placeholder="0000003100010000000001 o mi.alias.mp" style={inputEdit} />
+                {datos.bancoCbu.trim() !== '' && pareceCbu(datos.bancoCbu) && !cbuValido(datos.bancoCbu) && (
+                  <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 8 }}>El CBU/CVU tiene 22 dígitos y pusiste {datos.bancoCbu.replace(/\D/g, '').length}.</div>
+                )}
+              </>
+            )}
             {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 8 }}>{error}</div>}
             <button onClick={guardarDatos} disabled={busy} style={{ ...sheetBtn(true), width: '100%', fontSize: 14, padding: 12, opacity: busy ? 0.6 : 1 }}>{busy ? 'Guardando…' : 'Guardar cambios'}</button>
           </div>
@@ -3743,10 +3851,11 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
   const [fotoBusy, setFotoBusy] = useState(false);
 
   /** Misma subida que el carnet, con las reglas y la ruta de `@kumo/shared`. */
-  const elegirFoto = async (f?: File) => {
-    if (!f) return;
-    const invalida = motivoFotoInvalida(f.type, f.size);
-    if (invalida) { setError(invalida); return; }
+  const elegirFoto = async (elegida?: File) => {
+    if (!elegida) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setError(listo.error); return; }
+    const f = listo.file;
     setFotoBusy(true); setError('');
     const path = rutaFoto(ownerId, f.name.split('.').pop() ?? 'jpg', 'mascota-');
     const { error: subida } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });

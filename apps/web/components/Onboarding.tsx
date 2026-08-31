@@ -4,10 +4,11 @@ import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  data, FOTO_TIPOS, FOTO_MAX, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
+  data, FOTO_TIPOS, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, pasoOk, payloadAlta,
   borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
   MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador, motivoFotosDelAltaPesan } from '@kumo/shared';
+import { prepararFoto } from '@/lib/foto';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
@@ -61,12 +62,16 @@ function Segmented({ options, value, onChange }: { options: string[]; value: str
  * mismo.
  */
 function FilaMascota({
-  m, indice, total, foto, onCambio, onFoto, onQuitar,
+  m, indice, total, foto, otras, onCambio, onFoto, onQuitar,
 }: {
   m: MascotaBorrador;
   indice: number;
   total: number;
   foto: File | undefined;
+  /** Lo que ya ocupan las fotos de las OTRAS mascotas del alta. Hace falta acá
+   *  porque el tope es de la suma —todas viajan en el mismo pedido— y el aviso
+   *  tiene que salir al adjuntar, no al confirmar. */
+  otras: { bytes: number; cuantas: number };
   onCambio: (datos: MascotaBorrador['datos']) => void;
   onFoto: (f: File | undefined, error: string) => void;
   onQuitar: () => void;
@@ -75,20 +80,23 @@ function FilaMascota({
   const d = m.datos;
   const set = (parte: Partial<MascotaBorrador['datos']>) => onCambio({ ...d, ...parte });
 
-  /** Se valida acá y no solo en el servidor: si el tipo no entra, antes el alta
-   *  respondía "listo" y la foto se perdía sin que nadie se enterara. */
-  const elegirFoto = (f?: File) => {
-    if (!f) return;
-    if (!FOTO_TIPOS.includes(f.type as (typeof FOTO_TIPOS)[number])) {
-      setError(`Ese formato no lo podemos usar (${f.type || 'desconocido'}). Probá con JPG, PNG o WEBP. Si es una foto de iPhone, mandala desde "Fotos" y se convierte sola.`);
-      return;
-    }
-    if (f.size > FOTO_MAX) {
-      setError(`La foto pesa ${(f.size / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB. Probá con una más chica.`);
-      return;
-    }
+  /**
+   * Todo se resuelve ACÁ, con la foto todavía en la mano.
+   *
+   * Se valida el formato, se achica, y se controla que la suma de todas las
+   * fotos del alta siga entrando. Ese último control existía pero corría al
+   * confirmar: la persona llenaba los cinco pasos del alta y recién ahí se
+   * enteraba de que tenía que volver a cambiar una foto. Ahora se entera cuando
+   * todavía está eligiéndola y cambiarla no le cuesta nada.
+   */
+  const elegirFoto = async (elegida?: File) => {
+    if (!elegida) return;
     setError('');
-    onFoto(f, '');
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setError(listo.error); return; }
+    const pesan = motivoFotosDelAltaPesan(otras.bytes + listo.file.size, otras.cuantas + 1);
+    if (pesan) { setError(pesan); return; }
+    onFoto(listo.file, '');
   };
 
   return (
@@ -280,6 +288,9 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
      * no queda log del lado del servidor y del lado del navegador se ve como un
      * error de red. Se corta antes y se dice qué hacer. Es el mismo control que
      * hace la app: el límite vive en @kumo/shared para que no diverjan.
+     *
+     * Con el control al adjuntar (ver `elegirFoto`) acá no debería entrar nunca:
+     * queda de red, porque el precio de equivocarse es un alta perdida entera.
      */
     const elegidas = mascotas.map((m) => fotos[m.uid]).filter(Boolean) as File[];
     const pesan = motivoFotosDelAltaPesan(elegidas.reduce((t, f) => t + f.size, 0), elegidas.length);
@@ -372,6 +383,10 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
                 total={mascotas.length}
                 foto={fotos[m.uid]}
                 onCambio={(datos) => setMascota(m.uid, { datos })}
+                otras={(() => {
+                  const resto = mascotas.filter((o) => o.uid !== m.uid).map((o) => fotos[o.uid]).filter(Boolean) as File[];
+                  return { bytes: resto.reduce((t, f) => t + f.size, 0), cuantas: resto.length };
+                })()}
                 onFoto={(f) => setFotos((x) => (f ? { ...x, [m.uid]: f } : x))}
                 onQuitar={() => quitarMascota(m.uid)}
               />

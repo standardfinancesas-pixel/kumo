@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Image, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Image, PanResponder, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, MUTED } from './ui/Texto';
@@ -19,10 +19,13 @@ import { Texto as Text, BRAND, INK, MUTED } from './ui/Texto';
  * `<Image>`. Las mismas de la web (CARTO Positron), así los dos mapas se ven igual.
  * Todo esto es JavaScript, así que viaja por OTA.
  *
- * Lo que NO tiene, a propósito: arrastrar y hacer zoom. El mapa contesta "quién hay
- * cerca" de un vistazo, y para "llevame hasta acá" la ficha ya tiene la dirección,
- * que abre la app de mapas del teléfono. El día que haga falta moverlo, es Leaflet en
- * un WebView y este archivo se borra.
+ * Lo que NO tiene, a propósito: arrastrar. El mapa contesta "quién hay cerca" de un
+ * vistazo, y para "llevame hasta acá" la ficha ya tiene la dirección, que abre la app
+ * de mapas del teléfono. El día que haga falta moverlo, es Leaflet en un WebView y
+ * este archivo se borra.
+ *
+ * Zoom sí tiene: con dos dedos y con los botones. Es todo JavaScript —una tesela es
+ * una URL con el zoom adentro— así que viaja por OTA como el resto.
  *
  * La atribución es obligatoria y va abajo a la derecha.
  */
@@ -78,6 +81,25 @@ function zoomPara(metros: number, lado: number, lat: number): number {
   const z = Math.log2((156543.03392 * Math.cos((lat * Math.PI) / 180)) / necesarios);
   return Math.max(11, Math.min(15, Math.floor(z)));
 }
+
+/**
+ * Los topes del zoom que puede pedir la persona, más anchos que los de `zoomPara`.
+ *
+ * Son otro objetivo: `zoomPara` encuadra el círculo del radio, y acá lo que se
+ * quiere es mirar la cuadra. CARTO sirve teselas hasta z20; en 18 ya se leen los
+ * portales, y bajar de 10 convierte la ciudad en una manchita sin pines.
+ */
+const ZOOM_MIN = 10;
+const ZOOM_MAX = 18;
+
+/** La distancia entre dos dedos, que es lo único que define un pinch. */
+const separacion = (t: { pageX: number; pageY: number }[]): number => {
+  const [a, b] = t;
+  /* Devolver 0 y no romper si llegó un solo dedo: el 0 hace que el gesto se
+     considere no iniciado y el movimiento se ignore, que es lo correcto. */
+  if (!a || !b) return 0;
+  return Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
+};
 
 /* ── El pin ────────────────────────────────────────────────────────── */
 
@@ -138,6 +160,30 @@ export function MapaLugares({
   const [ancho, setAncho] = useState(0);
   const medir = (e: LayoutChangeEvent) => setAncho(Math.round(e.nativeEvent.layout.width));
 
+  /* Cuántos niveles se corrió la persona respecto del encuadre automático. Se guarda
+     el DESVÍO y no el zoom absoluto para que el encuadre siga mandando: si cambian
+     los pines, el mapa se reacomoda solo y el acercamiento pedido se respeta igual. */
+  const [zoomExtra, setZoomExtra] = useState(0);
+
+  /* El slider re-encuadra: mover el radio vuelve al zoom que hace entrar el círculo.
+     Sin esto, después de acercarse con los dedos el slider parecía no hacer nada —
+     seguía filtrando, pero el mapa no se movía y se leía como que estaba roto. */
+  useEffect(() => { setZoomExtra(0); }, [radioKm]);
+
+  /* El pinch se muestra estirando las teselas que YA están, y recién al soltar se
+     piden las del zoom nuevo. Es el mismo criterio que el slider del radio: pedir
+     teselas en cada cuadro del gesto llena la pantalla de imágenes a medio cargar.
+     `Animated` para que el estirado no re-renderice el mapa entero mientras se
+     mueven los dedos. */
+  const escala = useRef(new Animated.Value(1)).current;
+  const inicial = useRef(0);
+  const factor = useRef(1);
+
+  /* El PanResponder se crea UNA vez, así que no puede leer el zoom de este render.
+     Lo que necesita al soltar vive acá y se reescribe en cada render: sin esto, el
+     gesto calculaba siempre contra el primer zoom y el segundo pinch saltaba. */
+  const alSoltar = useRef<(f: number) => void>(() => {});
+
   /* Qué tiene que entrar en el recuadro: el radio si hay, y si no la distancia al pin
      más lejos (con un piso, para que un solo pin al lado no deje el mapa a nivel
      baldosa). */
@@ -154,7 +200,40 @@ export function MapaLugares({
         return R * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
       }),
     );
-  const z = zoomPara(metros, Math.min(ancho || 320, alto), centro.lat);
+  const zBase = zoomPara(metros, Math.min(ancho || 320, alto), centro.lat);
+  const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zBase + zoomExtra));
+
+  /* Se pide un zoom absoluto y se guarda como desvío del encuadre, con los topes
+     aplicados antes de restar: así, al llegar al tope, el desvío deja de crecer y
+     el botón no acumula toques invisibles que después hay que deshacer. */
+  const irA = (objetivo: number) => setZoomExtra(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, objetivo)) - zBase);
+  alSoltar.current = (f: number) => irA(Math.round(z + Math.log2(f)));
+
+  const gestos = useRef(
+    PanResponder.create({
+      /* Solo con dos dedos: con uno el toque tiene que seguir llegando a los pines,
+         y la pantalla de atrás tiene que poder scrollear por encima del mapa. */
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (e) => e.nativeEvent.touches.length === 2,
+      onPanResponderGrant: (e) => {
+        const t = e.nativeEvent.touches;
+        if (t.length === 2) { inicial.current = separacion(t); factor.current = 1; }
+      },
+      onPanResponderMove: (e) => {
+        const t = e.nativeEvent.touches;
+        if (t.length !== 2 || !inicial.current) return;
+        /* Acotado a un nivel para cada lado por gesto: sin tope, un pinch largo
+           estira las teselas hasta que se ven los píxeles y el salto al soltar es
+           tan grande que se pierde de vista dónde estaba. */
+        factor.current = Math.max(0.5, Math.min(2, separacion(t) / inicial.current));
+        escala.setValue(factor.current);
+      },
+      /* Terminate además de Release: si el sistema le saca el gesto (una llamada, el
+         scroll de atrás), sin esto el mapa se quedaba estirado para siempre. */
+      onPanResponderRelease: () => { alSoltar.current(factor.current); escala.setValue(1); inicial.current = 0; factor.current = 1; },
+      onPanResponderTerminate: () => { escala.setValue(1); inicial.current = 0; factor.current = 1; },
+    }),
+  ).current;
 
   const c = aPixeles(centro.lat, centro.lng, z);
   const origen = { x: c.x - (ancho || 320) / 2, y: c.y - alto / 2 };
@@ -190,65 +269,96 @@ export function MapaLugares({
       onLayout={medir}
       style={{ height: alto, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#e6e3f0', backgroundColor: '#eef0f4' }}
     >
-      {/* Las teselas */}
-      {teselas.map((t) => (
-        <Image
-          key={`${z}/${t.x}/${t.y}/${t.left}`}
-          source={{ uri: `${TESELAS}/${z}/${t.x}/${t.y}.png${CLAVE_TESELAS ? `?key=${CLAVE_TESELAS}` : ''}` }}
-          style={{ position: 'absolute', left: t.left, top: t.top, width: TESELA, height: TESELA }}
-        />
-      ))}
+      {/* Todo lo que es "el mapa" va acá adentro: se estira junto durante el pinch.
+          El escalado de React Native es respecto del centro de la vista, y el centro
+          de la vista ES el centro del mapa, así que acercarse no lo descoloca.
+          Los botones y la atribución quedan afuera: no son mapa. */}
+      <Animated.View
+        {...gestos.panHandlers}
+        style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, transform: [{ scale: escala }] }}
+      >
+        {/* Las teselas */}
+        {teselas.map((t) => (
+          <Image
+            key={`${z}/${t.x}/${t.y}/${t.left}`}
+            source={{ uri: `${TESELAS}/${z}/${t.x}/${t.y}.png${CLAVE_TESELAS ? `?key=${CLAVE_TESELAS}` : ''}` }}
+            style={{ position: 'absolute', left: t.left, top: t.top, width: TESELA, height: TESELA }}
+          />
+        ))}
 
-      {/* El círculo del radio */}
-      {radioPx > 0 ? (
-        <View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            left: (ancho || 320) / 2 - radioPx,
-            top: alto / 2 - radioPx,
-            width: radioPx * 2,
-            height: radioPx * 2,
-            borderRadius: radioPx,
-            borderWidth: 1.25,
-            borderColor: 'rgba(93,84,145,0.45)',
-            backgroundColor: 'rgba(93,84,145,0.07)',
-          }}
-        />
-      ) : null}
+        {/* El círculo del radio */}
+        {radioPx > 0 ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: (ancho || 320) / 2 - radioPx,
+              top: alto / 2 - radioPx,
+              width: radioPx * 2,
+              height: radioPx * 2,
+              borderRadius: radioPx,
+              borderWidth: 1.25,
+              borderColor: 'rgba(93,84,145,0.45)',
+              backgroundColor: 'rgba(93,84,145,0.07)',
+            }}
+          />
+        ) : null}
 
-      {/* La casa del socio. No se dibuja si el centro no es un lugar suyo. */}
-      {ancho > 0 && centro.etiqueta ? (
-        <View style={{ position: 'absolute', left: (ancho || 320) / 2 - 14, top: alto / 2 - 14 }}>
-          <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.brand.lime, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
-            <Svg width={14} height={14} viewBox="0 0 24 24">
-              <Path d="M3 10.5 12 3l9 7.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
-              <Path d="M5 9.5V20h14V9.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
-            </Svg>
+        {/* La casa del socio. No se dibuja si el centro no es un lugar suyo. */}
+        {ancho > 0 && centro.etiqueta ? (
+          <View style={{ position: 'absolute', left: (ancho || 320) / 2 - 14, top: alto / 2 - 14 }}>
+            <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.brand.lime, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+              <Svg width={14} height={14} viewBox="0 0 24 24">
+                <Path d="M3 10.5 12 3l9 7.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+                <Path d="M5 9.5V20h14V9.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+            </View>
           </View>
-        </View>
-      ) : null}
+        ) : null}
 
-      {/* Los pines. La punta de la gota va en el lugar, así que se corre 17 a la
-          izquierda y 42 hacia arriba. */}
-      {ancho > 0 && pins.map((p) => {
-        const q = aPixeles(p.lat, p.lng, z);
-        const left = q.x - origen.x - 17;
-        const top = q.y - origen.y - 42;
-        // Un pin que cae afuera del recuadro no se dibuja: en Android, una vista
-        // fuera de los límites igual consume memoria y captura toques.
-        if (left < -34 || top < -42 || left > (ancho || 320) || top > alto) return null;
-        return (
-          <TouchableOpacity
-            key={p.id}
-            disabled={!onPin}
-            onPress={() => onPin?.(p.id)}
-            style={{ position: 'absolute', left, top }}
-          >
-            <Gota etiqueta={p.etiqueta} />
-          </TouchableOpacity>
-        );
-      })}
+        {/* Los pines. La punta de la gota va en el lugar, así que se corre 17 a la
+            izquierda y 42 hacia arriba. */}
+        {ancho > 0 && pins.map((p) => {
+          const q = aPixeles(p.lat, p.lng, z);
+          const left = q.x - origen.x - 17;
+          const top = q.y - origen.y - 42;
+          // Un pin que cae afuera del recuadro no se dibuja: en Android, una vista
+          // fuera de los límites igual consume memoria y captura toques.
+          if (left < -34 || top < -42 || left > (ancho || 320) || top > alto) return null;
+          return (
+            <TouchableOpacity
+              key={p.id}
+              disabled={!onPin}
+              onPress={() => onPin?.(p.id)}
+              style={{ position: 'absolute', left, top }}
+            >
+              <Gota etiqueta={p.etiqueta} />
+            </TouchableOpacity>
+          );
+        })}
+
+      </Animated.View>
+
+      {/* Los botones. Arriba a la derecha porque abajo va la atribución y el centro
+          lo ocupa el círculo del radio. Chicos a propósito: el mapa mide 230 de alto
+          y en la web los botones se sacaron justamente por tapar un pin. */}
+      <View style={{ position: 'absolute', right: 8, top: 8, borderRadius: 10, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.92)', borderWidth: 1, borderColor: '#e6e3f0' }}>
+        {([['+', 1], ['−', -1]] as const).map(([signo, paso], i) => {
+          const tope = paso > 0 ? z >= ZOOM_MAX : z <= ZOOM_MIN;
+          return (
+            <TouchableOpacity
+              key={signo}
+              disabled={tope}
+              onPress={() => irA(z + paso)}
+              accessibilityRole="button"
+              accessibilityLabel={paso > 0 ? 'Acercar el mapa' : 'Alejar el mapa'}
+              style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderTopWidth: i === 1 ? 1 : 0, borderTopColor: '#e6e3f0', opacity: tope ? 0.35 : 1 }}
+            >
+              <Text style={{ fontSize: 18, fontWeight: '700', color: BRAND, lineHeight: 21 }}>{signo}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       {/* La atribución, obligatoria. */}
       <View style={{ position: 'absolute', right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', paddingHorizontal: 6, paddingVertical: 1, borderTopLeftRadius: 8 }}>

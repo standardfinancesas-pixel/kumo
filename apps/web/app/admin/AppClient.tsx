@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, destinoParaMostrar } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 
@@ -372,17 +372,22 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
               existía si ya había pedido uno. */}
           <div>
             <div style={fieldLabel}>DÓNDE COBRA SUS REINTEGROS</div>
-            {data.bank.cbu
+            {/* Alcanza con UNA de las dos formas: mirar solo el CBU dejaba al club
+                viendo "todavía no cargó una cuenta" a un socio que había puesto
+                alias, con la cuenta cargada y sin forma de verla desde acá. */}
+            {data.bank.cbu || data.bank.alias
               ? (
                 <>
-                  {dato('CBU / CVU', data.bank.cbu)}
-                  {data.bank.alias && dato('Alias', data.bank.alias)}
+                  {dato(data.bank.cbu ? 'CBU / CVU' : 'Alias', destinoParaMostrar(data.bank.cbu, data.bank.alias))}
                   {dato('Titular', data.bank.holder || '—')}
+                  {/* El DNI es con lo que el club chequea que la cuenta sea del socio
+                      antes de transferir; el mismo control que hace la solicitud. */}
+                  {dato('DNI del titular', data.bank.holderDni || '—')}
                   {dato('CUIT / CUIL', data.bank.cuit || '—')}
-                  {data.bank.name && dato('Banco', data.bank.name)}
+                  {dato('Banco', data.bank.name || '—')}
                 </>
               )
-              : <div style={{ fontSize: 13.5, color: '#8781a0' }}>Todavía no cargó una cuenta. Se le pide al aprobar el primer reintegro.</div>}
+              : <div style={{ fontSize: 13.5, color: '#8781a0' }}>Todavía no cargó una cuenta. Se le pide al cargar su primer reintegro.</div>}
           </div>
           {/* Cómo paga, o por qué no paga.
 

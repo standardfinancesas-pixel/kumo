@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, AppState, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { Alert, AppState, Modal, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
@@ -13,6 +13,7 @@ import {
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
+  destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, pareceCbu, parchePerfilBancario, hayDatosBancarios,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO,
@@ -190,7 +191,10 @@ function FotoPrestador({ p, lado, radio, extra }: { p: ProviderVM; lado: number;
 
 /* ── Componentes chicos ────────────────────────────────────────── */
 function PetChips({ pets, idx, setIdx }: { pets: Pet[]; idx: number; setIdx: (i: number) => void }) {
-  if (pets.length === 0) return null;
+  /* Con una sola mascota el selector no selecciona nada: es una tab siempre
+     encendida que ocupa lugar y sugiere que hay algo más para elegir. Aparece
+     recién cuando hay de verdad entre qué elegir. */
+  if (pets.length <= 1) return null;
   return (
     <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
       {pets.map((p, i) => (
@@ -1438,7 +1442,7 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
   const [error, setError] = useState('');
   const [datos, setDatos] = useState({
     nombre: '', dni: '', dom: '', localidad: '', provincia: '', tel: '',
-    bancoTitular: '', bancoCuit: '', bancoCbu: '',
+    bancoTitular: '', bancoTitularDni: '', bancoCuit: '', bancoNombre: '', bancoCbu: '',
   });
 
   /** Se carga al abrir la edición y no en el render: los "—" del display no son
@@ -1449,7 +1453,11 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
     setDatos({
       nombre: profile.fullName, dni: real(profile.dni), dom: real(profile.address),
       localidad: real(profile.city), provincia: real(profile.province), tel: real(profile.phone),
-      bancoTitular: profile.banco.holder ?? '', bancoCuit: profile.banco.cuit ?? '', bancoCbu: profile.banco.cbu ?? '',
+      bancoTitular: profile.banco.holder ?? '', bancoTitularDni: profile.banco.holderDni ?? '',
+      bancoCuit: profile.banco.cuit ?? '', bancoNombre: profile.banco.banco ?? '',
+      // El alias también: leer solo `cbu` dejaba invisible acá una cuenta cargada
+      // por alias desde la web, y guardar la volvía a pisar con vacío.
+      bancoCbu: destinoParaMostrar(profile.banco.cbu, profile.banco.alias),
     });
     setError('');
     setEditando(true);
@@ -1458,6 +1466,12 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
   const guardar = async () => {
     if (!profile) return;
     if (!datos.nombre.trim()) { setError('El nombre no puede quedar vacío.'); return; }
+    /* La cuenta es opcional, pero a medias no sirve: ver `hayDatosBancarios`. */
+    const banco = { titular: datos.bancoTitular, titularDni: datos.bancoTitularDni, cuit: datos.bancoCuit, banco: datos.bancoNombre, destino: datos.bancoCbu };
+    if (hayDatosBancarios(banco)) {
+      const falta = motivoDatosBancariosIncompletos(banco);
+      if (falta) { setError(falta); return; }
+    }
     setBusy(true); setError('');
     const { error: e, data } = await supabase.from('profiles').update({
       full_name: datos.nombre.trim(),
@@ -1467,8 +1481,10 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
       province: datos.provincia.trim() || null,
       phone: datos.tel.trim() || null,
       bank_holder: datos.bancoTitular.trim() || null,
+      bank_holder_dni: datos.bancoTitularDni.replace(/\D/g, '') || null,
       bank_cuit: datos.bancoCuit.trim() || null,
-      bank_cbu: datos.bancoCbu.replace(/\D/g, '') || null,
+      bank_name: datos.bancoNombre.trim() || null,
+      ...destinoDeTransferencia(datos.bancoCbu),
     }).eq('id', profile.id).select('id');
     if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
     /* Si se mudó, el mapa se muda con él: sin esto las coordenadas quedan en la
@@ -1743,9 +1759,13 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
           <Text style={{ fontWeight: '700', fontSize: 14, marginTop: 10, marginBottom: 2 }}>Dónde cobrás tus reintegros</Text>
           <Text style={{ fontSize: 12, color: MUTED, marginBottom: 10, lineHeight: 17 }}>El club transfiere a esta cuenta. Si la completás acá, no te la volvemos a pedir en cada solicitud.</Text>
           {campo('Titular de la cuenta', datos.bancoTitular, (v) => setDatos({ ...datos, bancoTitular: v }))}
+          {campo('DNI del titular', datos.bancoTitularDni, (v) => setDatos({ ...datos, bancoTitularDni: v }), { keyboardType: 'numeric' })}
           {campo('CUIT / CUIL', datos.bancoCuit, (v) => setDatos({ ...datos, bancoCuit: v }), { keyboardType: 'numeric' })}
-          {campo('CBU o CVU', datos.bancoCbu, (v) => setDatos({ ...datos, bancoCbu: v }), { keyboardType: 'numeric' })}
-          {datos.bancoCbu.replace(/\D/g, '').length > 0 && !cbuValido(datos.bancoCbu) ? (
+          {campo('Banco', datos.bancoNombre, (v) => setDatos({ ...datos, bancoNombre: v }))}
+          {/* Sin teclado numérico: acá también entra un alias, y forzar números
+              hacía que el alias fuera imposible de escribir en el celular. */}
+          {campo('CBU / CVU o alias', datos.bancoCbu, (v) => setDatos({ ...datos, bancoCbu: v }))}
+          {datos.bancoCbu.trim().length > 0 && pareceCbu(datos.bancoCbu) && !cbuValido(datos.bancoCbu) ? (
             <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '700', marginBottom: 8 }}>
               El CBU/CVU tiene 22 dígitos y pusiste {datos.bancoCbu.replace(/\D/g, '').length}.
             </Text>
@@ -3320,15 +3340,22 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
   const [place, setPlace] = useState('');
   const [concept, setConcept] = useState('');
   const [amount, setAmount] = useState('');
-  // Prefijados con la cuenta del perfil, que se pide en el alta: antes había que
-  // retipear titular, CUIT y CBU en cada solicitud. Igual que en la webapp.
+  // Prefijados con la cuenta del perfil: el alta ya no pide datos bancarios, así
+  // que la primera solicitud es donde se cargan y de ahí quedan guardados. Antes
+  // había que retipear todo en cada pedido. Igual que en la webapp.
+  const [petIdx, setPetIdx] = useState(0);
   const [titular, setTitular] = useState(profile?.banco.holder ?? '');
+  const [titularDni, setTitularDni] = useState(profile?.banco.holderDni ?? '');
   const [cuit, setCuit] = useState(profile?.banco.cuit ?? '');
-  const [cbu, setCbu] = useState(profile?.banco.cbu ?? profile?.banco.alias ?? '');
+  const [nombreBanco, setNombreBanco] = useState(profile?.banco.banco ?? '');
+  const [cbu, setCbu] = useState(destinoParaMostrar(profile?.banco.cbu ?? null, profile?.banco.alias ?? null));
   const [photo, setPhoto] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  /* Mismo clamp que la pantalla principal: si borra una mascota con el
+     formulario abierto, el índice queda apuntando afuera de la lista. */
+  const idxMascota = Math.min(petIdx, Math.max(pets.length - 1, 0));
   const pct = REFUND_PCT[profile?.planName ?? ''] ?? 30;
   const sel = reintegros.find((r) => r.id === selId);
   if (sel) return <ReintegroDetalle r={sel} planName={profile?.planName ?? '—'} onVolver={() => setSelId(null)} />;
@@ -3346,7 +3373,8 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
     const n = Number(amount.replace(/\D/g, ''));
     if (!place.trim() || !concept.trim() || !n || !profile) { setError('Completá el comercio, el concepto y el monto.'); return; }
     if (!photo) { setError('Cargá la factura: sin comprobante el club no puede validar el gasto.'); return; }
-    if (!titular.trim() || !cbu.trim()) { setError('Completá el titular y el CBU/CVU o alias: son los datos con los que se acredita.'); return; }
+    const falta = motivoDatosBancariosIncompletos({ titular, titularDni, banco: nombreBanco, destino: cbu });
+    if (falta) { setError(falta); return; }
     setBusy(true);
     setError('');
 
@@ -3363,12 +3391,13 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
     }
 
     const { data: nuevo, error: insErr } = await supabase.from('reimbursements').insert({
-      member_id: userId, pet_id: pets[0]?.id ?? null, plan_name: profile.planName,
+      member_id: userId, pet_id: pets[idxMascota]?.id ?? null, plan_name: profile.planName,
       provider_name: place.trim(), concept: concept.trim(), amount: n,
       refund: Math.round((n * pct) / 100), refund_pct: pct, status: 'en_revision', receipt_path: path,
-      bank_holder: titular.trim() || null, bank_cuit: cuit.trim() || null,
+      bank_holder: titular.trim() || null, bank_holder_dni: titularDni.replace(/\D/g, '') || null,
+      bank_cuit: cuit.trim() || null, bank_name: nombreBanco.trim() || null,
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
-      ...(/^\d{22}$/.test(cbu.replace(/\D/g, '')) ? { bank_cbu: cbu.trim() } : { bank_alias: cbu.trim() }),
+      ...destinoDeTransferencia(cbu),
     }).select('id').single();
     if (insErr) {
       // No dejamos el archivo huérfano si falla la solicitud.
@@ -3378,10 +3407,18 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
       return;
     }
 
+    // La cuenta cargada acá queda en el perfil, igual que en la webapp: sin esto
+    // el socio que pide sus reintegros desde la app retipeaba todo cada vez.
+    // Completa huecos, no pisa: ver `parchePerfilBancario`.
+    if (profile) {
+      const parche = parchePerfilBancario(profile.banco, { titular, titularDni, cuit, banco: nombreBanco, destino: cbu });
+      if (parche) await supabase.from('profiles').update(parche).eq('id', userId);
+    }
+
     // Acuse del pedido: el socio se entera de que llegó sin tener que preguntar.
     if (nuevo?.id) void avisar('reintegro-recibido', nuevo.id);
 
-    setPlace(''); setConcept(''); setAmount(''); setTitular(''); setCuit(''); setCbu(''); setPhoto(null);
+    setPlace(''); setConcept(''); setAmount(''); setPetIdx(0); setTitular(''); setTitularDni(''); setCuit(''); setNombreBanco(''); setCbu(''); setPhoto(null);
     setOpen(false); setEnviado(true);
     await reload();
     setBusy(false);
@@ -3437,9 +3474,19 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
           <TextInput value={amount} onChangeText={(v) => { setAmount(v); setError(''); }} placeholder="Monto gastado" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 8 }} />
           <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 16 }}>Te correspondería {money(Math.round((Number(amount.replace(/\D/g, '')) * pct) / 100))} de reintegro.</Text>
 
+          {/* Las mismas chips que Inicio y Carnet, que ya se esconden solas cuando
+              hay una sola mascota. Acá no había selector: la solicitud se imputaba
+              SIEMPRE a `pets[0]`, así que el socio con dos mascotas cargaba el
+              gasto de una y le quedaba anotado en el historial de la otra, sin
+              forma de corregirlo desde la app. La webapp sí preguntaba. */}
+          {pets.length > 1 && <Grupo>¿Para cuál de tus mascotas?</Grupo>}
+          <PetChips pets={pets} idx={idxMascota} setIdx={setPetIdx} />
+
           <Grupo>Datos para la acreditación</Grupo>
-          <TextInput value={titular} onChangeText={(v) => { setTitular(v); setError(''); }} placeholder="Nombre del titular de la cuenta" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
-          <TextInput value={cuit} onChangeText={setCuit} placeholder="CUIT / CUIL · 20-12345678-9" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={titular} onChangeText={(v) => { setTitular(v); setError(''); }} placeholder="Titular de la cuenta · nombre y apellido" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={titularDni} onChangeText={(v) => { setTitularDni(v); setError(''); }} placeholder="DNI del titular · 12345678" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={cuit} onChangeText={setCuit} placeholder="CUIT / CUIL · opcional" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 10 }} />
+          <TextInput value={nombreBanco} onChangeText={setNombreBanco} placeholder="Banco · Galicia, Mercado Pago, Ualá…" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
           <TextInput value={cbu} onChangeText={(v) => { setCbu(v); setError(''); }} placeholder="CBU / CVU o alias" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 16 }} />
 
           {!!error && <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text>}
@@ -3508,8 +3555,38 @@ const CAT_TONE: Record<string, { bg: string; fg: string }> = {
 /* ── Hilo del foro ─────────────────────────────────────────────── */
 /** El hilo del prototipo: post original, me gusta, respuestas y la caja para
  *  responder. Antes la tarjeta no se podía tocar: no había hilo ni respuestas. */
+/**
+ * La foto de una publicación, en grande.
+ *
+ * En el hilo va recortada a 200 px de alto para que un post no se coma la
+ * pantalla, y eso esconde parte de la imagen: si alguien sube la radiografía de
+ * su perro o la etiqueta de un alimento, lo que importa puede estar justo en lo
+ * recortado. Tocarla la abre entera. Es lo mismo que hace la webapp.
+ */
+function FotoGrande({ uri, onCerrar }: { uri: string; onCerrar: () => void }) {
+  return (
+    /* `onRequestClose` es lo que atiende el botón "atrás" de Android: sin esto,
+       atrás cerraba la app en vez de la foto. */
+    <Modal visible transparent animationType="fade" onRequestClose={onCerrar} statusBarTranslucent>
+      <Pressable onPress={onCerrar} style={{ flex: 1, backgroundColor: 'rgba(20,17,36,0.92)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+        {/* `contain` y no `cover`: acá el punto es justamente verla entera. */}
+        <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+        <TouchableOpacity
+          onPress={onCerrar}
+          accessibilityRole="button"
+          accessibilityLabel="Cerrar"
+          style={{ position: 'absolute', top: 46, right: 18, width: 40, height: 40, borderRadius: 20, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.16)', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Text style={{ color: '#fff', fontSize: 20, fontWeight: '700' }}>✕</Text>
+        </TouchableOpacity>
+      </Pressable>
+    </Modal>
+  );
+}
+
 function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPost; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void; onVolver: () => void }) {
   const tone = CAT_TONE[p.cat] ?? { bg: colors.violet[100], fg: BRAND };
+  const [fotoAbierta, setFotoAbierta] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
   const [busy, setBusy] = useState(false);
   const [likePost, setLikePost] = useState(misLikes.posts.includes(p.id));
@@ -3671,7 +3748,17 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
 
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, lineHeight: 25, color: INK, marginBottom: 10 }}>{p.title}</Text>
       <Text style={{ fontSize: 14, color: '#4a4560', lineHeight: 22, marginBottom: 14 }}>{p.body}</Text>
-      {p.photo ? <Image source={{ uri: p.photo }} style={{ width: '100%', height: 200, borderRadius: 14, marginBottom: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" /> : null}
+      {p.photo ? (
+        <TouchableOpacity
+          onPress={() => setFotoAbierta(p.photo)}
+          accessibilityRole="button"
+          accessibilityLabel="Ver la foto completa"
+          activeOpacity={0.85}
+        >
+          <Image source={{ uri: p.photo }} style={{ width: '100%', height: 200, borderRadius: 14, marginBottom: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" />
+        </TouchableOpacity>
+      ) : null}
+      {fotoAbierta ? <FotoGrande uri={fotoAbierta} onCerrar={() => setFotoAbierta(null)} /> : null}
 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
         <TouchableOpacity onPress={togglePost} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: likePost ? '#fbe9ee' : colors.violet[100], borderRadius: 100, paddingHorizontal: 14, paddingVertical: 9 }}>
@@ -4281,7 +4368,16 @@ export default function App() {
               <Text style={{ fontSize: 13, color: colors.violet[400], marginBottom: 4 }}>Hola de nuevo</Text>
               <Text style={{ fontSize: 23, fontWeight: '800', fontFamily: FH, color: INK }}>{data.profile?.firstName ?? 'Socio'}</Text>
             </View>
-          ) : <View />}
+          ) : (
+            /* Fuera de Inicio el saludo no va, pero dejar el hueco vacío hacía que
+               el header se leyera como una franja suelta con la campanita y el menú
+               flotando a la derecha. El wordmark ocupa ese lugar y además ubica:
+               es lo mismo que hace la barra de la webapp en todas sus pantallas.
+               Toca para volver al inicio, como el logo de la webapp. */
+            <TouchableOpacity onPress={() => go('inicio')} accessibilityRole="button" accessibilityLabel="Ir al inicio">
+              <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 24, color: BRAND }}>Kumo</Text>
+            </TouchableOpacity>
+          )}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TouchableOpacity onPress={() => go('notif')} style={{ width: 44, height: 44, borderRadius: 14, overflow: 'hidden', backgroundColor: screen === 'notif' ? BRAND : colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
               <Ic d="bell" size={21} color={screen === 'notif' ? '#fff' : BRAND} />

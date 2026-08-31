@@ -68,7 +68,32 @@ export const waLink = (numero: string) => `https://wa.me/${numero.replace(/\D/g,
  * Si se cambian, hay que actualizar también allowed_mime_types del bucket.
  */
 export const FOTO_TIPOS = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'] as const;
-export const FOTO_MAX = 5 * 1024 * 1024;
+/**
+ * Un solo número para todo: 3 MB.
+ *
+ * Antes convivían dos —5 MB por foto y 3 MB la suma del alta (`ALTA_FOTOS_MAX`)—
+ * y era confuso: el uploader aceptaba una foto de 4 MB y el alta la rechazaba
+ * recién al final. Con las dos en 3 MB, lo que el uploader acepta es lo que el
+ * alta puede mandar.
+ *
+ * En la práctica casi nunca se toca: las fotos se comprimen al adjuntarlas
+ * (`FOTO_LADO_MAX`) y una foto de teléfono queda en cientos de KB. El tope es
+ * para lo que la compresión no puede arreglar.
+ */
+export const FOTO_MAX = 3 * 1024 * 1024;
+
+/**
+ * A cuánto se achica una foto al adjuntarla, antes de subirla.
+ *
+ * 1600 px de lado mayor: alcanza de sobra para un carnet o un avatar —donde la
+ * foto se ve a 84 px— y baja una foto de teléfono de 4 MB a menos de 500 KB. Lo
+ * que se gana no es solo pasar el tope: es que el alta deje de tardar un minuto
+ * en subir por una foto que después se muestra del tamaño de una estampilla.
+ */
+export const FOTO_LADO_MAX = 1600;
+/** La calidad del JPEG al recomprimir. 0.82 es donde deja de notarse a simple
+ *  vista y todavía baja mucho el peso. */
+export const FOTO_CALIDAD = 0.82;
 
 /**
  * El motivo por el que una foto no se puede usar, o `null` si está bien.
@@ -82,7 +107,10 @@ export function motivoFotoInvalida(tipo: string, tamaño: number): string | null
     return `Ese formato no lo podemos usar (${tipo || 'desconocido'}). Probá con JPG, PNG o WEBP. Si es una foto de iPhone, mandala desde "Fotos" y se convierte sola.`;
   }
   if (tamaño > FOTO_MAX) {
-    return `La foto pesa ${(tamaño / 1024 / 1024).toFixed(1)} MB y el máximo es 5 MB. Probá con una más chica.`;
+    /* El número sale de la constante: escrito a mano ya había quedado diciendo
+       5 MB cuando el tope real del alta era 3, y mandaba a la gente a buscar un
+       problema que no era el suyo. */
+    return `La foto pesa ${(tamaño / 1024 / 1024).toFixed(1)} MB y el máximo es ${FOTO_MAX / 1024 / 1024} MB. Probá con una más chica.`;
   }
   return null;
 }

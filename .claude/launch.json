@@ -3,8 +3,12 @@
   "configurations": [
     {
       "name": "web",
-      "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev:web"],
+      "//": "Pasa por nvm para respetar el .nvmrc (Node 22, que exige Expo 57). Sin esto el preview arranca con el Node por defecto de la máquina y, si es 20, `next dev` muere en el arranque: --use-system-ca no existe hasta Node 22. Si no hay nvm instalado, sigue de largo con el node del sistema.",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-lc",
+        "export NVM_DIR=\"${NVM_DIR:-$HOME/.nvm}\"; [ -s \"$NVM_DIR/nvm.sh\" ] && . \"$NVM_DIR/nvm.sh\" && nvm use >/dev/null 2>&1; exec pnpm dev:web"
+      ],
       "port": 3000,
       "autoPort": false
     }

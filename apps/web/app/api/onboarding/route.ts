@@ -196,7 +196,7 @@ export async function POST(req: Request) {
       continue;
     }
     if (bytes.byteLength > FOTO_MAX) {
-      avisos.push(`No pudimos guardar la foto de ${nombre} porque pesa más de 5 MB.`);
+      avisos.push(`No pudimos guardar la foto de ${nombre} porque pesa más de ${FOTO_MAX / 1024 / 1024} MB.`);
       fotos.push(null);
       continue;
     }

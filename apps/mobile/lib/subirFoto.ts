@@ -1,5 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
-import { motivoFotoInvalida, rutaFoto } from '@kumo/shared';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { FOTO_CALIDAD, FOTO_LADO_MAX, motivoFotoInvalida, rutaFoto } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /**
@@ -66,6 +67,37 @@ export type ResultadoElegir = { foto: FotoElegida } | { error: string } | { canc
  * tipo del archivo, y si vienen vacíos descarta la foto y el alta se completa sin
  * ella. Por eso se derivan acá y se validan antes de mandar nada.
  */
+/**
+ * Achica la foto antes de mandarla a ningún lado.
+ *
+ * Una foto de teléfono son 4000 px y varios MB, y termina viéndose en un carnet a
+ * 84 px: subirla entera es tiempo de la persona tirado y, en el alta, el riesgo de
+ * pasarse del techo de Vercel y perder el alta completa en el último paso.
+ *
+ * Devuelve `null` si no se pudo —y ahí se sigue con la original, que es lo que se
+ * hacía siempre—: no poder comprimir no puede impedir subir una foto.
+ *
+ * OJO: esto es un módulo NATIVO. A diferencia del resto de la app, no viaja por
+ * OTA: hasta que no salga un build nuevo, los teléfonos que ya tienen la app
+ * instalada siguen subiendo la foto tal cual la tomó el picker.
+ */
+async function achicar(uri: string, ancho: number, alto: number): Promise<{ base64: string; bytes: Uint8Array } | null> {
+  try {
+    const contexto = ImageManipulator.manipulate(uri);
+    /* Se redimensiona por el lado MAYOR y se deja el otro en automático: fijar los
+       dos deforma las fotos verticales, que son la mayoría de las de un teléfono. */
+    if (Math.max(ancho, alto) > FOTO_LADO_MAX) {
+      contexto.resize(ancho >= alto ? { width: FOTO_LADO_MAX } : { height: FOTO_LADO_MAX });
+    }
+    const render = await contexto.renderAsync();
+    const salida = await render.saveAsync({ compress: FOTO_CALIDAD, format: SaveFormat.JPEG, base64: true });
+    if (!salida.base64) return null;
+    return { base64: salida.base64, bytes: bytesDeBase64(salida.base64) };
+  } catch {
+    return null;
+  }
+}
+
 export async function elegirFoto(): Promise<ResultadoElegir> {
   const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permiso.granted) {
@@ -86,15 +118,20 @@ export async function elegirFoto(): Promise<ResultadoElegir> {
   // El ?? de atrás no es de más: con `noUncheckedIndexedAccess` el split devuelve
   // `string | undefined`, y de `ext` depende el tipo que se le declara al servidor.
   const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().split('?')[0] ?? 'jpg';
-  const type = asset.mimeType ?? MIME[ext] ?? 'image/jpeg';
-  const bytes = asset.fileSize ?? 0;
+
+  /* Achicada queda en JPEG, así que el tipo y la extensión pasan a ser los del
+     resultado y no los del archivo original. Si no se pudo, sigue la original. */
+  const chica = await achicar(asset.uri, asset.width ?? 0, asset.height ?? 0);
+  const type = chica ? 'image/jpeg' : (asset.mimeType ?? MIME[ext] ?? 'image/jpeg');
+  const nombre = chica ? 'mascota.jpg' : `mascota.${MIME[ext] ? ext : 'jpg'}`;
+  const bytes = chica ? chica.bytes.length : (asset.fileSize ?? 0);
 
   // El peso puede venir sin dato (`fileSize` es opcional según la plataforma):
   // en ese caso no se rechaza acá y decide el servidor, que siempre lo mide.
   const invalida = motivoFotoInvalida(type, bytes || 1);
   if (invalida) return { error: invalida };
 
-  return { foto: { uri: asset.uri, name: `mascota.${MIME[ext] ? ext : 'jpg'}`, type, bytes, base64: asset.base64 ?? undefined } };
+  return { foto: { uri: asset.uri, name: nombre, type, bytes, base64: chica?.base64 ?? asset.base64 ?? undefined } };
 }
 
 export async function elegirYSubirFoto(ownerId: string, prefijo = ''): Promise<ResultadoFoto> {
@@ -115,9 +152,11 @@ export async function elegirYSubirFoto(ownerId: string, prefijo = ''): Promise<R
   const asset = elegida.assets?.[0];
   if (!asset?.base64) return { error: 'No pudimos leer la foto. Probá con otra.' };
 
-  const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase();
-  const tipo = asset.mimeType ?? MIME[ext] ?? 'image/jpeg';
-  const bytes = bytesDeBase64(asset.base64);
+  const original = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase();
+  const chica = await achicar(asset.uri, asset.width ?? 0, asset.height ?? 0);
+  const ext = chica ? 'jpg' : original;
+  const tipo = chica ? 'image/jpeg' : (asset.mimeType ?? MIME[original] ?? 'image/jpeg');
+  const bytes = chica ? chica.bytes : bytesDeBase64(asset.base64);
 
   const invalida = motivoFotoInvalida(tipo, bytes.length);
   if (invalida) return { error: invalida };

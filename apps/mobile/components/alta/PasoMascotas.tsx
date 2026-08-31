@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, TouchableOpacity, View } from 'react-native';
-import { colors, MAX_MASCOTAS_ALTA, type MascotaBorrador } from '@kumo/shared';
+import { colors, MAX_MASCOTAS_ALTA, motivoFotosDelAltaPesan, type MascotaBorrador } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, MUTED } from '../ui/Texto';
 import { Campo, Segmentado } from '../ui/Controles';
 import { elegirFoto, type FotoElegida } from '../../lib/subirFoto';
@@ -21,12 +21,15 @@ import { elegirFoto, type FotoElegida } from '../../lib/subirFoto';
  */
 
 function FilaMascota({
-  m, indice, total, foto, onCambio, onFoto, onQuitar,
+  m, indice, total, foto, otras, onCambio, onFoto, onQuitar,
 }: {
   m: MascotaBorrador;
   indice: number;
   total: number;
   foto: FotoElegida | undefined;
+  /** Lo que ya ocupan las fotos de las OTRAS mascotas del alta: el tope es de la
+   *  suma (todas viajan en el mismo pedido) y el aviso tiene que salir acá. */
+  otras: { bytes: number; cuantas: number };
   onCambio: (datos: MascotaBorrador['datos']) => void;
   onFoto: (f: FotoElegida) => void;
   onQuitar: () => void;
@@ -35,11 +38,20 @@ function FilaMascota({
   const d = m.datos;
   const set = (parte: Partial<MascotaBorrador['datos']>) => onCambio({ ...d, ...parte });
 
+  /**
+   * La foto se acepta o se rechaza ACÁ, con la persona todavía eligiéndola.
+   *
+   * El control de la suma existía, pero corría al confirmar el alta: se llenaban
+   * todos los pasos y recién al final aparecía "las fotos pesan demasiado", con
+   * la persona ya lejos de la pantalla donde podía cambiarlas.
+   */
   const buscarFoto = async () => {
     setError('');
     const r = await elegirFoto();
     if ('cancelado' in r) return;
     if ('error' in r) { setError(r.error); return; }
+    const pesan = motivoFotosDelAltaPesan(otras.bytes + (r.foto.bytes || 0), otras.cuantas + 1);
+    if (pesan) { setError(pesan); return; }
     onFoto(r.foto);
   };
 
@@ -130,6 +142,10 @@ export default function PasoMascotas({
           indice={i}
           total={mascotas.length}
           foto={fotos[m.uid]}
+          otras={(() => {
+            const resto = mascotas.filter((o) => o.uid !== m.uid).map((o) => fotos[o.uid]).filter(Boolean) as FotoElegida[];
+            return { bytes: resto.reduce((t, f) => t + (f.bytes || 0), 0), cuantas: resto.length };
+          })()}
           onCambio={(datos) => onCambio(m.uid, datos)}
           onFoto={(f) => onFoto(m.uid, f)}
           onQuitar={() => onQuitar(m.uid)}

@@ -54,6 +54,109 @@ export const tarjetaLabel = (brand: string | null, last4: string | null): string
  */
 export const cbuValido = (cbu: string): boolean => /^\d{22}$/.test(cbu.replace(/\D/g, ''));
 
+/**
+ * El destino de la transferencia, en UN campo.
+ *
+ * El socio escribe un CBU/CVU o un alias, y en la base son dos columnas
+ * distintas. Esta función decide cuál: 22 dígitos → `bank_cbu` (normalizado, sin
+ * puntos ni espacios); cualquier otra cosa → `bank_alias`.
+ *
+ * Vive acá porque estaba copiada en cuatro lugares (las dos solicitudes de
+ * reintegro y los dos Mi perfil) y ya había divergido: Mi perfil de la app usaba
+ * teclado numérico y limpiaba los no-dígitos, así que un alias escrito ahí se
+ * DESTRUÍA al guardar, mientras que en la web el mismo campo lo aceptaba. El
+ * mismo dato se guardaba distinto según por dónde entrara el socio.
+ *
+ * Devuelve siempre las dos claves —una con valor y la otra en null— para que
+ * cambiar de alias a CBU (o al revés) borre el anterior en lugar de dejar los dos
+ * cargados, que es lo que hacía el spread condicional de antes.
+ */
+export function destinoDeTransferencia(valor: string): { bank_cbu: string | null; bank_alias: string | null } {
+  const limpio = valor.trim();
+  if (!limpio) return { bank_cbu: null, bank_alias: null };
+  const digitos = limpio.replace(/\D/g, '');
+  return /^\d{22}$/.test(digitos)
+    ? { bank_cbu: digitos, bank_alias: null }
+    : { bank_cbu: null, bank_alias: limpio };
+}
+
+/**
+ * ¿Lo que está escribiendo parece un CBU y no un alias?
+ *
+ * Sirve para avisar "te faltan dígitos" SOLO cuando el socio claramente está
+ * tipeando un número. Un alias puede tener dígitos (`mi.alias.99`) y no debe
+ * disparar el aviso — que es lo que pasaba antes, cuando el campo era numérico.
+ */
+export const pareceCbu = (valor: string): boolean => /^[\d\s.-]+$/.test(valor.trim());
+
+/** Lo que el socio ve en el campo unificado: el CBU si hay, y si no el alias. */
+export const destinoParaMostrar = (cbu: string | null, alias: string | null): string => cbu || alias || '';
+
+/**
+ * ¿Están los datos mínimos para poder transferir?
+ *
+ * El DNI del titular es obligatorio y no es burocracia: es la ÚNICA forma de que
+ * el panel pueda verificar que la cuenta destino es del socio y no de un tercero.
+ * Sin él, ese control queda apagado — y estuvo apagado desde siempre, porque
+ * ningún formulario lo pedía aunque la columna y el chequeo del panel existieran.
+ */
+/**
+ * Lo que hay que guardar en el perfil después de una solicitud de reintegro.
+ *
+ * El socio carga la cuenta en la solicitud y queda en el perfil, así la próxima
+ * viene prefijada. La regla es **completar huecos, nunca pisar**: si en Mi perfil
+ * ya puso una cuenta, esa manda — puede estar pidiendo este reintegro a otra
+ * cuenta sin querer cambiar la suya. Pero si le falta el DNI o el banco (todos
+ * los socios anteriores a este cambio), se completan.
+ *
+ * Devuelve `null` cuando no hay nada que agregar, para no mandar un update vacío.
+ */
+export function parchePerfilBancario(
+  actual: { holder: string | null; holderDni: string | null; cuit: string | null; banco: string | null; cbu: string | null; alias: string | null },
+  nuevo: { titular: string; titularDni: string; cuit: string; banco: string; destino: string },
+): Record<string, string> | null {
+  const parche: Record<string, string> = {};
+  const poner = (col: string, tiene: string | null, valor: string) => {
+    const v = valor.trim();
+    if (!tiene && v) parche[col] = v;
+  };
+  poner('bank_holder', actual.holder, nuevo.titular);
+  poner('bank_holder_dni', actual.holderDni, nuevo.titularDni.replace(/\D/g, ''));
+  poner('bank_cuit', actual.cuit, nuevo.cuit);
+  poner('bank_name', actual.banco, nuevo.banco);
+  // El destino es uno solo: se completa nada más si el perfil no tiene ninguna
+  // de las dos formas, porque escribir una dejaría al socio con CBU y alias
+  // distintos y el club no sabría a cuál transferir.
+  if (!actual.cbu && !actual.alias) {
+    const d = destinoDeTransferencia(nuevo.destino);
+    if (d.bank_cbu) parche.bank_cbu = d.bank_cbu;
+    else if (d.bank_alias) parche.bank_alias = d.bank_alias;
+  }
+  return Object.keys(parche).length ? parche : null;
+}
+
+export function motivoDatosBancariosIncompletos(d: {
+  titular: string; titularDni: string; banco: string; destino: string;
+}): string | null {
+  if (!d.titular.trim()) return 'Completá el titular de la cuenta.';
+  if (d.titularDni.replace(/\D/g, '').length < 7) return 'Completá el DNI del titular: con eso verificamos que la cuenta sea tuya antes de transferir.';
+  if (!d.banco.trim()) return 'Completá el banco o la billetera donde está la cuenta.';
+  if (!d.destino.trim()) return 'Completá el CBU/CVU o el alias: es a donde se acredita el reintegro.';
+  return null;
+}
+
+/**
+ * ¿El socio empezó a cargar la cuenta?
+ *
+ * En Mi perfil la cuenta entera es opcional —se puede no tener ninguna— pero a
+ * medias no sirve: una cuenta sin DNI o sin destino queda guardada, se ve
+ * "cargada" en el panel y recién falla el día que el club va a transferir. Así
+ * que es todo o nada: si tocó algún campo, se le piden los que hacen falta.
+ */
+export const hayDatosBancarios = (d: {
+  titular: string; titularDni: string; cuit: string; banco: string; destino: string;
+}): boolean => [d.titular, d.titularDni, d.cuit, d.banco, d.destino].some((v) => v.trim() !== '');
+
 /* ── El historial de cuotas del socio ──────────────────────────────── */
 
 export type EstadoPago = 'pendiente' | 'aprobado' | 'rechazado' | 'devuelto';
