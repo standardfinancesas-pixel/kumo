@@ -25,11 +25,17 @@
     "cerrado": {
       "android": {
         "track": "alpha"
+      },
+      "ios": {
+        "ascAppId": "6805949148"
       }
     },
     "production": {
       "android": {
         "track": "production"
+      },
+      "ios": {
+        "ascAppId": "6805949148"
       }
     }
   }
