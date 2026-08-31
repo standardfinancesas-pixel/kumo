@@ -1,5 +1,4 @@
 import * as ImagePicker from 'expo-image-picker';
-import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { FOTO_CALIDAD, FOTO_LADO_MAX, motivoFotoInvalida, rutaFoto } from '@kumo/shared';
 import { supabase } from './supabase';
 
@@ -77,12 +76,17 @@ export type ResultadoElegir = { foto: FotoElegida } | { error: string } | { canc
  * Devuelve `null` si no se pudo —y ahí se sigue con la original, que es lo que se
  * hacía siempre—: no poder comprimir no puede impedir subir una foto.
  *
- * OJO: esto es un módulo NATIVO. A diferencia del resto de la app, no viaja por
- * OTA: hasta que no salga un build nuevo, los teléfonos que ya tienen la app
- * instalada siguen subiendo la foto tal cual la tomó el picker.
+ * El import es DINÁMICO y adentro del try, y eso no es un detalle de estilo:
+ * `expo-image-manipulator` es un módulo nativo que se resuelve con
+ * `requireNativeModule` en cuanto se lo importa, y tira si el binario no lo
+ * trae. Importado arriba del archivo, un OTA de este bundle a una app instalada
+ * ANTES de que el módulo existiera la mataba al arrancar — y como el
+ * `runtimeVersion` va por `appVersion`, esos teléfonos reciben igual el update.
+ * Así, el que no lo tiene simplemente no comprime y sube la foto original.
  */
 async function achicar(uri: string, ancho: number, alto: number): Promise<{ base64: string; bytes: Uint8Array } | null> {
   try {
+    const { ImageManipulator, SaveFormat } = await import('expo-image-manipulator');
     const contexto = ImageManipulator.manipulate(uri);
     /* Se redimensiona por el lado MAYOR y se deja el otro en automático: fijar los
        dos deforma las fotos verticales, que son la mayoría de las de un teléfono. */

@@ -500,6 +500,7 @@ function PetChips({ idx, setIdx, pets }: { idx: number; setIdx: (i: number) => v
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
 function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, desdePlan, onPlan }: { go: (s: Screen) => void; petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; noLeidas: number; pago: boolean; desdePlan: number; onPlan: () => void }) {
   const [promoIdx, setPromoIdx] = useState(0);
+  const [fotoInicio, setFotoInicio] = useState<string | null>(null);
   const pet = pets[petIdx] ?? pets[0];
   const promo = promos[promoIdx] ?? promos[0]!;
   useEffect(() => {
@@ -542,14 +543,27 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, desdePla
           <div style={{ position: 'absolute', right: -14, top: -14, opacity: 0.1 }}>
             <svg width="104" height="104" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>{paw}</svg>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, position: 'relative' }}>
-            <div style={{ width: 56, height: 56, borderRadius: 16, overflow: 'hidden', flex: '0 0 auto', background: `url(${pet.photo}) center/cover, rgb(230,227,240)` }} />
-            <div style={{ flex: '1 1 0%' }}>
-              <div style={{ color: '#fff', fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 19 }}>{pet.name}</div>
-              <div style={{ color: 'rgb(201,195,227)', fontSize: 12 }}>{pet.plan} · Socio {pet.socio}</div>
+          {/* Misma foto que el carnet: es la misma mascota y no hay motivo para que
+              se vea distinta según la pantalla. El sello va sobre el borde de abajo. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
+            <div style={{ position: 'relative', width: 96, height: 96, flex: '0 0 auto' }}>
+              <button
+                type="button"
+                onClick={() => setFotoInicio(pet.photo)}
+                aria-label={`Ver la foto de ${pet.name} en grande`}
+                title="Ver la foto en grande"
+                style={{ width: 96, height: 96, borderRadius: '50%', border: '3px solid rgb(225,251,98)', padding: 0, background: `url(${pet.photo}) center/cover, rgb(230,227,240)`, cursor: 'zoom-in', display: 'block' }}
+              />
+              <div style={{ position: 'absolute', bottom: -9, left: '50%', transform: 'translateX(-50%)' }}>
+                <SelloCarnet sello={pet.sello} />
+              </div>
             </div>
-            <SelloCarnet sello={pet.sello} />
+            <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+              <div style={{ color: '#fff', fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 24 }}>{pet.name}</div>
+              <div style={{ color: 'rgb(201,195,227)', fontSize: 12.5 }}>{pet.plan} · Socio {pet.socio}</div>
+            </div>
           </div>
+          {fotoInicio && <FotoGrande src={fotoInicio} alt={`Foto de ${pet.name}`} onCerrar={() => setFotoInicio(null)} />}
         </div>
       ) : (
         <div onClick={() => go('perfil')} style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 24, padding: 24, marginBottom: 18, textAlign: 'center', cursor: 'pointer' }}>
@@ -643,6 +657,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
   const [busy, setBusy] = useState(false);
   const [fotoBusy, setFotoBusy] = useState(false);
   const [fotoError, setFotoError] = useState('');
+  const [fotoCarnet, setFotoCarnet] = useState<string | null>(null);
   const allVacs = pet?.vaccines ?? [];
 
   /** Cambiar la foto de la mascota. Antes no se podía desde ninguna pantalla:
@@ -748,31 +763,57 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
       <div style={{ background: 'linear-gradient(135deg, rgb(93,84,145), rgb(70,63,112))', borderRadius: 24, padding: 22, marginBottom: 18, color: '#fff', position: 'relative', overflow: 'hidden' }}>
         <div style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '38%', background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)', animation: 'kshine 4.5s ease-in-out infinite', pointerEvents: 'none', zIndex: 2 }} />
         <div style={{ position: 'absolute', right: -14, top: -14, opacity: 0.1 }}><svg width="104" height="104" viewBox="0 0 24 24" fill="#fff" style={{ display: 'block' }}>{paw}</svg></div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, position: 'relative' }}>
-          <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-            {/* La foto es el disparador para cambiarla: es donde el socio la busca. */}
-            <label title="Cambiar la foto" style={{ width: 60, height: 60, borderRadius: 18, overflow: 'hidden', flex: '0 0 auto', background: `url(${pet.photo}) center/cover, rgb(230,227,240)`, cursor: fotoBusy ? 'default' : 'pointer', position: 'relative', display: 'block' }}>
-              <span className="scpu" style={{ position: 'absolute', inset: 0, background: 'rgba(33,30,51,0.55)', color: '#fff', fontSize: 9.5, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', opacity: fotoBusy ? 1 : 0, transition: 'opacity 0.15s', lineHeight: 1.2 }}>
-                {fotoBusy ? 'Subiendo…' : 'Cambiar foto'}
-              </span>
+        {/* En el carnet la foto manda: es lo que hace que la credencial sea de
+            ALGUIEN y no una ficha de datos. Redonda, grande, con el aro lima y el
+            sello apoyado sobre el borde de abajo, como un sello estampado.
+
+            Tocarla la abre en grande. Antes tocarla abría el selector de archivos
+            para CAMBIARLA, que es lo contrario de lo que espera cualquiera que ve
+            una foto: cambiarla pasa a la chapita de la esquina, que es una acción
+            deliberada y no lo primero que pasa si le errás al toque. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18, position: 'relative' }}>
+          <div style={{ position: 'relative', width: 96, height: 96, flex: '0 0 auto' }}>
+            <button
+              type="button"
+              onClick={() => setFotoCarnet(pet.photo)}
+              aria-label={`Ver la foto de ${pet.name} en grande`}
+              title="Ver la foto en grande"
+              style={{ width: 96, height: 96, borderRadius: '50%', border: '3px solid rgb(225,251,98)', padding: 0, background: `url(${pet.photo}) center/cover, rgb(230,227,240)`, cursor: 'zoom-in', display: 'block' }}
+            />
+            <label title="Cambiar la foto" style={{ position: 'absolute', right: -2, top: -2, width: 32, height: 32, borderRadius: '50%', background: 'rgb(33,30,51)', border: '2px solid rgb(93,84,145)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: fotoBusy ? 'default' : 'pointer' }}>
+              {fotoBusy
+                ? <span style={{ fontSize: 8.5, fontWeight: 800, color: '#fff' }}>···</span>
+                : (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                )}
               <input type="file" accept={FOTO_TIPOS.join(',')} disabled={fotoBusy} style={{ display: 'none' }} onChange={(e) => cambiarFoto(e.target.files?.[0])} />
             </label>
-            <div>
-              <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 22 }}>{pet.name}</div>
-              <div style={{ color: 'rgb(201,195,227)', fontSize: 12 }}>{pet.breed}</div>
-              {fotoError && <div style={{ color: 'rgb(225,251,98)', fontSize: 11.5, fontWeight: 600, marginTop: 4, maxWidth: 220, lineHeight: 1.35 }}>{fotoError}</div>}
+            <div style={{ position: 'absolute', bottom: -9, left: '50%', transform: 'translateX(-50%)' }}>
+              <SelloCarnet sello={pet.sello} />
             </div>
           </div>
-          <SelloCarnet sello={pet.sello} />
-        </div>
-        <div style={{ display: 'flex', gap: 8, position: 'relative' }}>
-          {[['Microchip', pet.microchip], ['Castrado', pet.castrado], ['Odontológico', pet.odonto]].map(([k, v]) => (
-            <div key={k} style={{ flex: '1 1 0%', background: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: '9px 11px' }}>
-              <div style={{ fontSize: 10, color: 'rgb(201,195,227)' }}>{k}</div>
-              <div style={{ fontWeight: 600, fontSize: 13 }}>{v}</div>
+          <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 26 }}>{pet.name}</div>
+            <div style={{ color: 'rgb(201,195,227)', fontSize: 12.5 }}>{pet.breed}</div>
+            {fotoError && <div style={{ color: 'rgb(225,251,98)', fontSize: 11.5, fontWeight: 600, marginTop: 4, maxWidth: 220, lineHeight: 1.35 }}>{fotoError}</div>}
+            {/* Credencial con foto lateral: los datos van al lado de la foto y no
+                debajo. En cajitas horizontales el valor entraba partido —"982 000"
+                arriba y "4287" abajo— y "Odontológico" no entraba entero. En filas,
+                cada dato tiene todo el ancho y se lee de un renglón. */}
+            <div style={{ marginTop: 9 }}>
+              {[['Microchip', pet.microchip], ['Castrado', pet.castrado], ['Odontológico', pet.odonto]].map(([k, v]) => (
+                <div key={k} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.13)' }}>
+                  <span style={{ fontSize: 11.5, color: 'rgb(201,195,227)' }}>{k}</span>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{v}</span>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
+        {fotoCarnet && <FotoGrande src={fotoCarnet} alt={`Foto de ${pet.name}`} onCerrar={() => setFotoCarnet(null)} />}
       </div>
 
       {/* Salud y vacunas */}
@@ -2122,7 +2163,7 @@ const sendIcon = <><line x1="12" y1="19" x2="12" y2="5" /><path d="M5 12l7-7 7 7
  * sube la radiografía de su perro o la etiqueta de un alimento, lo que importa
  * puede estar justo en lo recortado. Tocarla la abre entera, sin recortar.
  */
-function FotoGrande({ src, onCerrar }: { src: string; onCerrar: () => void }) {
+function FotoGrande({ src, alt = 'Foto', onCerrar }: { src: string; alt?: string; onCerrar: () => void }) {
   /* Escape para cerrar y el scroll del fondo trabado mientras está abierta: sin
      esto, scrollear sobre la foto movía el hilo de atrás. */
   useEffect(() => {
@@ -2137,12 +2178,12 @@ function FotoGrande({ src, onCerrar }: { src: string; onCerrar: () => void }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Foto de la publicación"
+      aria-label={alt}
       onClick={onCerrar}
       style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(20,17,36,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, cursor: 'zoom-out' }}
     >
       {/* `contain` y no `cover`: acá el punto es justamente verla entera. */}
-      <img src={src} alt="Foto de la publicación" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 10, display: 'block' }} />
+      <img src={src} alt={alt} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: 10, display: 'block' }} />
       <button
         onClick={onCerrar}
         aria-label="Cerrar"
@@ -2327,7 +2368,7 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
           <img src={p.photo} alt="Foto de la publicación" style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 14, display: 'block', background: 'rgb(240,237,249)' }} />
         </button>
       )}
-      {fotoAbierta && <FotoGrande src={fotoAbierta} onCerrar={() => setFotoAbierta(null)} />}
+      {fotoAbierta && <FotoGrande src={fotoAbierta} alt="Foto de la publicación" onCerrar={() => setFotoAbierta(null)} />}
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 18, flexWrap: 'wrap' }}>
         <button onClick={togglePostLike} style={{ display: 'flex', alignItems: 'center', gap: 7, background: likes.post ? 'rgb(251,232,239)' : 'rgb(240,237,249)', border: 'none', color: likes.post ? 'rgb(192,72,99)' : 'rgb(93,84,145)', fontWeight: 600, fontSize: 13, padding: '9px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>

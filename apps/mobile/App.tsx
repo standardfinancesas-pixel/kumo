@@ -205,33 +205,53 @@ function PetChips({ pets, idx, setIdx }: { pets: Pet[]; idx: number; setIdx: (i:
     </View>
   );
 }
-function PetCard({ pet, detailed }: { pet: Pet; detailed?: boolean }) {
+function PetCard({ pet, detailed, onVerFoto }: { pet: Pet; detailed?: boolean; onVerFoto?: (uri: string) => void }) {
   return (
     <View style={{ backgroundColor: BRAND, borderRadius: 24, padding: 20, marginBottom: 18, overflow: 'hidden' }}>
       <View style={{ position: 'absolute', right: -14, top: -14, opacity: 0.12 }}>
         <Ic d="paw" size={104} color="#fff" />
       </View>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
-        <Image source={petImg(pet.photo)} style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.15)' }} />
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: '#fff', fontWeight: '800', fontFamily: FH, fontSize: 19 }}>{pet.name}</Text>
+        {/* La foto manda: es lo que hace que la tarjeta sea de ALGUIEN y no una
+            ficha de datos. Redonda, con el aro lima y el sello apoyado sobre el
+            borde de abajo, como un sello estampado sobre la credencial.
+            Igual en Inicio y en el carnet: es la misma mascota y no hay motivo
+            para que se vea distinta según la pantalla. */}
+        <TouchableOpacity
+          onPress={() => onVerFoto?.(pet.photo)}
+          disabled={!onVerFoto}
+          accessibilityRole="button"
+          accessibilityLabel={`Ver la foto de ${pet.name} en grande`}
+          activeOpacity={0.85}
+          style={{ width: 96, height: 96, marginRight: 2, alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Image source={petImg(pet.photo)} style={{ width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: LIME, backgroundColor: 'rgba(255,255,255,0.15)' }} />
+          <View style={{ position: 'absolute', bottom: -6 }}>
+            {/* El sello sale de la cuota (`selloCarnet`), no está escrito acá: decía
+                ACTIVO fijo, así que un socio gratuito veía ACTIVO en la app y
+                GRATUITO en la webapp. */}
+            <SelloCarnet sello={pet.sello} />
+          </View>
+        </TouchableOpacity>
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text style={{ color: '#fff', fontWeight: '800', fontFamily: FH, fontSize: 23 }}>{pet.name}</Text>
           <Text style={{ color: colors.violet[300], fontSize: 12 }}>{detailed ? pet.breed : `${pet.plan} · Socio ${pet.socio}`}</Text>
-        </View>
-        {/* El sello sale de la cuota (`selloCarnet`), no está escrito acá: decía
-            ACTIVO fijo, así que un socio gratuito veía ACTIVO en la app y GRATUITO
-            en la webapp. */}
-        <SelloCarnet sello={pet.sello} />
-      </View>
-      {detailed && (
-        <View style={{ flexDirection: 'row', gap: 8, marginTop: 16 }}>
-          {[['Microchip', pet.microchip], ['Castrado', pet.castrado], ['Odontológico', pet.odonto]].map(([k, v]) => (
-            <View key={k} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 10, padding: 9 }}>
-              <Text style={{ fontSize: 10, color: colors.violet[300] }}>{k}</Text>
-              <Text style={{ fontSize: 12, color: '#fff', fontWeight: '600' }}>{v}</Text>
+          {/* Credencial con foto lateral: los datos van al lado de la foto y no
+              debajo. En cajitas horizontales el valor entraba partido —"982 000"
+              arriba y "4287" abajo— y "Odontológico" no entraba entero. En filas,
+              cada dato tiene todo el ancho y se lee de un renglón. */}
+          {detailed && (
+            <View style={{ marginTop: 9 }}>
+              {[['Microchip', pet.microchip], ['Castrado', pet.castrado], ['Odontológico', pet.odonto]].map(([k, v]) => (
+                <View key={k} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingVertical: 5, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.13)' }}>
+                  <Text style={{ fontSize: 11.5, color: colors.violet[300] }}>{k}</Text>
+                  <Text style={{ fontSize: 12.5, color: '#fff', fontWeight: '600', flexShrink: 1, textAlign: 'right' }} numberOfLines={1}>{v}</Text>
+                </View>
+              ))}
             </View>
-          ))}
+          )}
         </View>
-      )}
+      </View>
     </View>
   );
 }
@@ -290,6 +310,7 @@ function BannerPlan({ desde, onPlan }: { desde: number; onPlan: () => void }) {
 
 function Inicio({ pets, petIdx, setPetIdx, go, pago, desdePlan, onPlan }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; go: (t: Screen) => void; pago: boolean; desdePlan: number; onPlan: () => void }) {
   const pet = pets[petIdx];
+  const [fotoInicio, setFotoInicio] = useState<string | null>(null);
   const [promoIdx, setPromoIdx] = useState(0);
   useEffect(() => {
     const t = setInterval(() => setPromoIdx((i) => (i + 1) % PROMOS.length), 4000);
@@ -307,7 +328,8 @@ function Inicio({ pets, petIdx, setPetIdx, go, pago, desdePlan, onPlan }: { pets
     <ScrollView contentContainerStyle={styles.screen}>
       {/* El saludo y las notificaciones ahora viven en el header fijo del shell. */}
       <PetChips pets={pets} idx={petIdx} setIdx={setPetIdx} />
-      {pet ? <PetCard pet={pet} /> : <EmptyPets go={go} />}
+      {pet ? <PetCard pet={pet} onVerFoto={setFotoInicio} /> : <EmptyPets go={go} />}
+      {fotoInicio ? <FotoGrande uri={fotoInicio} alt={`Foto de ${pet?.name ?? 'tu mascota'}`} onCerrar={() => setFotoInicio(null)} /> : null}
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
         {quick.map((q) => (
           <TouchableOpacity key={q.label} onPress={() => go(q.to)} style={{ flex: 1, backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200], borderRadius: 16, paddingVertical: 14, alignItems: 'center', gap: 6 }}>
@@ -634,6 +656,7 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
 
 function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; contacts: EmergencyContact[]; userId: string; reload: () => void; go: (t: Screen) => void }) {
   const pet = pets[petIdx];
+  const [fotoCarnet, setFotoCarnet] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [showCal, setShowCal] = useState(false);
@@ -707,7 +730,8 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
       <H1>Carnet digital</H1>
       <View style={{ height: 10 }} />
       <PetChips pets={pets} idx={petIdx} setIdx={setPetIdx} />
-      <PetCard pet={pet} detailed />
+      <PetCard pet={pet} detailed onVerFoto={setFotoCarnet} />
+      {fotoCarnet ? <FotoGrande uri={fotoCarnet} alt={`Foto de ${pet.name}`} onCerrar={() => setFotoCarnet(null)} /> : null}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <Text style={{ fontWeight: '700', fontSize: 16, color: INK }}>Salud y vacunas</Text>
         <TouchableOpacity onPress={() => setShowCal(true)}>
@@ -3563,14 +3587,14 @@ const CAT_TONE: Record<string, { bg: string; fg: string }> = {
  * su perro o la etiqueta de un alimento, lo que importa puede estar justo en lo
  * recortado. Tocarla la abre entera. Es lo mismo que hace la webapp.
  */
-function FotoGrande({ uri, onCerrar }: { uri: string; onCerrar: () => void }) {
+function FotoGrande({ uri, alt = 'Foto', onCerrar }: { uri: string; alt?: string; onCerrar: () => void }) {
   return (
     /* `onRequestClose` es lo que atiende el botón "atrás" de Android: sin esto,
        atrás cerraba la app en vez de la foto. */
     <Modal visible transparent animationType="fade" onRequestClose={onCerrar} statusBarTranslucent>
       <Pressable onPress={onCerrar} style={{ flex: 1, backgroundColor: 'rgba(20,17,36,0.92)', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
         {/* `contain` y no `cover`: acá el punto es justamente verla entera. */}
-        <Image source={{ uri }} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+        <Image source={{ uri }} accessibilityLabel={alt} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
         <TouchableOpacity
           onPress={onCerrar}
           accessibilityRole="button"
@@ -3758,7 +3782,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
           <Image source={{ uri: p.photo }} style={{ width: '100%', height: 200, borderRadius: 14, marginBottom: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" />
         </TouchableOpacity>
       ) : null}
-      {fotoAbierta ? <FotoGrande uri={fotoAbierta} onCerrar={() => setFotoAbierta(null)} /> : null}
+      {fotoAbierta ? <FotoGrande uri={fotoAbierta} alt="Foto de la publicación" onCerrar={() => setFotoAbierta(null)} /> : null}
 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>
         <TouchableOpacity onPress={togglePost} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: likePost ? '#fbe9ee' : colors.violet[100], borderRadius: 100, paddingHorizontal: 14, paddingVertical: 9 }}>
