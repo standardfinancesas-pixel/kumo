@@ -518,7 +518,19 @@ function enSemanas<T>(celdas: T[]): T[][] {
 }
 
 /* ── Hoja: Calendario de salud ─────────────────────────────────── */
-function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }) {
+/**
+ * El calendario de salud, como PANTALLA y no como hoja.
+ *
+ * Antes subía como panel encima del carnet, con el carnet asomando detrás y un
+ * botón "Cerrar" al final de todo — o sea que para salir había que scrollear
+ * hasta abajo. Es la vista más densa de la app: doce meses navegables, la grilla
+ * y la leyenda. Una hoja para eso deja poco lugar y obliga a scrollear adentro
+ * de algo que ya está scrolleado.
+ *
+ * El detalle de un día SÍ sigue siendo una hoja: son dos o tres líneas y no
+ * amerita otra pantalla.
+ */
+function CalendarioPagina({ vacs, onVolver }: { vacs: Vac[]; onVolver: () => void }) {
   const hoy = new Date();
   const [mes, setMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
   const [dia, setDia] = useState<CalCell | null>(null);
@@ -529,7 +541,8 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
   });
 
   return (
-    <Sheet onClose={onClose}>
+    <ScrollView contentContainerStyle={styles.screen}>
+      <BackLink label="Volver" onPress={onVolver} />
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK, marginBottom: 2 }}>Calendario de salud</Text>
       <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>Vacunas, estudios y antiparasitarios: cuándo se aplicaron y cuándo toca el próximo.</Text>
 
@@ -572,10 +585,6 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
           ))}
         </View>
       </View>
-      <TouchableOpacity onPress={onClose} style={{ backgroundColor: colors.violet[100], borderRadius: 14, padding: 13, alignItems: 'center', marginTop: 12 }}>
-        <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
-      </TouchableOpacity>
-
       {dia && (
         <Sheet onClose={() => setDia(null)}>
           {/* "Carnet" y no "Vacunas": el día puede tener un estudio o un
@@ -603,7 +612,7 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
           </TouchableOpacity>
         </Sheet>
       )}
-    </Sheet>
+    </ScrollView>
   );
 }
 
@@ -759,6 +768,9 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
       </ScrollView>
     );
   }
+  /* El calendario ocupa la pantalla entera y se sale con la flecha de arriba: se
+     devuelve EN LUGAR del carnet, no encima. */
+  if (showCal) return <CalendarioPagina vacs={pet.vaccines} onVolver={() => setShowCal(false)} />;
   return (
     // Las hojas van fuera del ScrollView: adentro, `position:absolute` se
     // posiciona contra el contenido y no contra la pantalla.
@@ -869,7 +881,6 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
       </View>
 
     </ScrollView>
-    {showCal && <CalendarioSheet vacs={pet.vaccines} onClose={() => setShowCal(false)} />}
     {adding && <AgregarSheet petName={pet.name} onClose={() => setAdding(false)} onSave={addVac} />}
     </View>
   );

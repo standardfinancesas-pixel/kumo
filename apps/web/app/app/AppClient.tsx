@@ -754,6 +754,10 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     );
   }
 
+  /* El calendario ocupa la pantalla entera y se sale con "← Volver": se devuelve
+     EN LUGAR del carnet, no encima. */
+  if (showCal) return <CalendarioPagina vacs={allVacs} onVolver={() => setShowCal(false)} />;
+
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 16 }}>Carnet digital</div>
@@ -854,7 +858,6 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
         </button>
         <button onClick={() => setShowAdd(true)} style={{ flex: '1 1 220px', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar estudio o vacuna</button>
       </div>
-      {showCal && <CalendarioSheet vacs={allVacs} onClose={() => setShowCal(false)} />}
       {showAdd && <AgregarSheet petName={pet.name} onClose={() => setShowAdd(false)} onSave={addVac} />}
 
       {/* Contactos de emergencia */}
@@ -3793,8 +3796,17 @@ const segBtn = (active: boolean): CSSProperties => ({
 const sheetLabel: CSSProperties = { display: 'block', fontWeight: 700, fontSize: 13, marginBottom: 8 };
 const sheetInput: CSSProperties = { width: '100%', boxSizing: 'border-box', border: '1.5px solid rgb(230,227,240)', borderRadius: 12, padding: '12px 14px', fontFamily: '"DM Sans"', fontSize: 14, outline: 'none' };
 
-/* ── Hoja: Calendario de salud ─────────────────────────────────── */
-function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }) {
+/* ── Pantalla: Calendario de salud ─────────────────────────────── */
+/**
+ * El calendario ocupa la pantalla entera, no una hoja.
+ *
+ * Antes se abría como panel encima del carnet, con el carnet asomando detrás y
+ * un botón "Cerrar" al final — o sea que para salir había que scrollear hasta
+ * abajo. Es la vista más densa: doce meses navegables, la grilla y la leyenda.
+ *
+ * El detalle de un día SÍ sigue siendo una hoja: son dos o tres líneas.
+ */
+function CalendarioPagina({ vacs, onVolver }: { vacs: Vac[]; onVolver: () => void }) {
   const hoy = new Date();
   const [mes, setMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
   const [dia, setDia] = useState<CalCell | null>(null);
@@ -3805,7 +3817,8 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
   });
 
   return (
-    <Sheet onClose={onClose}>
+    <div style={{ padding: '8px 20px 24px' }}>
+      <button onClick={onVolver} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '6px 0', marginBottom: 6, fontFamily: '"DM Sans"' }}>← Volver</button>
       <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 2 }}>Calendario de salud</div>
       <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Vacunas, estudios y antiparasitarios: cuándo se aplicaron y cuándo toca el próximo.</div>
 
@@ -3845,7 +3858,6 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
           ))}
         </div>
       </div>
-      <button onClick={onClose} style={{ ...sheetBtn(false), width: '100%', marginTop: 6 }}>Cerrar</button>
 
       {dia && (
         <Sheet onClose={() => setDia(null)}>
@@ -3872,7 +3884,7 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
           <button onClick={() => setDia(null)} style={{ ...sheetBtn(false), width: '100%', marginTop: 20 }}>Cerrar</button>
         </Sheet>
       )}
-    </Sheet>
+    </div>
   );
 }
 
