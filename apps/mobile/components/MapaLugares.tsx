@@ -187,6 +187,13 @@ export function MapaLugares({
      respecto del encuadre, igual que el zoom: si cambian los pines o el radio, el
      mapa se reacomoda y esto vuelve a cero. */
   const [mov, setMov] = useState({ x: 0, y: 0 });
+  /* El desplazamiento TAMBIÉN en una referencia, y no por gusto: el PanResponder se
+     crea una sola vez, así que adentro del gesto el estado quedaría clavado en el
+     valor del primer render —{0,0}— y cada arrastre nuevo arrancaría desde el
+     domicilio en vez de desde donde quedó el mapa. Es la misma trampa que ya
+     obligó a poner `alSoltar` en una referencia. */
+  const movRef = useRef({ x: 0, y: 0 });
+  movRef.current = mov;
   const movInicio = useRef({ x: 0, y: 0 });
   const arrastrando = useRef(false);
 
@@ -263,7 +270,7 @@ export function MapaLugares({
       onPanResponderGrant: (e) => {
         const t = e.nativeEvent.touches;
         if (t.length === 2) { inicial.current = separacion(t); factor.current = 1; }
-        else { arrastrando.current = true; movInicio.current = mov; }
+        else { arrastrando.current = true; movInicio.current = movRef.current; }
       },
       onPanResponderMove: (e, g) => {
         const t = e.nativeEvent.touches;
