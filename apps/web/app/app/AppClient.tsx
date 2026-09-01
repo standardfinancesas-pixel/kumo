@@ -13,7 +13,7 @@ import {
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO, FORO_FILTROS,
-  destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, parchePerfilBancario, hayDatosBancarios, pareceCbu, cbuValido,
+  destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, parchePerfilBancario, hayDatosBancarios, pareceCbu, cbuValido, distanciaKm,
   type FeaturePaga,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
@@ -1150,6 +1150,9 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radio, setRadio] = useState(5);
+  /* Dónde se está buscando. Arranca en el domicilio y se mueve al arrastrar el
+     mapa: la lista sigue a lo que se está mirando. */
+  const [centroBusqueda, setCentroBusqueda] = useState(centro);
   const [selId, setSelId] = useState<string | null>(null);
   const [guardados, setGuardados] = useState<string[]>(initialGuardados);
   const ql = q.trim().toLowerCase();
@@ -1170,17 +1173,31 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
     return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => toggleGuardado(sel.id)} onVolver={() => setSelId(null)} reviews={reviews[sel.id] ?? []} profile={profile} />;
   }
   const guardadosList = providers.filter((p) => guardados.includes(p.id));
+  /*
+   * La distancia se mide desde donde se está MIRANDO, no desde el domicilio.
+   *
+   * `p.km` viene calculado en la carga y siempre mide desde la casa del socio: deja
+   * de ser cierto en cuanto el mapa se arrastra. Mientras el mapa no se movió se usa
+   * ese valor —es el mismo número y evita recalcular—, y en cuanto se mueve se
+   * recalcula contra el centro nuevo.
+   */
+  const enCasa = centroBusqueda.lat === centro.lat && centroBusqueda.lng === centro.lng;
+  const kmDe = (p: ProviderVM) =>
+    p.lat == null || p.lng == null ? p.km
+      : enCasa ? p.km : Math.round(distanciaKm(centroBusqueda, { lat: p.lat, lng: p.lng }) * 10) / 10;
+
   const list = providers.filter((p) => {
     // Se descarta al que SABEMOS que está lejos. El que no tiene coordenadas no
     // entra ni sale del radio: no se puede afirmar ninguna de las dos cosas, así que
     // se muestra sin distancia en vez de esconderlo.
-    if (p.km != null && p.km > radio) return false;
+    const km = kmDe(p);
+    if (km != null && km > radio) return false;
     if (cat && p.category !== cat) return false;
     if (ql && !(`${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql))) return false;
     return true;
   });
   /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
-  const conDistancia = providers.map((p) => p.km).filter((k): k is number => k != null);
+  const conDistancia = providers.map(kmDe).filter((k): k is number => k != null);
   const masCerca = conDistancia.length ? Math.min(...conDistancia) : null;
   const pct = ((radio - 1) / 24) * 100;
 
@@ -1246,6 +1263,7 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
         centro={centro}
         radioKm={radio}
         onPin={(id) => setSelId(id)}
+        onCentro={(c) => setCentroBusqueda({ ...centro, ...c })}
         style={{ marginBottom: 14 }}
       />
 

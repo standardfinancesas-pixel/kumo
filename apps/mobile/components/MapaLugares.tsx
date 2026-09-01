@@ -61,6 +61,16 @@ function aPixeles(lat: number, lng: number, z: number): { x: number; y: number }
   return { x, y };
 }
 
+/** El camino de vuelta: de píxeles del mundo a coordenadas. Hace falta para saber
+ *  sobre qué punto quedó el mapa después de arrastrarlo. */
+function aCoords(x: number, y: number, z: number): { lat: number; lng: number } {
+  const mundo = TESELA * 2 ** z;
+  const lng = (x / mundo) * 360 - 180;
+  const n = Math.PI - 2 * Math.PI * (y / mundo);
+  const lat = (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+  return { lat, lng };
+}
+
 /** Cuántos metros mide un píxel, que depende del zoom Y de la latitud (el mundo se
  *  estira hacia los polos). Se usa para elegir el zoom y para dibujar el radio. */
 function metrosPorPixel(lat: number, z: number): number {
@@ -141,7 +151,7 @@ function Gota({ etiqueta }: { etiqueta?: string }) {
 /* ── El mapa ───────────────────────────────────────────────────────── */
 
 export function MapaLugares({
-  pins, centro, radioKm, onPin, alto = 230,
+  pins, centro, radioKm, onPin, onCentro, alto = 230,
 }: {
   pins: PinMapa[];
   /** El centro: el domicilio del socio. `etiqueta` es cómo se llama ("Tu casa") y es
@@ -152,6 +162,14 @@ export function MapaLugares({
    *  (Beneficios no filtra por distancia: un descuento sirve aunque quede lejos). */
   radioKm?: number;
   onPin?: (id: string) => void;
+  /**
+   * Sobre qué punto quedó el mapa después de moverlo.
+   *
+   * Se avisa al SOLTAR y no mientras el dedo se mueve: quien escucha esto vuelve a
+   * filtrar la lista de prestadores, y hacerlo en cada cuadro del gesto la haría
+   * saltar y recargarse sin parar debajo del dedo.
+   */
+  onCentro?: (c: { lat: number; lng: number }) => void;
   alto?: number;
 }) {
   /* El ancho se mide en pantalla: el recuadro es del ancho de la pantalla menos los
@@ -165,10 +183,17 @@ export function MapaLugares({
      los pines, el mapa se reacomoda solo y el acercamiento pedido se respeta igual. */
   const [zoomExtra, setZoomExtra] = useState(0);
 
+  /* Cuánto se corrió el mapa con el dedo, en píxeles de pantalla. Es un desvío
+     respecto del encuadre, igual que el zoom: si cambian los pines o el radio, el
+     mapa se reacomoda y esto vuelve a cero. */
+  const [mov, setMov] = useState({ x: 0, y: 0 });
+  const movInicio = useRef({ x: 0, y: 0 });
+  const arrastrando = useRef(false);
+
   /* El slider re-encuadra: mover el radio vuelve al zoom que hace entrar el círculo.
      Sin esto, después de acercarse con los dedos el slider parecía no hacer nada —
      seguía filtrando, pero el mapa no se movía y se leía como que estaba roto. */
-  useEffect(() => { setZoomExtra(0); }, [radioKm]);
+  useEffect(() => { setZoomExtra(0); setMov({ x: 0, y: 0 }); }, [radioKm]);
 
   /* El pinch se muestra estirando las teselas que YA están, y recién al soltar se
      piden las del zoom nuevo. Es el mismo criterio que el slider del radio: pedir
@@ -207,36 +232,78 @@ export function MapaLugares({
      aplicados antes de restar: así, al llegar al tope, el desvío deja de crecer y
      el botón no acumula toques invisibles que después hay que deshacer. */
   const irA = (objetivo: number) => setZoomExtra(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, objetivo)) - zBase);
+
+  /* Dónde quedó el centro del recuadro. Se guarda en una referencia y no se calcula
+     adentro del gesto porque el PanResponder se crea una sola vez y no ve los
+     valores de este render. */
+  const avisarCentro = useRef<() => void>(() => {});
+  avisarCentro.current = () => {
+    if (!onCentro) return;
+    const p = aPixeles(centro.lat, centro.lng, z);
+    onCentro(aCoords(p.x - mov.x, p.y - mov.y, z));
+  };
   alSoltar.current = (f: number) => irA(Math.round(z + Math.log2(f)));
 
   const gestos = useRef(
     PanResponder.create({
-      /* Solo con dos dedos: con uno el toque tiene que seguir llegando a los pines,
-         y la pantalla de atrás tiene que poder scrollear por encima del mapa. */
+      /* Nunca al TOCAR, sólo al mover: así un toque simple sigue llegando a los
+         pines y no se traga el tap. */
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (e) => e.nativeEvent.touches.length === 2,
+      /*
+       * Con dos dedos, zoom. Con uno, arrastrar — pero recién cuando el dedo se
+       * movió más de 6 px.
+       *
+       * Ese umbral no es capricho: el mapa vive adentro de una pantalla que
+       * scrollea, y sin él el mapa se quedaba con CUALQUIER roce, incluido el
+       * comienzo de un scroll vertical. Con el umbral, un desliz que arranca sobre
+       * el mapa alcanza a irse al ScrollView antes de que el mapa lo reclame.
+       */
+      onMoveShouldSetPanResponder: (e, g) => e.nativeEvent.touches.length === 2
+        || Math.hypot(g.dx, g.dy) > 6,
       onPanResponderGrant: (e) => {
         const t = e.nativeEvent.touches;
         if (t.length === 2) { inicial.current = separacion(t); factor.current = 1; }
+        else { arrastrando.current = true; movInicio.current = mov; }
       },
-      onPanResponderMove: (e) => {
+      onPanResponderMove: (e, g) => {
         const t = e.nativeEvent.touches;
-        if (t.length !== 2 || !inicial.current) return;
-        /* Acotado a un nivel para cada lado por gesto: sin tope, un pinch largo
-           estira las teselas hasta que se ven los píxeles y el salto al soltar es
-           tan grande que se pierde de vista dónde estaba. */
-        factor.current = Math.max(0.5, Math.min(2, separacion(t) / inicial.current));
-        escala.setValue(factor.current);
+        if (t.length === 2) {
+          /* Pasó de arrastrar a pellizcar: se corta el arrastre para que el mapa no
+             salga disparado mientras los dedos se acomodan. */
+          arrastrando.current = false;
+          if (!inicial.current) { inicial.current = separacion(t); factor.current = 1; return; }
+          /* Acotado a un nivel para cada lado por gesto: sin tope, un pinch largo
+             estira las teselas hasta que se ven los píxeles y el salto al soltar es
+             tan grande que se pierde de vista dónde estaba. */
+          factor.current = Math.max(0.5, Math.min(2, separacion(t) / inicial.current));
+          escala.setValue(factor.current);
+          return;
+        }
+        if (arrastrando.current) {
+          setMov({ x: movInicio.current.x + g.dx, y: movInicio.current.y + g.dy });
+        }
       },
       /* Terminate además de Release: si el sistema le saca el gesto (una llamada, el
          scroll de atrás), sin esto el mapa se quedaba estirado para siempre. */
-      onPanResponderRelease: () => { alSoltar.current(factor.current); escala.setValue(1); inicial.current = 0; factor.current = 1; },
-      onPanResponderTerminate: () => { escala.setValue(1); inicial.current = 0; factor.current = 1; },
+      onPanResponderRelease: () => {
+        if (inicial.current) alSoltar.current(factor.current);
+        escala.setValue(1); inicial.current = 0; factor.current = 1; arrastrando.current = false;
+        /* Al soltar se avisa dónde quedó el mapa. En el próximo cuadro: `setMov` del
+           último movimiento todavía no se aplicó y avisar acá daría la posición
+           anterior. */
+        requestAnimationFrame(() => avisarCentro.current());
+      },
+      onPanResponderTerminate: () => {
+        escala.setValue(1); inicial.current = 0; factor.current = 1; arrastrando.current = false;
+      },
     }),
   ).current;
 
   const c = aPixeles(centro.lat, centro.lng, z);
-  const origen = { x: c.x - (ancho || 320) / 2, y: c.y - alto / 2 };
+  /* El desplazamiento se resta del origen: correr el dedo a la derecha equivale a
+     mirar más a la izquierda del mundo. Todo lo demás —teselas, círculo, casa y
+     pines— se calcula contra `origen`, así que se mueve solo. */
+  const origen = { x: c.x - (ancho || 320) / 2 - mov.x, y: c.y - alto / 2 - mov.y };
 
   /*
    * Las teselas que tocan el recuadro.
@@ -292,6 +359,9 @@ export function MapaLugares({
             pointerEvents="none"
             style={{
               position: 'absolute',
+              /* El círculo marca el ÁREA QUE SE ESTÁ BUSCANDO, así que va siempre
+                 en el centro del recuadro: al arrastrar, la búsqueda se mueve con
+                 el mapa. La casa, en cambio, se queda donde vive (ver abajo). */
               left: (ancho || 320) / 2 - radioPx,
               top: alto / 2 - radioPx,
               width: radioPx * 2,
@@ -306,7 +376,7 @@ export function MapaLugares({
 
         {/* La casa del socio. No se dibuja si el centro no es un lugar suyo. */}
         {ancho > 0 && centro.etiqueta ? (
-          <View style={{ position: 'absolute', left: (ancho || 320) / 2 - 14, top: alto / 2 - 14 }}>
+          <View style={{ position: 'absolute', left: (ancho || 320) / 2 + mov.x - 14, top: alto / 2 + mov.y - 14 }}>
             <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.brand.lime, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
               <Svg width={14} height={14} viewBox="0 0 24 24">
                 <Path d="M3 10.5 12 3l9 7.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
@@ -338,6 +408,25 @@ export function MapaLugares({
         })}
 
       </Animated.View>
+
+      {/* Volver al domicilio. Sólo aparece si el mapa se movió: un botón permanente
+          que no hace nada es ruido, y acá además dice algo — que te fuiste. Sin
+          esto, alejarse era un camino de ida: no hay forma de volver a tu casa con
+          precisión arrastrando a ojo. */}
+      {(mov.x !== 0 || mov.y !== 0) && (
+        <TouchableOpacity
+          onPress={() => setMov({ x: 0, y: 0 })}
+          accessibilityRole="button"
+          accessibilityLabel="Volver a mi domicilio"
+          style={{ position: 'absolute', left: 8, top: 8, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 100, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.94)', borderWidth: 1, borderColor: '#e6e3f0', paddingHorizontal: 11, paddingVertical: 7 }}
+        >
+          <Svg width={13} height={13} viewBox="0 0 24 24">
+            <Path d="M3 10.5 12 3l9 7.5" fill="none" stroke={BRAND} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+            <Path d="M5 9.5V20h14V9.5" fill="none" stroke={BRAND} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+          <Text style={{ fontSize: 12, fontWeight: '700', color: BRAND }}>Volver</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Los botones. Arriba a la derecha porque abajo va la atribución y el centro
           lo ocupa el círculo del radio. Chicos a propósito: el mapa mide 230 de alto

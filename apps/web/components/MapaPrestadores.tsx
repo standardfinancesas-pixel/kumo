@@ -89,7 +89,7 @@ const CASA_HTML = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http:/
 </svg>`;
 
 export function MapaPrestadores({
-  pins, centro, radioKm, onPin, style,
+  pins, centro, radioKm, onPin, onCentro, style,
 }: {
   pins: PinMapa[];
   /** El centro del mapa: el domicilio del socio. `etiqueta` es cómo se llama en el
@@ -101,6 +101,14 @@ export function MapaPrestadores({
    *  distancia (un descuento sirve aunque quede lejos), así que ahí no hay slider. */
   radioKm?: number;
   onPin?: (id: string) => void;
+  /**
+   * Sobre qué punto quedó el mapa después de moverlo.
+   *
+   * Se avisa al TERMINAR el movimiento (`moveend`) y no durante: quien escucha
+   * esto vuelve a filtrar la lista de prestadores, y hacerlo en cada cuadro del
+   * arrastre la haría saltar y recargarse debajo del cursor.
+   */
+  onCentro?: (c: { lat: number; lng: number }) => void;
   style?: CSSProperties;
 }) {
   const nodo = useRef<HTMLDivElement | null>(null);
@@ -111,6 +119,15 @@ export function MapaPrestadores({
   const circulo = useRef<import('leaflet').Circle | null>(null);
   const casa = useRef<import('leaflet').Marker | null>(null);
   const marcas = useRef<import('leaflet').Marker[]>([]);
+  /* ¿La persona movió el mapa con la mano? A partir de ahí el mapa deja de
+     recentrarse solo: si te llevaste el mapa a tres barrios de distancia y algo
+     vuelve a encuadrarlo en tu casa, es imposible explorar. */
+  const movidoAMano = useRef(false);
+  /* Con qué radio y qué domicilio se encuadró la última vez. Mover el slider o
+     mudarse SÍ vuelven a encuadrar: son pedidos explícitos de re-encuadre. */
+  const ultimoEncuadre = useRef<string>('');
+  const avisarCentro = useRef<(c: { lat: number; lng: number }) => void>(() => {});
+  avisarCentro.current = (c) => onCentro?.(c);
 
   useEffect(() => {
     let vivo = true;
@@ -132,6 +149,22 @@ export function MapaPrestadores({
         // scroll de la página. Doble clic y pinch siguen funcionando.
         scrollWheelZoom: false,
         attributionControl: true,
+      });
+      /* Arrastrar el mapa lo "toma" la persona: desde ese momento no se vuelve a
+         centrar solo. Leaflet ya traía el arrastre habilitado; lo que lo hacía
+         inútil era que un efecto lo devolvía al centro. */
+      mapa.current.on('dragstart', () => { movidoAMano.current = true; });
+      /* Al terminar de moverse se avisa dónde quedó, para que la lista siga al
+         mapa. Por referencia: este listener se registra una sola vez y no ve el
+         `onCentro` de renders posteriores. */
+      mapa.current.on('moveend', () => {
+        const c = mapa.current?.getCenter();
+        if (!c) return;
+        /* El círculo marca el ÁREA QUE SE ESTÁ BUSCANDO, así que acompaña al mapa.
+           La casa se queda donde vive: si el círculo siguiera al domicilio, la
+           lista buscaría en un lado y el dibujo mostraría otro. */
+        circulo.current?.setLatLng(c);
+        avisarCentro.current({ lat: c.lat, lng: c.lng });
       });
       /*
        * La clave va en la URL y es PÚBLICA a propósito: CARTO dejó de servir
@@ -218,11 +251,26 @@ export function MapaPrestadores({
      Buenos Aires es una manchita y los cinco pines se apilan en el medio: el mapa
      dejaba de contestar "quién hay cerca". Fuera de ese rango el círculo se sale un
      poco del cuadro, y está bien: es un radio de búsqueda, no un marco. */
+  /* Firma estable de los pines: `pins` se arma con un `.map()` en cada render del
+     padre, así que como dependencia cambia SIEMPRE aunque los prestadores sean los
+     mismos. Con el array crudo, este efecto corría en cada render y devolvía el
+     mapa al centro — de ahí la sensación de que no se podía mover. */
+  const firmaPins = pins.map((p) => p.id).join('|');
+
   useEffect(() => {
     let vivo = true;
     (async () => {
       const L = (await import('leaflet')).default;
       if (!vivo || !mapa.current) return;
+
+      /* Mover el slider o mudarse re-encuadran y le devuelven el control al mapa.
+         Si sólo cambiaron los pines y la persona ya había movido el mapa, se la
+         deja donde está. */
+      const encuadre = `${radioKm ?? 'sin'}|${centro.lat}|${centro.lng}`;
+      const pidieronEncuadre = encuadre !== ultimoEncuadre.current;
+      if (pidieronEncuadre) movidoAMano.current = false;
+      ultimoEncuadre.current = encuadre;
+      const puedeEncuadrar = pidieronEncuadre || !movidoAMano.current;
 
       /* Sin radio (Beneficios) el encuadre lo dan la casa y los pines, con el mismo
          tope de zoom: un beneficio en otra provincia no tiene que convertir el mapa
@@ -232,8 +280,10 @@ export function MapaPrestadores({
         circulo.current = null;
         const puntos: [number, number][] = [[centro.lat, centro.lng], ...pins.map((p) => [p.lat, p.lng] as [number, number])];
         const caja = L.latLngBounds(puntos).pad(0.15);
-        const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(caja, false, L.point(8, 8))));
-        mapa.current.setView(caja.getCenter(), zoom, { animate: true });
+        if (puedeEncuadrar) {
+          const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(caja, false, L.point(8, 8))));
+          mapa.current.setView(caja.getCenter(), zoom, { animate: true });
+        }
         return;
       }
 
@@ -249,11 +299,13 @@ export function MapaPrestadores({
       // `getBoundsZoom` en vez de `fitBounds` para poder acotar el zoom antes de
       // moverse: con `fitBounds` animado, preguntar el zoom después devuelve el
       // anterior y la corrección llegaba tarde.
-      const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(circulo.current.getBounds(), false, L.point(8, 8))));
-      mapa.current.setView([centro.lat, centro.lng], zoom, { animate: true });
+      if (puedeEncuadrar) {
+        const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(circulo.current.getBounds(), false, L.point(8, 8))));
+        mapa.current.setView([centro.lat, centro.lng], zoom, { animate: true });
+      }
     })();
     return () => { vivo = false; };
-  }, [radioKm, centro.lat, centro.lng, pins]);
+  }, [radioKm, centro.lat, centro.lng, firmaPins]);
 
   // Al desmontar hay que destruir el mapa: si no, Leaflet deja el contenedor
   // marcado como usado y al volver a la pantalla tira "Map container is already

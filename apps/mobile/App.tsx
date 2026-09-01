@@ -12,7 +12,7 @@ import {
   buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
-  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO,
+  HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
   destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, pareceCbu, parchePerfilBancario, hayDatosBancarios,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
@@ -1120,13 +1120,34 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
      recalculan al soltar el slider, no en cada milímetro del arrastre (ver el
      comentario del Slider: recalcular en vivo hacía parpadear las teselas). */
   const [radiusAplicado, setRadiusAplicado] = useState(5);
+  /* Ver `centroBusqueda`: mover el slider re-encuadra el mapa en el domicilio, así
+     que la búsqueda vuelve ahí también. */
   const [selId, setSelId] = useState<string | null>(null);
+  /*
+   * Dónde se está buscando. Arranca en el domicilio y se mueve cuando la persona
+   * arrastra el mapa: la lista sigue a lo que está mirando, no a dónde vive.
+   *
+   * La distancia se recalcula contra este punto en vez de usar el `km` que viene
+   * de la carga —que siempre mide desde el domicilio—, porque ese número deja de
+   * ser cierto en cuanto el mapa se mueve.
+   */
+  const [centroBusqueda, setCentroBusqueda] = useState(centro);
+  const enCasa = centroBusqueda.lat === centro.lat && centroBusqueda.lng === centro.lng;
+  const kmDe = (p: { lat: number | null; lng: number | null; km: number | null }) =>
+    p.lat == null || p.lng == null ? p.km
+      : enCasa ? p.km : Math.round(distanciaKm(centroBusqueda, { lat: p.lat, lng: p.lng }) * 10) / 10;
+
   const ql = q.trim().toLowerCase();
   // El radio descarta al que SABEMOS que está lejos; el que no tiene coordenadas no
   // entra ni sale del radio, así que se muestra sin distancia en vez de esconderlo.
-  const list = providers.filter((p) => (!cat || p.category === cat) && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql)) && (p.km == null || p.km <= radiusAplicado));
+  const list = providers.filter((p) => {
+    const km = kmDe(p);
+    return (!cat || p.category === cat)
+      && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql))
+      && (km == null || km <= radiusAplicado);
+  });
   /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
-  const masCerca = providers.reduce<number | null>((min, p) => (p.km != null && (min == null || p.km < min) ? p.km : min), null);
+  const masCerca = providers.reduce<number | null>((min, p) => { const k = kmDe(p); return k != null && (min == null || k < min) ? k : min; }, null);
 
   const sel = providers.find((p) => p.id === selId);
   if (sel) {
@@ -1179,6 +1200,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
           centro={centro}
           radioKm={radiusAplicado}
           onPin={(id) => setSelId(id)}
+          onCentro={(c) => setCentroBusqueda({ ...centro, ...c })}
         />
       </View>
 
