@@ -3536,10 +3536,32 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
         <span style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Plan {profile.planName}</span>
       </div>
       <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 20, marginBottom: 20, textAlign: 'center' }}>
-        <div style={{ fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>Todavía no hay pagos registrados. El cobro de la cuota no está conectado: cuando se integre la pasarela vas a ver acá cada cuota con su comprobante.</div>
+        {/* El texto decía que el cobro "no está conectado, cuando se integre la
+            pasarela...". Quedó de antes de integrar Mercado Pago: le estaba
+            afirmando al socio que no se le puede cobrar, justo en la pantalla donde
+            mira si le cobraron. */}
+        <div style={{ fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>Todavía no hay pagos registrados. Cuando se te cobre la primera cuota, acá vas a ver cada una con su comprobante.</div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Va ARRIBA de las acciones y no al final: cambiar de plan es algo que el
+            socio quiere hacer, y estaba debajo de "Darme de baja" y "Eliminar mi
+            cuenta" — o sea, después de lo destructivo, que siempre va último.
+
+            Acá vivía una lista de planes que escribía profiles.plan_id desde el
+            navegador: movía el plan sin recalcular la cuota, sin tocar la
+            suscripción de Mercado Pago y sin cobrar la diferencia, así que
+            cualquiera pasaba de AMIGO a VIP y se quedaba con los topes del plan
+            caro. Se sacó, y volvió como enlace —no como lista— a la MISMA hoja que
+            cobra (HojaPlan → /api/pagos/crear), que recalcula el monto en el
+            servidor y cancela la suscripción vieja si cambió. */}
+        <button onClick={onPlan} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer', fontFamily: '"DM Sans"' }}>
+          <span>
+            <span style={{ display: 'block', fontWeight: 600, fontSize: 14, color: 'rgb(33,30,51)' }}>Cambiar de plan</span>
+            <span style={{ display: 'block', fontSize: 12.5, color: 'rgb(135,129,160)' }}>Ahora estás en {profile.planName}</span>
+          </span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'rgb(93,84,145)', flex: 'none' }}>Ver planes</span>
+        </button>
         <a href="https://wa.me/5491125168802" target="_blank" rel="noopener" style={{ textAlign: 'center', background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 14, padding: 14, borderRadius: 14, textDecoration: 'none' }}>Ayuda por WhatsApp</a>
         <button onClick={async () => { await supabase.auth.signOut(); window.location.href = LANDING; }} style={{ background: 'none', color: 'rgb(135,129,160)', border: 'none', fontWeight: 600, fontSize: 13, padding: 10, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Cerrar sesión</button>
         <button onClick={() => { setBajaHecha(false); setBajaError(''); setBajaOpen(true); }} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Darme de baja</button>
@@ -3549,23 +3571,6 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
         <button onClick={abrirBorrar} style={{ background: 'none', color: 'rgb(150,60,52)', border: 'none', fontWeight: 600, fontSize: 12.5, padding: 2, cursor: 'pointer', fontFamily: '"DM Sans"', textDecoration: 'underline' }}>Eliminar mi cuenta</button>
       </div>
 
-      {/* Acá vivía una lista de planes que escribía profiles.plan_id desde el
-          navegador: movía el plan sin recalcular la cuota, sin tocar la suscripción
-          de Mercado Pago y sin cobrar la diferencia, así que cualquiera pasaba de
-          AMIGO a VIP y se quedaba con los topes del plan caro. Se sacó, pero con
-          eso Mi perfil quedó sin ningún camino al plan y había que descubrir que se
-          cambia desde Inicio o desde "Más". Vuelve como un enlace —no como lista—
-          a la MISMA hoja que cobra (HojaPlan → /api/pagos/crear), que recalcula el
-          monto en el servidor y cancela la suscripción vieja si cambió. */}
-      <button onClick={onPlan} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer', fontFamily: '"DM Sans"', marginBottom: 20 }}>
-        <span>
-          <span style={{ display: 'block', fontWeight: 600, fontSize: 14, color: 'rgb(33,30,51)' }}>Cambiar de plan</span>
-          <span style={{ display: 'block', fontSize: 12.5, color: 'rgb(135,129,160)' }}>Ahora estás en {profile.planName}</span>
-        </span>
-        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'rgb(93,84,145)', flex: 'none' }}>Ver planes</span>
-      </button>
-
-      {/* Darme de baja */}
       {pagosOpen && <HojaPagos pagos={pagos} onClose={() => setPagosOpen(false)} />}
 
       {borrarOpen && (
