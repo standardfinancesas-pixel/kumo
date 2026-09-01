@@ -3530,18 +3530,15 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
         )}
       </div>
 
-      {/* Historial de pagos. Antes eran cuatro cuotas inventadas, todas "Pagado". */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 15 }}>Historial de pagos</div>
-        <span style={{ fontSize: 12, color: 'rgb(135,129,160)' }}>Plan {profile.planName}</span>
-      </div>
-      <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 20, marginBottom: 20, textAlign: 'center' }}>
-        {/* El texto decía que el cobro "no está conectado, cuando se integre la
-            pasarela...". Quedó de antes de integrar Mercado Pago: le estaba
-            afirmando al socio que no se le puede cobrar, justo en la pantalla donde
-            mira si le cobraron. */}
-        <div style={{ fontSize: 13.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>Todavía no hay pagos registrados. Cuando se te cobre la primera cuota, acá vas a ver cada una con su comprobante.</div>
-      </div>
+      {/* Acá había un bloque "Historial de pagos" que decía "todavía no hay pagos"
+          SIEMPRE: no leía `pagos` ni tenía condición. Venía de cuando mostraba
+          cuatro cuotas inventadas; se las sacaron y quedó el cartel de vacío fijo.
+          Le mentía a cualquiera que hubiera pagado —el primer socio tenía su cuota
+          de $44.000 acreditada y la pantalla decía que no había ninguna—.
+
+          No se reconecta porque sería duplicar: la fila "Mis pagos" de arriba ya
+          muestra el último cobro y abre el historial completo. Es lo mismo que hace
+          la app, que nunca tuvo este bloque. */}
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {/* Va ARRIBA de las acciones y no al final: cambiar de plan es algo que el
