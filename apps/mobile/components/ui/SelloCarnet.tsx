@@ -23,8 +23,11 @@ export function SelloCarnet({ sello }: { sello: Sello }) {
   const fondo = sello.tono === 'ok' ? LIME : sello.tono === 'alerta' ? '#fbe8ef' : 'rgba(255,255,255,0.18)';
   const tinta = sello.tono === 'ok' ? INK : sello.tono === 'alerta' ? '#c14d7a' : '#fff';
   return (
+    /* En una sola línea SIEMPRE: "CUOTA PENDIENTE" es más ancho que la foto del
+       carnet y se partía en dos renglones, saliéndose de la píldora. La webapp no
+       lo sufre porque su equivalente ya usa `white-space: nowrap`. */
     <View style={{ backgroundColor: fondo, borderRadius: 100, paddingVertical: 4, paddingHorizontal: 9 }}>
-      <Text style={{ color: tinta, fontWeight: '800', fontSize: 10 }}>{sello.texto}</Text>
+      <Text numberOfLines={1} style={{ color: tinta, fontWeight: '800', fontSize: 10 }}>{sello.texto}</Text>
     </View>
   );
 }

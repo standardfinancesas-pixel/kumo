@@ -1,7 +1,7 @@
 'use client';
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
@@ -4157,12 +4157,29 @@ const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath, chat, heart: hear
 const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros' };
 
 function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; onAbrirHilo: (id: string | null) => void }) {
-  const vistoMs = visto ? new Date(visto).getTime() : 0;
+  /*
+   * Abrir la campanita YA las marca leídas: es lo que espera cualquiera, y hasta
+   * ahora había que tocar además un botón "Marcar leídas" —o sea que el contador
+   * quedaba encendido después de haber leído todo—.
+   *
+   * El resaltado de "sin leer" se congela al abrir (`vistoAlAbrir`) y no sigue al
+   * valor guardado. Si usara el valor vivo, marcarlas apagaría el resaltado en el
+   * mismo instante y la persona perdería de vista cuáles eran las nuevas
+   * justamente mientras las está mirando. Así: el contador se apaga, y las nuevas
+   * se siguen distinguiendo hasta que salga de la pantalla.
+   */
+  const [vistoAlAbrir] = useState(visto);
+  /* Por referencia y con dependencias vacías a propósito: `marcarLeidas` se
+     recrea en cada render, así que como dependencia del efecto se dispararía en
+     bucle —marca, cambia el estado, vuelve a renderizar, vuelve a marcar—. */
+  const marcar = useRef(marcarLeidas);
+  marcar.current = marcarLeidas;
+  useEffect(() => { marcar.current(); }, []);
+  const vistoMs = vistoAlAbrir ? new Date(vistoAlAbrir).getTime() : 0;
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22 }}>Notificaciones</div>
-        {groups.length > 0 && <button onClick={marcarLeidas} style={{ background: 'none', border: 'none', color: '#5D5491', fontWeight: 600, fontSize: 13, cursor: 'pointer', padding: 0, fontFamily: '"DM Sans"' }}>Marcar leídas</button>}
       </div>
 
       {groups.length === 0 ? (

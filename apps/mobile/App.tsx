@@ -226,7 +226,12 @@ function PetCard({ pet, detailed, onVerFoto }: { pet: Pet; detailed?: boolean; o
           style={{ width: 96, height: 96, marginRight: 2, alignItems: 'center', justifyContent: 'center' }}
         >
           <Image source={petImg(pet.photo)} style={{ width: 96, height: 96, borderRadius: 48, borderWidth: 3, borderColor: LIME, backgroundColor: 'rgba(255,255,255,0.15)' }} />
-          <View style={{ position: 'absolute', bottom: -6 }}>
+          {/* El `left`/`right` negativos no son un truco de maquetación: en React
+              Native un hijo absoluto SIN esos valores queda limitado al ancho del
+              padre —acá 96, el de la foto—, así que "CUOTA PENDIENTE" se partía en
+              dos renglones y se desbordaba. Con lugar a los costados entra de una
+              línea y sigue centrado bajo la foto. */}
+          <View style={{ position: 'absolute', bottom: -6, left: -40, right: -40, alignItems: 'center' }}>
             {/* El sello sale de la cuota (`selloCarnet`), no está escrito acá: decía
                 ACTIVO fijo, así que un socio gratuito veía ACTIVO en la app y
                 GRATUITO en la webapp. */}
@@ -489,6 +494,29 @@ const SheetLabel = ({ children }: { children: ReactNode }) => <Text style={{ fon
 /** Título de grupo del formulario, como en el prototipo. */
 const Grupo = ({ children }: { children: ReactNode }) => <Text style={{ fontSize: 12, fontWeight: '700', color: '#8781a0', letterSpacing: 0.5, marginBottom: 8 }}>{String(children).toUpperCase()}</Text>;
 
+/**
+ * Parte las celdas del mes en semanas de siete.
+ *
+ * Antes las celdas se tiraban en un `flexWrap` con `width: 100/7 %`, y eso se
+ * desfasaba: React Native pasa cada porcentaje a píxeles del dispositivo y
+ * redondea, así que siete celdas de 14,2857% pueden sumar MÁS que el ancho del
+ * contenedor y la séptima cae a la fila siguiente. Quedaban seis días por fila
+ * contra un encabezado de siete, o sea el calendario entero corrido.
+ *
+ * Con filas explícitas y `flex: 1` en cada celda son siempre siete, exactas, y
+ * alineadas con el encabezado —que ya usaba `flex: 1`—. La webapp nunca lo
+ * sufrió porque allá es una grilla CSS de 7 columnas.
+ */
+function enSemanas<T>(celdas: T[]): T[][] {
+  const semanas: T[][] = [];
+  for (let i = 0; i < celdas.length; i += 7) semanas.push(celdas.slice(i, i + 7));
+  /* La última semana se completa con huecos: sin esto, una fila de 3 días
+     estiraría cada celda a un tercio del ancho y el mes terminaría deforme. */
+  const ultima = semanas[semanas.length - 1];
+  if (ultima) while (ultima.length < 7) ultima.push(null as T);
+  return semanas;
+}
+
 /* ── Hoja: Calendario de salud ─────────────────────────────────── */
 function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }) {
   const hoy = new Date();
@@ -513,20 +541,24 @@ function CalendarioSheet({ vacs, onClose }: { vacs: Vac[]; onClose: () => void }
       <View style={{ flexDirection: 'row', marginBottom: 12 }}>
         {CAL_DIAS.map((d) => <Text key={d} style={{ flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#a29dba', paddingVertical: 6 }}>{d}</Text>)}
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 }}>
-        {cells.map((c, i) => {
-          const tone = c.mark ? CAL_TONE[c.mark] : null;
-          const marcado = c.vaxes.length > 0;
-          if (c.num === null) return <View key={`h${i}`} style={{ width: `${100 / 7}%`, aspectRatio: 1 }} />;
-          return (
-            <View key={c.iso} style={{ width: `${100 / 7}%`, aspectRatio: 1, padding: 2 }}>
-              <TouchableOpacity disabled={!marcado} onPress={() => setDia(c)} style={{ flex: 1, borderRadius: 8, backgroundColor: tone?.bg ?? '#fff', borderWidth: 1, borderColor: tone?.border ?? '#eeecf5', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontSize: 13, color: INK }}>{c.num}</Text>
-                {marcado && <View style={{ position: 'absolute', bottom: 2, right: 2, width: 6, height: 6, borderRadius: 3, backgroundColor: tone!.dot }} />}
-              </TouchableOpacity>
-            </View>
-          );
-        })}
+      <View style={{ marginBottom: 20 }}>
+        {enSemanas(cells).map((semana, f) => (
+          <View key={f} style={{ flexDirection: 'row' }}>
+            {semana.map((c, i) => {
+              if (!c || c.num === null) return <View key={`h${f}-${i}`} style={{ flex: 1, aspectRatio: 1 }} />;
+              const tone = c.mark ? CAL_TONE[c.mark] : null;
+              const marcado = c.vaxes.length > 0;
+              return (
+                <View key={c.iso} style={{ flex: 1, aspectRatio: 1, padding: 2 }}>
+                  <TouchableOpacity disabled={!marcado} onPress={() => setDia(c)} style={{ flex: 1, borderRadius: 8, backgroundColor: tone?.bg ?? '#fff', borderWidth: 1, borderColor: tone?.border ?? '#eeecf5', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 13, color: INK }}>{c.num}</Text>
+                    {marcado && <View style={{ position: 'absolute', bottom: 2, right: 2, width: 6, height: 6, borderRadius: 3, backgroundColor: tone!.dot }} />}
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        ))}
       </View>
 
       <View style={{ borderTopWidth: 1, borderTopColor: '#eeecf5', paddingTop: 16 }}>
@@ -628,16 +660,21 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
             <Text style={{ fontWeight: '600', fontSize: 13, color: INK }}>{calMesLabel(pMes.y, pMes.m)}</Text>
             <TouchableOpacity onPress={() => moverP(1)} style={{ paddingHorizontal: 6, paddingVertical: 4 }}><Text style={{ fontSize: 16, color: INK }}>→</Text></TouchableOpacity>
           </View>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
-            {buildPickerMes(pMes.y, pMes.m).map((d, i) => d.num === null
-              ? <View key={`h${i}`} style={{ width: `${100 / 7}%`, aspectRatio: 1 }} />
-              : (
-                <View key={d.iso} style={{ width: `${100 / 7}%`, aspectRatio: 1, padding: 1.5 }}>
-                  <TouchableOpacity onPress={() => { setFecha(d.iso); setPickerOpen(false); }} style={{ flex: 1, borderRadius: 6, borderWidth: 1, backgroundColor: fecha === d.iso ? BRAND : '#fff', borderColor: fecha === d.iso ? BRAND : '#eeecf5', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 11, color: fecha === d.iso ? '#fff' : INK, fontWeight: fecha === d.iso ? '600' : '400' }}>{d.num}</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+          {/* Mismo criterio que el calendario de salud: filas de siete explícitas. */}
+          <View>
+            {enSemanas(buildPickerMes(pMes.y, pMes.m)).map((semana, f) => (
+              <View key={f} style={{ flexDirection: 'row' }}>
+                {semana.map((d, i) => !d || d.num === null
+                  ? <View key={`h${f}-${i}`} style={{ flex: 1, aspectRatio: 1 }} />
+                  : (
+                    <View key={d.iso} style={{ flex: 1, aspectRatio: 1, padding: 1.5 }}>
+                      <TouchableOpacity onPress={() => { setFecha(d.iso); setPickerOpen(false); }} style={{ flex: 1, borderRadius: 6, borderWidth: 1, backgroundColor: fecha === d.iso ? BRAND : '#fff', borderColor: fecha === d.iso ? BRAND : '#eeecf5', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 11, color: fecha === d.iso ? '#fff' : INK, fontWeight: fecha === d.iso ? '600' : '400' }}>{d.num}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+              </View>
+            ))}
           </View>
         </View>
       )}
@@ -2726,7 +2763,25 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
 const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros' };
 
 function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null; onAbrirHilo: (id: string | null) => void }) {
-  const vistoMs = visto ? new Date(visto).getTime() : 0;
+  /*
+   * Abrir la campanita YA las marca leídas: es lo que espera cualquiera, y hasta
+   * ahora había que tocar además un botón "Marcar leídas" —o sea que el contador
+   * quedaba encendido después de haber leído todo—.
+   *
+   * El resaltado de "sin leer" se congela al abrir (`vistoAlAbrir`) y no sigue al
+   * valor guardado. Si usara el valor vivo, marcarlas apagaría el resaltado en el
+   * mismo instante y la persona perdería de vista cuáles eran las nuevas
+   * justamente mientras las está mirando. Así: el contador se apaga, y las nuevas
+   * se siguen distinguiendo hasta que salga de la pantalla.
+   */
+  const [vistoAlAbrir] = useState(visto);
+  /* Por referencia y con dependencias vacías a propósito: `marcarLeidas` se
+     recrea en cada render, así que como dependencia del efecto se dispararía en
+     bucle —marca, cambia el estado, vuelve a renderizar, vuelve a marcar—. */
+  const marcar = useRef(marcarLeidas);
+  marcar.current = marcarLeidas;
+  useEffect(() => { marcar.current(); }, []);
+  const vistoMs = vistoAlAbrir ? new Date(vistoAlAbrir).getTime() : 0;
 
   /*
    * El switch de push, que era de adorno: estaba pintado prendido y no había
@@ -2770,11 +2825,6 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK }}>Notificaciones</Text>
-        {groups.length > 0 && (
-          <TouchableOpacity onPress={marcarLeidas}>
-            <Text style={{ color: BRAND, fontWeight: '600', fontSize: 13 }}>Marcar leídas</Text>
-          </TouchableOpacity>
-        )}
       </View>
 
       {groups.length === 0 ? (

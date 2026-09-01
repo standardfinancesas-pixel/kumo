@@ -681,6 +681,7 @@ const communityCards = [
 ];
 
 function Community() {
+  const openAuth = useAuth();
   const stat = (num: string, label: string) => (
     <div>
       <div style={{ display: 'inline-block', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 28, color: 'rgb(33,30,51)', position: 'relative' }}>
@@ -708,7 +709,15 @@ function Community() {
             {divider}
             {stat('24h', 'respuesta prom.')}
           </div>
-          <a href={WEBAPP} className="scpm" style={{ background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 14, cursor: 'pointer', boxShadow: '0 10px 24px rgba(93,84,145,0.28)', transition: 'transform 0.18s', textDecoration: 'none', display: 'inline-block' }}>Unirme a la conversación →</a>
+          {/*
+            Abre el registro, no la webapp.
+            Antes iba a `WEBAPP`, o sea que a quien todavía no tiene cuenta —que es
+            justamente a quien le hablás en esta sección— lo mandaba al login. El
+            botón promete entrar a la conversación y devolvía una pantalla pidiendo
+            credenciales que no tiene. El foro se lee con la cuenta gratuita, así
+            que el paso que falta es registrarse.
+          */}
+          <button type="button" onClick={() => openAuth('register')} className="scpm" style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 14, cursor: 'pointer', boxShadow: '0 10px 24px rgba(93,84,145,0.28)', transition: 'transform 0.18s' }}>Unirme a la conversación →</button>
         </div>
         <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {communityCards.map((c, i) => (
