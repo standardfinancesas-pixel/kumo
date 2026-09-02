@@ -278,6 +278,30 @@ const BackLink = ({ label, onPress }: { label: string; onPress: () => void }) =>
   <TouchableOpacity onPress={onPress} style={{ marginBottom: 6 }}><Text style={{ color: BRAND, fontSize: 13, fontWeight: '600' }}>← {label}</Text></TouchableOpacity>
 );
 
+/**
+ * El mapa a página completa.
+ *
+ * Reemplaza la pantalla entera, igual que el calendario de carnet, y NO es un
+ * Modal. El primer intento sí lo era, y en Android el arrastre no funcionaba:
+ * reproducido en el emulador, adentro de un Modal el mapa recibe el gesto pero el
+ * movimiento no se dibuja nunca —el dedo se mueve, la cuenta da bien y la pantalla
+ * no cambia ni un píxel—. Los botones de zoom sí andaban, porque al cambiar el zoom
+ * se crean vistas nuevas, que es lo único que el modal propaga. Como página, el mapa
+ * grande usa el mismo camino de dibujo que el recuadro chico, que anda perfecto.
+ */
+function MapaPagina({ titulo, onVolver, ...props }: { titulo: string; onVolver: () => void } & React.ComponentProps<typeof MapaLugares>) {
+  return (
+    <View style={{ flex: 1, paddingTop: 12 }}>
+      <View style={{ paddingHorizontal: 16 }}>
+        <BackLink label="Volver" onPress={onVolver} />
+        <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: INK, marginBottom: 10 }}>{titulo}</Text>
+      </View>
+      {/* Sin margen a los costados: el mapa grande gana todo el ancho que hay. */}
+      <MapaLugares {...props} grande onGrande={() => onVolver()} />
+    </View>
+  );
+}
+
 /* ── Pantalla: Inicio ──────────────────────────────────────────── */
 /**
  * El banner de Inicio que cuenta qué suma un plan. Mismo texto que la web
@@ -1123,6 +1147,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
   const [radiusAplicado, setRadiusAplicado] = useState(5);
   /* Ver `centroBusqueda`: mover el slider re-encuadra el mapa en el domicilio, así
      que la búsqueda vuelve ahí también. */
+  const [mapaGrande, setMapaGrande] = useState(false);
   const [selId, setSelId] = useState<string | null>(null);
   /*
    * Dónde se está buscando. Arranca en el domicilio y se mueve cuando la persona
@@ -1155,6 +1180,21 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
     return <PrestadorDetalle p={sel} guardado={guardados.includes(sel.id)} onGuardar={() => onGuardar(sel.id)} onVolver={() => setSelId(null)} reviews={reviews[sel.id] ?? []} userId={userId} firstName={firstName} reload={reload} />;
   }
   const guardadosList = providers.filter((p) => guardados.includes(p.id));
+
+  const pinsMapa = list.filter((p) => p.lat != null && p.lng != null).map((p) => ({ id: p.id, nombre: p.name, lat: p.lat as number, lng: p.lng as number }));
+  if (mapaGrande) {
+    return (
+      <MapaPagina
+        titulo="Prestadores cerca tuyo"
+        onVolver={() => setMapaGrande(false)}
+        pins={pinsMapa}
+        centro={centro}
+        radioKm={radiusAplicado}
+        onPin={(id) => setSelId(id)}
+        onCentro={(c) => setCentroBusqueda({ ...centro, ...c })}
+      />
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
@@ -1197,11 +1237,12 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         */}
       <View style={{ marginBottom: 14 }}>
         <MapaLugares
-          pins={list.filter((p) => p.lat != null && p.lng != null).map((p) => ({ id: p.id, nombre: p.name, lat: p.lat as number, lng: p.lng as number }))}
+          pins={pinsMapa}
           centro={centro}
           radioKm={radiusAplicado}
           onPin={(id) => setSelId(id)}
           onCentro={(c) => setCentroBusqueda({ ...centro, ...c })}
+          onGrande={() => setMapaGrande(true)}
         />
       </View>
 
@@ -1371,6 +1412,7 @@ function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; 
   const [q, setQ] = useState('');
   const [buscado, setBuscado] = useState('');
   const [zona, setZona] = useState('Todas');
+  const [mapaGrande, setMapaGrande] = useState(false);
   const [selId, setSelId] = useState<string | null>(null);
   const ql = buscado.trim().toLowerCase();
   /* Los chips de zona salen de las zonas que el club REALMENTE cargó: así no hay una
@@ -1388,6 +1430,19 @@ function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; 
     masCercaKm: conKm.length ? Math.min(...conKm) : null,
   });
   const sel = benefits.find((b) => b.id === selId);
+
+  const pinsMapa = list.filter((b) => b.lat != null && b.lng != null).map((b) => ({ id: b.id, nombre: b.name, lat: b.lat as number, lng: b.lng as number, etiqueta: b.disc }));
+  if (mapaGrande) {
+    return (
+      <MapaPagina
+        titulo="Beneficios en el mapa"
+        onVolver={() => setMapaGrande(false)}
+        pins={pinsMapa}
+        centro={centro}
+        onPin={(id) => setSelId(id)}
+      />
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -1408,10 +1463,11 @@ function Beneficios({ benefits, go, centro, profile }: { benefits: BenefitVM[]; 
         */}
       <View style={{ marginBottom: 16 }}>
         <MapaLugares
-          pins={list.filter((b) => b.lat != null && b.lng != null).map((b) => ({ id: b.id, nombre: b.name, lat: b.lat as number, lng: b.lng as number, etiqueta: b.disc }))}
+          pins={pinsMapa}
           centro={centro}
           onPin={(id) => setSelId(id)}
           alto={175}
+          onGrande={() => setMapaGrande(true)}
         />
       </View>
       {/* Se busca por texto y no por cercanía a propósito: a un beneficio se llega por

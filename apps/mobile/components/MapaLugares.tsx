@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Image, Modal, PanResponder, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Animated, Image, PanResponder, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, MUTED } from './ui/Texto';
@@ -174,7 +173,7 @@ function Gota({ etiqueta }: { etiqueta?: string }) {
 /* ── El mapa ───────────────────────────────────────────────────────── */
 
 export function MapaLugares({
-  pins, centro, radioKm, onPin, onCentro, alto: altoPedido = 230,
+  pins, centro, radioKm, onPin, onCentro, alto: altoPedido = 230, grande = false, onGrande,
 }: {
   pins: PinMapa[];
   /** El centro: el domicilio del socio. `etiqueta` es cómo se llama ("Tu casa") y es
@@ -194,6 +193,21 @@ export function MapaLugares({
    */
   onCentro?: (c: { lat: number; lng: number }) => void;
   alto?: number;
+  /**
+   * Si el mapa ocupa la pantalla entera.
+   *
+   * Lo decide la PANTALLA y no el mapa, y eso no es un detalle: la primera versión
+   * abría un `Modal` desde acá, y en Android adentro de un Modal el mapa recibía el
+   * gesto pero el arrastre no se dibujaba nunca (reproducido en el emulador: el
+   * dedo se movía, la cuenta daba bien y la pantalla no cambiaba ni un píxel; el
+   * botón − sí repintaba, porque al cambiar el zoom se crean vistas nuevas). Como
+   * página, el mapa grande usa el mismo camino de dibujo que el recuadro chico, que
+   * anda perfecto, y encima queda igual que el calendario de carnet.
+   */
+  grande?: boolean;
+  /** Qué hacer cuando se toca el botón de agrandar o de volver. Sin esto no se
+   *  dibuja el botón: un mapa que no puede agrandarse no lo ofrece. */
+  onGrande?: (v: boolean) => void;
 }) {
   /* El ancho se mide en pantalla: el recuadro es del ancho de la pantalla menos los
      márgenes, y los teléfonos no miden todos lo mismo. Hasta que se mida no se
@@ -208,22 +222,10 @@ export function MapaLugares({
     setAltoMedido(Math.round(e.nativeEvent.layout.height));
   };
 
-  /*
-   * Pantalla completa.
-   *
-   * Va en un `Modal` de React Native y no cambiando el alto del recuadro: el mapa
-   * vive adentro de un ScrollView y agrandarlo ahí dejaría media pantalla de
-   * contenido debajo, con el mapa robándole el gesto vertical al scroll. El modal
-   * lo saca de la página y le da el gesto entero.
-   *
-   * El estado del mapa (lo que se movió y lo que se acercó) se conserva al abrir y
-   * al cerrar, porque el componente no se desmonta: sólo cambia dónde se dibuja.
-   */
-  const [abierto, setAbierto] = useState(false);
-  /* También en una referencia: el gesto se crea una sola vez y necesita saber si está
-     en pantalla completa para decidir con cuánto movimiento se queda el mapa. */
-  const abiertoRef = useRef(false);
-  abiertoRef.current = abierto;
+  /* En una referencia: el gesto se crea una sola vez y necesita saber si el mapa está
+     a página completa para decidir con cuánto movimiento se queda. */
+  const grandeRef = useRef(false);
+  grandeRef.current = grande;
 
   /* Cuántos niveles se corrió la persona respecto del encuadre automático. Se guarda
      el DESVÍO y no el zoom absoluto para que el encuadre siga mandando: si cambian
@@ -246,8 +248,8 @@ export function MapaLugares({
 
   /* El alto con el que se hacen todas las cuentas —teselas, círculo, casa, pines—.
      Con el recuadro chico manda el prop (así el primer cuadro ya dibuja, sin esperar
-     la medición); abierto manda lo medido. */
-  const alto = abierto ? (altoMedido || altoPedido) : altoPedido;
+     la medición); a página completa manda lo medido. */
+  const alto = grande ? (altoMedido || altoPedido) : altoPedido;
 
   /* El slider re-encuadra: mover el radio vuelve al zoom que hace entrar el círculo.
      Sin esto, después de acercarse con los dedos el slider parecía no hacer nada —
@@ -356,11 +358,7 @@ export function MapaLugares({
         /* En pantalla completa no hay ScrollView atrás al que dejarle el gesto, así
            que el mapa se queda con el movimiento casi enseguida: ahí el umbral de 6
            px sólo se siente como que el mapa tarda en responder. */
-        || Math.hypot(g.dx, g.dy) > (abiertoRef.current ? 2 : 6),
-      /* En pantalla completa, una vez que el mapa tomó el gesto no lo suelta hasta
-         que levantás el dedo. Adentro de la pantalla sí lo cede: ahí el ScrollView
-         tiene tanto derecho como el mapa y quien manda es hacia dónde arrancaste. */
-      onPanResponderTerminationRequest: () => !abiertoRef.current,
+        || Math.hypot(g.dx, g.dy) > (grandeRef.current ? 2 : 6),
       onPanResponderGrant: (e, g) => {
         if (g.numberActiveTouches === 2) { inicial.current = separacion(e.nativeEvent.touches); factor.current = 1; }
         else { arrastrando.current = true; movInicio.current = movRef.current; }
@@ -400,10 +398,29 @@ export function MapaLugares({
   ).current;
 
   const c = aPixeles(centro.lat, centro.lng, z);
-  /* El desplazamiento se resta del origen: correr el dedo a la derecha equivale a
-     mirar más a la izquierda del mundo. Todo lo demás —teselas, círculo, casa y
-     pines— se calcula contra `origen`, así que se mueve solo. */
-  const origen = { x: c.x - (ancho || 320) / 2 - mov.x, y: c.y - alto / 2 - mov.y };
+  /*
+   * DÓNDE SE DIBUJA vs. QUÉ SE ESTÁ MIRANDO. Son dos cosas distintas y separarlas
+   * es lo que hace que el arrastre funcione.
+   *
+   * `origen` es el punto del mundo que cae en la esquina del recuadro cuando el
+   * mapa NO está corrido. Todo —teselas, casa, pines— se dibuja contra él, así que
+   * al arrastrar nadie cambia de posición: se mueve la capa entera con una
+   * transformación (ver el render).
+   *
+   * POR QUÉ ASÍ, y no restándole el desplazamiento a `origen` como antes: adentro
+   * de un Modal de Android, cambiarle la POSICIÓN a una vista que ya está montada
+   * no surte efecto. Se reproduce clarito en el emulador: el gesto se recibe, la
+   * cuenta da bien, las teselas quedan con su `left` nuevo... y la pantalla no
+   * cambia ni un píxel. El botón − sí repintaba, porque al cambiar el zoom cambian
+   * las `key` de las teselas y se crean vistas NUEVAS, que es una operación que el
+   * modal sí propaga. Una transformación también, y además es mucho más barata: es
+   * un cambio en UNA vista en vez de reubicar treinta.
+   *
+   * `vista` es el pedazo del mundo que se está mirando de verdad, o sea con el
+   * desplazamiento aplicado. Sólo sirve para decidir QUÉ teselas hacen falta.
+   */
+  const origen = { x: c.x - (ancho || 320) / 2, y: c.y - alto / 2 };
+  const vista = { x: origen.x - mov.x, y: origen.y - mov.y };
 
   /*
    * Las teselas que tocan el recuadro.
@@ -416,8 +433,8 @@ export function MapaLugares({
   const teselas: { x: number; y: number; col: number; fila: number; left: number; top: number }[] = [];
   if (ancho > 0) {
     const limite = 2 ** z;
-    for (let tx = Math.floor((origen.x - MARGEN) / TESELA); tx <= Math.floor((origen.x + ancho + MARGEN) / TESELA); tx++) {
-      for (let ty = Math.floor((origen.y - MARGEN) / TESELA); ty <= Math.floor((origen.y + alto + MARGEN) / TESELA); ty++) {
+    for (let tx = Math.floor((vista.x - MARGEN) / TESELA); tx <= Math.floor((vista.x + ancho + MARGEN) / TESELA); tx++) {
+      for (let ty = Math.floor((vista.y - MARGEN) / TESELA); ty <= Math.floor((vista.y + alto + MARGEN) / TESELA); ty++) {
         if (ty < 0 || ty >= limite) continue;
         teselas.push({
           x: ((tx % limite) + limite) % limite,
@@ -444,7 +461,7 @@ export function MapaLugares({
         /* Abierto, el alto lo pone el modal; cerrado, el prop. El resto del marco
            —bordes redondeados y línea— es del recuadro chico: en pantalla completa
            un borde a 1 px del filo de la pantalla se ve como un error de dibujo. */
-        ...(abierto ? { flex: 1 } : { height: altoPedido, borderRadius: 20, borderWidth: 1 }),
+        ...(grande ? { flex: 1 } : { height: altoPedido, borderRadius: 20, borderWidth: 1 }),
         overflow: 'hidden',
         borderColor: '#e6e3f0',
         backgroundColor: '#eef0f4',
@@ -456,8 +473,25 @@ export function MapaLugares({
           Los botones y la atribución quedan afuera: no son mapa. */}
       <Animated.View
         {...gestos.panHandlers}
-        style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, transform: [{ scale: escala }] }}
+        /*
+         * LA CAPA QUE SE MUEVE ES ESTA, la que lleva el gesto, y no una de adentro.
+         * Probado en el emulador uno por uno: adentro de un Modal de Android, las
+         * capas anidadas no repintan cuando les cambia la transformación —ni como
+         * View, ni como Animated.View, ni con collapsable={false}—. Esta sí. Por eso
+         * el círculo del radio quedó AFUERA (abajo): es lo único que no se mueve
+         * con el mapa, y no había forma de dejarlo en el medio sin anidar.
+         */
+        style={{
+          position: 'absolute', left: 0, top: 0, right: 0, bottom: 0,
+          transform: [{ translateX: mov.x }, { translateY: mov.y }, { scale: escala }],
+        }}
       >
+        {/*
+          * El arrastre son DOS capas y no una, con el círculo en el medio: las
+          * teselas van abajo, el círculo del radio queda quieto en el centro
+          * (marca dónde se está buscando, no un lugar del mundo) y la casa y los
+          * pines van arriba, tapando al círculo y no tapados por él.
+          */}
         {/* Las teselas */}
         {teselas.map((t) => (
           <Image
@@ -479,30 +513,9 @@ export function MapaLugares({
           />
         ))}
 
-        {/* El círculo del radio */}
-        {radioPx > 0 ? (
-          <View
-            pointerEvents="none"
-            style={{
-              position: 'absolute',
-              /* El círculo marca el ÁREA QUE SE ESTÁ BUSCANDO, así que va siempre
-                 en el centro del recuadro: al arrastrar, la búsqueda se mueve con
-                 el mapa. La casa, en cambio, se queda donde vive (ver abajo). */
-              left: (ancho || 320) / 2 - radioPx,
-              top: alto / 2 - radioPx,
-              width: radioPx * 2,
-              height: radioPx * 2,
-              borderRadius: radioPx,
-              borderWidth: 1.25,
-              borderColor: 'rgba(93,84,145,0.45)',
-              backgroundColor: 'rgba(93,84,145,0.07)',
-            }}
-          />
-        ) : null}
-
         {/* La casa del socio. No se dibuja si el centro no es un lugar suyo. */}
         {ancho > 0 && centro.etiqueta ? (
-          <View style={{ position: 'absolute', left: (ancho || 320) / 2 + mov.x - 14, top: alto / 2 + mov.y - 14 }}>
+          <View style={{ position: 'absolute', left: (ancho || 320) / 2 - 14, top: alto / 2 - 14 }}>
             <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: colors.brand.lime, borderWidth: 3, borderColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
               <Svg width={14} height={14} viewBox="0 0 24 24">
                 <Path d="M3 10.5 12 3l9 7.5" fill="none" stroke={INK} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
@@ -520,23 +533,61 @@ export function MapaLugares({
           const top = q.y - origen.y - 42;
           // Un pin que cae afuera del recuadro no se dibuja: en Android, una vista
           // fuera de los límites igual consume memoria y captura toques.
-          if (left < -34 - MARGEN || top < -42 - MARGEN || left > (ancho || 320) + MARGEN || top > alto + MARGEN) return null;
+          /* Se dibuja contra `origen`, pero para decidir si entra hay que mirar dónde
+             queda EN PANTALLA, que es con el desplazamiento puesto. */
+          const enX = left + mov.x, enY = top + mov.y;
+          if (enX < -34 - MARGEN || enY < -42 - MARGEN || enX > (ancho || 320) + MARGEN || enY > alto + MARGEN) return null;
           return (
             <TouchableOpacity
               key={p.id}
               disabled={!onPin}
               /* Cerrar antes de avisar: quien escucha `onPin` reemplaza la pantalla
-                 por la ficha del prestador, y si el modal sigue abierto la ficha
-                 queda debajo del mapa y parece que el toque no hizo nada. */
-              onPress={() => { setAbierto(false); onPin?.(p.id); }}
+                 por la ficha del prestador. Se avisa primero que hay que cerrar el
+                 mapa grande: si no, la ficha aparece detrás y el toque parece perdido. */
+              onPress={() => { onGrande?.(false); onPin?.(p.id); }}
               style={{ position: 'absolute', left, top }}
             >
               <Gota etiqueta={p.etiqueta} />
             </TouchableOpacity>
           );
         })}
-
       </Animated.View>
+
+      {/*
+        * EL CÍRCULO DEL RADIO, fuera de la capa que se mueve.
+        *
+        * Marca el ÁREA QUE SE ESTÁ BUSCANDO, no un lugar del mundo: al arrastrar, la
+        * búsqueda se mueve con el mapa y el círculo tiene que quedarse en el centro
+        * de la pantalla. La casa, en cambio, se queda donde vive y viaja con el mapa.
+        *
+        * Queda dibujado ENCIMA de los pines y no debajo como antes. Es el precio de
+        * que las capas anidadas no repinten adentro del modal, y es barato: el
+        * relleno es de 7% de opacidad, así que un pin debajo se ve igual.
+        *
+        * Va en un Animated.View propio para que el pinch también lo agrande: es un
+        * radio en metros, y si el mapa se acerca y el círculo no, deja de decir la
+        * verdad mientras dura el gesto.
+        */}
+      {radioPx > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, transform: [{ scale: escala }] }}
+        >
+          <View
+            style={{
+              position: 'absolute',
+              left: (ancho || 320) / 2 - radioPx,
+              top: alto / 2 - radioPx,
+              width: radioPx * 2,
+              height: radioPx * 2,
+              borderRadius: radioPx,
+              borderWidth: 1.25,
+              borderColor: 'rgba(93,84,145,0.45)',
+              backgroundColor: 'rgba(93,84,145,0.07)',
+            }}
+          />
+        </Animated.View>
+      ) : null}
 
       {/* Volver al domicilio. Sólo aparece si el mapa se movió: un botón permanente
           que no hace nada es ruido, y acá además dice algo — que te fuiste. Sin
@@ -576,16 +627,18 @@ export function MapaLugares({
             </TouchableOpacity>
           );
         })}
-        {/* Pantalla completa, en la misma columna: se abre y se cierra desde el mismo
-            lugar, que es donde uno vuelve a buscar el botón. */}
+        {/* Pantalla completa, en la misma columna: se abre y se vuelve desde el mismo
+            lugar, que es donde uno va a buscar el botón. Sólo si la pantalla sabe
+            cómo agrandar el mapa. */}
+        {onGrande ? (
         <TouchableOpacity
-          onPress={() => setAbierto((v) => !v)}
+          onPress={() => onGrande?.(!grande)}
           accessibilityRole="button"
-          accessibilityLabel={abierto ? 'Cerrar el mapa' : 'Ver el mapa en pantalla completa'}
+          accessibilityLabel={grande ? 'Volver al mapa chico' : 'Ver el mapa en pantalla completa'}
           style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: '#e6e3f0' }}
         >
           <Svg width={15} height={15} viewBox="0 0 24 24">
-            {(abierto
+            {(grande
               ? ['M4 9h5V4', 'M20 9h-5V4', 'M4 15h5v5', 'M20 15h-5v5']
               : ['M9 4H4v5', 'M15 4h5v5', 'M9 20H4v-5', 'M15 20h5v-5']
             ).map((d) => (
@@ -593,6 +646,7 @@ export function MapaLugares({
             ))}
           </Svg>
         </TouchableOpacity>
+        ) : null}
       </View>
 
       {/* La atribución, obligatoria. */}
@@ -602,22 +656,5 @@ export function MapaLugares({
     </View>
   );
 
-  if (!abierto) return cuerpo;
-
-  return (
-    <>
-      {/* El hueco que deja el mapa al irse al modal. Sin esto, todo lo que sigue en
-          la pantalla sube y el ScrollView se reacomoda; no se ve mientras está
-          abierto, pero al cerrar aparecés en otro punto del scroll. */}
-      <View style={{ height: altoPedido }} />
-      {/* `onRequestClose` es el botón Atrás de Android: sin él, atrás sale de la
-          pantalla entera en vez de cerrar el mapa. */}
-      <Modal visible animationType="fade" onRequestClose={() => setAbierto(false)} statusBarTranslucent>
-        {/* Los bordes: los controles van pegados arriba y en un teléfono con muesca
-            quedarían debajo de ella. El fondo es el del mapa para que no se vea una
-            franja blanca mientras cargan las teselas. */}
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#eef0f4' }}>{cuerpo}</SafeAreaView>
-      </Modal>
-    </>
-  );
+  return cuerpo;
 }
