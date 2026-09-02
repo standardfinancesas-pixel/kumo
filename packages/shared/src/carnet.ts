@@ -11,6 +11,64 @@ import type { VaccineKind } from './types';
 
 export const VACUNA_KINDS: VaccineKind[] = ['Vacuna', 'Estudio', 'Antiparasitario'];
 
+/* ── El formulario del carnet ───────────────────────────────────────────── */
+
+/**
+ * Lo que el socio completa al cargar —o al corregir— una vacuna o un estudio.
+ *
+ * La fila de la base tiene DOS fechas (cuándo se aplicó y cuándo toca la próxima)
+ * y el formulario tiene una sola, con un interruptor que dice cuál de las dos es.
+ * Esa traducción vivía copiada en las dos superficies; acá está una sola vez,
+ * porque ya se separaron una vez: "marcar aplicada" borraba la próxima fecha en la
+ * app y la conservaba en la web, así que la misma acción dejaba la fila distinta
+ * según desde dónde la hicieras.
+ */
+export type FormVacuna = { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null };
+
+/** Del formulario a una fila nueva. Acá sí se escriben las dos fechas: una es la
+ *  que se cargó y la otra queda explícitamente vacía. */
+export function filaDeVacuna(v: FormVacuna): {
+  name: string; kind: VaccineKind; status: 'aplicada' | 'pendiente'; applied_on: string | null; due_on: string | null;
+} {
+  return {
+    name: v.name.trim(),
+    kind: v.kind,
+    status: v.aplicada ? 'aplicada' : 'pendiente',
+    applied_on: v.aplicada ? v.fecha : null,
+    due_on: v.aplicada ? null : v.fecha,
+  };
+}
+
+/**
+ * Del formulario a una CORRECCIÓN, que no es lo mismo que un alta.
+ *
+ * Se tocan sólo los campos que el formulario muestra: la otra fecha se deja como
+ * estaba. Si no, corregirle el nombre a una vacuna ya aplicada le borraría de paso
+ * la fecha de la próxima, que es un dato que el socio cargó y que nadie le pidió
+ * tirar. Es el mismo criterio que "marcar aplicada", que conserva la próxima.
+ */
+export function parcheDeVacuna(v: FormVacuna): Record<string, string | null> {
+  const base = { name: v.name.trim(), kind: v.kind, status: v.aplicada ? 'aplicada' : 'pendiente' };
+  return v.aplicada ? { ...base, applied_on: v.fecha } : { ...base, due_on: v.fecha };
+}
+
+/**
+ * El camino de vuelta: de la fila al formulario, para abrirlo ya completo.
+ *
+ * `aplicada` sale de si tiene fecha de aplicación y no del estado, porque el estado
+ * que llega a la pantalla ya viene traducido a algo que se lee ("Al día ✓", "En 5
+ * días") y no sirve para decidir.
+ */
+export function formDeVacuna(v: { kind?: string | null; name: string; appliedOn: string | null; dueOn: string | null }): FormVacuna {
+  const aplicada = v.appliedOn != null;
+  return {
+    kind: (VACUNA_KINDS.includes(v.kind as VaccineKind) ? v.kind : 'Vacuna') as VaccineKind,
+    name: v.name,
+    aplicada,
+    fecha: aplicada ? v.appliedOn : v.dueOn,
+  };
+}
+
 /** Ícono por tipo, para que las dos superficies elijan el mismo. */
 export const KIND_ICON: Record<VaccineKind, 'shield' | 'pill' | 'plus'> = {
   Vacuna: 'shield',

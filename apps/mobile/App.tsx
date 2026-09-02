@@ -19,6 +19,7 @@ import {
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO,
   type FeaturePaga,
+  filaDeVacuna, parcheDeVacuna, formDeVacuna, type FormVacuna,
 } from '@kumo/shared';
 import { supabase } from './lib/supabase';
 import { useEsperarPago } from './lib/esperarPago';
@@ -642,14 +643,32 @@ function CalendarioPagina({ vacs, onVolver }: { vacs: Vac[]; onVolver: () => voi
 }
 
 /* ── Hoja: Agregar al carnet ───────────────────────────────────── */
-function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: () => void; onSave: (v: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => Promise<void> }) {
+/**
+ * La hoja del carnet: sirve para cargar y para corregir.
+ *
+ * Es la misma hoja a propósito. Un formulario aparte para editar es un formulario
+ * que se olvida de un campo cuando el otro cambia; y para el socio, corregir es la
+ * misma tarea que cargar, con los datos ya puestos.
+ */
+function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
+  petName: string;
+  /** La fila que se está corrigiendo. Sin esto, es un alta. */
+  vac?: Vac | null;
+  onClose: () => void;
+  onSave: (v: FormVacuna) => Promise<void>;
+  onBorrar?: () => void;
+}) {
   const hoy = new Date();
-  const [kind, setKind] = useState<VaccineKind>('Vacuna');
-  const [name, setName] = useState('');
-  const [aplicada, setAplicada] = useState(true);
-  const [fecha, setFecha] = useState<string | null>(null);
+  const inicial = vac ? formDeVacuna(vac) : null;
+  const [kind, setKind] = useState<VaccineKind>(inicial?.kind ?? 'Vacuna');
+  const [name, setName] = useState(inicial?.name ?? '');
+  const [aplicada, setAplicada] = useState(inicial ? inicial.aplicada : true);
+  const [fecha, setFecha] = useState<string | null>(inicial?.fecha ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pMes, setPMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  /* El calendario abre en el mes de la fecha cargada, no en el actual: si estás
+     corrigiendo algo de marzo, empezar en septiembre son seis toques al pedo. */
+  const mesInicial = inicial?.fecha ? new Date(`${inicial.fecha}T12:00:00`) : hoy;
+  const [pMes, setPMes] = useState({ y: mesInicial.getFullYear(), m: mesInicial.getMonth() });
   const [busy, setBusy] = useState(false);
   const puedeGuardar = name.trim().length > 0 && !busy;
   const moverP = (delta: number) => setPMes(({ y, m }) => {
@@ -665,8 +684,10 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
 
   return (
     <Sheet onClose={onClose}>
-      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK, marginBottom: 4 }}>Agregar al carnet</Text>
-      <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>Sumá una vacuna, estudio o antiparasitario al historial de {petName}.</Text>
+      <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK, marginBottom: 4 }}>{vac ? 'Editar' : 'Agregar al carnet'}</Text>
+      <Text style={{ fontSize: 13, color: '#8781a0', marginBottom: 18 }}>
+        {vac ? `Corregí lo que haga falta del historial de ${petName}.` : `Sumá una vacuna, estudio o antiparasitario al historial de ${petName}.`}
+      </Text>
 
       <SheetLabel>Tipo</SheetLabel>
       <View style={{ flexDirection: 'row', gap: 6, marginBottom: 16 }}>
@@ -721,6 +742,14 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{busy ? 'Guardando…' : 'Guardar'}</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Borrar va abajo de todo y apagado, igual que en Mi perfil: es la salida
+          para lo que se cargó por error, no una opción al lado de guardar. */}
+      {onBorrar ? (
+        <TouchableOpacity onPress={onBorrar} disabled={busy} style={{ paddingVertical: 16, alignItems: 'center' }}>
+          <Text style={{ color: '#963c34', fontWeight: '600', fontSize: 13, textDecorationLine: 'underline' }}>Borrar del carnet</Text>
+        </TouchableOpacity>
+      ) : null}
     </Sheet>
   );
 }
@@ -730,6 +759,8 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
   const [fotoCarnet, setFotoCarnet] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  /** La fila que se está corrigiendo, si hay alguna. */
+  const [editando, setEditando] = useState<Vac | null>(null);
   const [showCal, setShowCal] = useState(false);
   const [addCon, setAddCon] = useState(false);
   const [cn, setCn] = useState('');
@@ -772,16 +803,31 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
     await reload();
     setBusy(null);
   };
-  const addVac = async ({ kind, name, aplicada, fecha }: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => {
+  /* Alta y corrección pasan por la misma función, y la traducción del formulario a
+     la fila vive en @kumo/shared: es la misma en las dos superficies. */
+  const guardarVac = async (v: FormVacuna) => {
     if (!pet) return;
-    await supabase.from('vaccinations').insert({
-      pet_id: pet.id, name, kind,
-      status: aplicada ? 'aplicada' : 'pendiente',
-      applied_on: aplicada ? fecha : null,
-      due_on: aplicada ? null : fecha,
-    });
+    if (editando) await supabase.from('vaccinations').update(parcheDeVacuna(v)).eq('id', editando.id);
+    else await supabase.from('vaccinations').insert({ pet_id: pet.id, ...filaDeVacuna(v) });
     setAdding(false);
+    setEditando(null);
     await reload();
+  };
+
+  const borrarVac = (v: Vac) => {
+    Alert.alert(`Borrar ${v.name}`, 'Se saca del carnet y del calendario. No se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Borrar',
+        style: 'destructive',
+        onPress: async () => {
+          const { error } = await supabase.from('vaccinations').delete().eq('id', v.id);
+          if (error) Alert.alert('No pudimos borrarlo', 'Probá de nuevo.');
+          setEditando(null);
+          await reload();
+        },
+      },
+    ]);
   };
 
   if (!pet) {
@@ -817,7 +863,16 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
           const tone = TONE[v.tone];
           const hi = v.tone === 'lime';
           return (
-            <View key={v.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: hi ? '#eef7d6' : '#f7f6fa', borderWidth: hi ? 1.5 : 1, borderColor: hi ? LIME : '#eeecf5', borderRadius: 14, padding: 13 }}>
+            /* Tocar la fila la abre para corregirla. Antes, una vacuna cargada con
+               el nombre mal o la fecha equivocada se quedaba así para siempre: no
+               había forma de editarla ni de borrarla desde ningún lado. */
+            <TouchableOpacity
+              key={v.id}
+              onPress={() => setEditando(v)}
+              accessibilityRole="button"
+              accessibilityLabel={`Editar ${v.name}`}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: hi ? '#eef7d6' : '#f7f6fa', borderWidth: hi ? 1.5 : 1, borderColor: hi ? LIME : '#eeecf5', borderRadius: 14, padding: 13 }}
+            >
               <View style={{ width: 34, height: 34, borderRadius: 10, overflow: 'hidden', backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}><Ic d={VAC_IC[KIND_ICON[v.kind]]} size={18} color={tone.fg} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{v.name}</Text>
@@ -832,7 +887,10 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
                   </TouchableOpacity>
                 )}
               </View>
-            </View>
+              {/* La flecha, igual que en el resto de las filas que se tocan: sin
+                  esto, que se pueda editar no se ve por ningún lado. */}
+              <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
+            </TouchableOpacity>
           );
         })}
         {pet.vaccines.length === 0 && (
@@ -906,7 +964,15 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
       </View>
 
     </ScrollView>
-    {adding && <AgregarSheet petName={pet.name} onClose={() => setAdding(false)} onSave={addVac} />}
+    {(adding || editando) && (
+      <CarnetSheet
+        petName={pet.name}
+        vac={editando}
+        onClose={() => { setAdding(false); setEditando(null); }}
+        onSave={guardarVac}
+        onBorrar={editando ? () => borrarVac(editando) : undefined}
+      />
+    )}
     </View>
   );
 }

@@ -15,6 +15,7 @@ import {
   FORO_CATEGORIAS, FORO_CATEGORIA_DEFECTO, FORO_FILTROS,
   destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, parchePerfilBancario, hayDatosBancarios, pareceCbu, cbuValido, distanciaKm,
   type FeaturePaga,
+  filaDeVacuna, parcheDeVacuna, formDeVacuna, type FormVacuna,
 } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { prepararFoto } from '@/lib/foto';
@@ -659,6 +660,8 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
   const [fotoError, setFotoError] = useState('');
   const [fotoCarnet, setFotoCarnet] = useState<string | null>(null);
   const allVacs = pet?.vaccines ?? [];
+  /** La fila que se está corrigiendo, si hay alguna. */
+  const [editando, setEditando] = useState<Vac | null>(null);
 
   /** Cambiar la foto de la mascota. Antes no se podía desde ninguna pantalla:
    *  si en el alta salía mal, había que tocar la base a mano. */
@@ -699,16 +702,23 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     router.refresh();
     setBusy(false);
   };
-  const addVac = async ({ kind, name, aplicada, fecha }: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => {
+  /* Alta y corrección pasan por la misma función, y la traducción del formulario a
+     la fila vive en @kumo/shared: es la misma en las dos superficies. */
+  const guardarVac = async (v: FormVacuna) => {
     if (!pet) return;
     setBusy(true);
-    await supabase.from('vaccinations').insert({
-      pet_id: pet.id, name, kind,
-      status: aplicada ? 'aplicada' : 'pendiente',
-      applied_on: aplicada ? fecha : null,
-      due_on: aplicada ? null : fecha,
-    });
+    if (editando) await supabase.from('vaccinations').update(parcheDeVacuna(v)).eq('id', editando.id);
+    else await supabase.from('vaccinations').insert({ pet_id: pet.id, ...filaDeVacuna(v) });
     setShowAdd(false);
+    setEditando(null);
+    router.refresh();
+    setBusy(false);
+  };
+  const borrarVac = async (v: Vac) => {
+    if (!confirm(`¿Borrar ${v.name} del carnet? Se saca también del calendario. No se puede deshacer.`)) return;
+    setBusy(true);
+    await supabase.from('vaccinations').delete().eq('id', v.id);
+    setEditando(null);
     router.refresh();
     setBusy(false);
   };
@@ -830,7 +840,18 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
           const done = v.tone === 'green';
           const tone = toneCfg[v.tone];
           return (
-            <div key={v.id} style={{ display: 'flex', alignItems: 'center', gap: 12, background: tone.card, border: tone.border, borderRadius: 14, padding: '13px 14px' }}>
+            /* Tocar la fila la abre para corregirla. Antes, una vacuna cargada con
+               el nombre mal o la fecha equivocada se quedaba así para siempre: no
+               había forma de editarla ni de borrarla desde ningún lado. */
+            <div
+              key={v.id}
+              role="button"
+              tabIndex={0}
+              aria-label={`Editar ${v.name}`}
+              onClick={() => setEditando(v)}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setEditando(v); } }}
+              style={{ display: 'flex', alignItems: 'center', gap: 12, background: tone.card, border: tone.border, borderRadius: 14, padding: '13px 14px', cursor: 'pointer' }}
+            >
               <div style={{ width: 34, height: 34, borderRadius: 10, flex: '0 0 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: tone.iconBg }}>
                 {vacIcon(v.kind, tone.iconStroke)}
               </div>
@@ -842,9 +863,13 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                 <span style={{ color: tone.status, fontWeight: 700, fontSize: 12 }}>{v.status}</span>
                 {!done && v.mark && (
-                  <button disabled={busy} onClick={() => markApplied(v.id)} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 600, fontSize: 11, padding: '5px 10px', borderRadius: 8, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, whiteSpace: 'nowrap' }}>Marcar aplicada</button>
+                  /* El clic no puede subir a la fila: si no, marcar aplicada abre
+                     además la hoja de edición encima. */
+                  <button disabled={busy} onClick={(e) => { e.stopPropagation(); markApplied(v.id); }} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 600, fontSize: 11, padding: '5px 10px', borderRadius: 8, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1, whiteSpace: 'nowrap' }}>Marcar aplicada</button>
                 )}
               </div>
+              {/* La flecha, para que se vea que la fila se puede tocar. */}
+              <span style={{ color: 'rgb(176,168,214)', fontSize: 18, lineHeight: 1 }}>›</span>
             </div>
           );
         })}
@@ -858,7 +883,15 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
         </button>
         <button onClick={() => setShowAdd(true)} style={{ flex: '1 1 220px', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>+ Agregar estudio o vacuna</button>
       </div>
-      {showAdd && <AgregarSheet petName={pet.name} onClose={() => setShowAdd(false)} onSave={addVac} />}
+      {(showAdd || editando) && (
+        <CarnetSheet
+          petName={pet.name}
+          vac={editando}
+          onClose={() => { setShowAdd(false); setEditando(null); }}
+          onSave={guardarVac}
+          onBorrar={editando ? () => borrarVac(editando) : undefined}
+        />
+      )}
 
       {/* Contactos de emergencia */}
       <div style={{ padding: '20px 0 0', borderTop: '1px solid rgb(238,236,245)', marginTop: 20 }}>
@@ -4113,14 +4146,32 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
   );
 }
 
-function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: () => void; onSave: (v: { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null }) => Promise<void> }) {
+/**
+ * La hoja del carnet: sirve para cargar y para corregir.
+ *
+ * Es la misma hoja a propósito. Un formulario aparte para editar es un formulario
+ * que se olvida de un campo cuando el otro cambia; y para el socio, corregir es la
+ * misma tarea que cargar, con los datos ya puestos.
+ */
+function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
+  petName: string;
+  /** La fila que se está corrigiendo. Sin esto, es un alta. */
+  vac?: Vac | null;
+  onClose: () => void;
+  onSave: (v: FormVacuna) => Promise<void>;
+  onBorrar?: () => void;
+}) {
   const hoy = new Date();
-  const [kind, setKind] = useState<VaccineKind>('Vacuna');
-  const [name, setName] = useState('');
-  const [aplicada, setAplicada] = useState(true);
-  const [fecha, setFecha] = useState<string | null>(null);
+  const inicial = vac ? formDeVacuna(vac) : null;
+  const [kind, setKind] = useState<VaccineKind>(inicial?.kind ?? 'Vacuna');
+  const [name, setName] = useState(inicial?.name ?? '');
+  const [aplicada, setAplicada] = useState(inicial ? inicial.aplicada : true);
+  const [fecha, setFecha] = useState<string | null>(inicial?.fecha ?? null);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [pMes, setPMes] = useState({ y: hoy.getFullYear(), m: hoy.getMonth() });
+  /* El calendario abre en el mes de la fecha cargada, no en el actual: si estás
+     corrigiendo algo de marzo, empezar en septiembre son seis clics al pedo. */
+  const mesInicial = inicial?.fecha ? new Date(`${inicial.fecha}T12:00:00`) : hoy;
+  const [pMes, setPMes] = useState({ y: mesInicial.getFullYear(), m: mesInicial.getMonth() });
   const [busy, setBusy] = useState(false);
   const puedeGuardar = name.trim().length > 0 && !busy;
   const moverP = (delta: number) => setPMes(({ y, m }) => {
@@ -4136,8 +4187,10 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
 
   return (
     <Sheet onClose={onClose}>
-      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>Agregar al carnet</div>
-      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>Sumá una vacuna, estudio o antiparasitario al historial de {petName}.</div>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 4 }}>{vac ? 'Editar' : 'Agregar al carnet'}</div>
+      <div style={{ fontSize: 13, color: 'rgb(135,129,160)', marginBottom: 18 }}>
+        {vac ? `Corregí lo que haga falta del historial de ${petName}.` : `Sumá una vacuna, estudio o antiparasitario al historial de ${petName}.`}
+      </div>
 
       <label style={sheetLabel}>Tipo</label>
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
@@ -4179,6 +4232,19 @@ function AgregarSheet({ petName, onClose, onSave }: { petName: string; onClose: 
         <button onClick={onClose} style={{ ...sheetBtn(false), flex: 'none', padding: '14px 20px' }}>Cancelar</button>
         <button onClick={guardar} disabled={!puedeGuardar} style={{ ...sheetBtn(true), flex: 1, background: puedeGuardar ? 'rgb(93,84,145)' : 'rgb(199,193,222)', cursor: puedeGuardar ? 'pointer' : 'not-allowed' }}>{busy ? 'Guardando…' : 'Guardar'}</button>
       </div>
+
+      {/* Borrar va abajo de todo y apagado, igual que en Mi perfil: es la salida
+          para lo que se cargó por error, no una opción al lado de guardar. */}
+      {onBorrar ? (
+        <button
+          type="button"
+          onClick={onBorrar}
+          disabled={busy}
+          style={{ display: 'block', margin: '16px auto 0', background: 'none', border: 'none', color: 'rgb(150,60,52)', fontWeight: 600, fontSize: 13, textDecoration: 'underline', cursor: busy ? 'default' : 'pointer' }}
+        >
+          Borrar del carnet
+        </button>
+      ) : null}
     </Sheet>
   );
 }
