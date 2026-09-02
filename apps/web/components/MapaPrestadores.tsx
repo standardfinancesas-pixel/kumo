@@ -313,7 +313,12 @@ export function MapaPrestadores({
         const puntos: [number, number][] = [[centro.lat, centro.lng], ...pins.map((p) => [p.lat, p.lng] as [number, number])];
         const caja = L.latLngBounds(puntos).pad(0.15);
         if (puedeEncuadrar) {
-          const zoom = Math.min(15, Math.max(11, mapa.current.getBoundsZoom(caja, false, L.point(8, 8))));
+          /* Acá NO va el piso de 11 del caso del radio: lo que encuadra son los
+             PINES, que pueden estar a 300 km (un socio de Tandil, con los locales en
+             Buenos Aires). Con 11 el mapa se abría en su ciudad sin un solo beneficio
+             a la vista, que es peor que verlos chiquitos. El círculo del radio, en
+             cambio, siempre está alrededor tuyo y ahí 11 sigue bien. */
+          const zoom = Math.min(15, Math.max(5, mapa.current.getBoundsZoom(caja, false, L.point(8, 8))));
           mapa.current.setView(caja.getCenter(), zoom, { animate: true });
         }
         return;

@@ -37,6 +37,10 @@ export type PinMapa = {
 };
 
 const TESELA = 256;
+/* Cuánto se dibuja MÁS ALLÁ del recuadro. Sin margen, el borde que va apareciendo
+   mientras arrastrás llega gris y se llena después; con una tesela de colchón, el
+   mapa ya tiene dibujado lo que estás por descubrir. */
+const MARGEN = TESELA;
 const TESELAS = 'https://a.basemaps.cartocdn.com/light_all';
 /** La clave de las teselas de CARTO, que dejó de servirlas sin clave (27/08/2026):
  *  sin esto cada tesela llega con "API KEY REQUIRED" dibujado adentro. Es pública
@@ -82,22 +86,43 @@ function metrosPorPixel(lat: number, z: number): number {
  * el encuadre exacto queda a nivel vereda, y con uno de 25 la ciudad se vuelve una
  * manchita y los pines se apilan en el medio. Fuera de ese rango el círculo se sale
  * un poco del recuadro, y está bien: es un radio de búsqueda, no un marco.
+ *
+ * `minimo` existe porque ese piso de 11 sirve cuando lo que encuadra es el CÍRCULO
+ * del radio —que llega hasta 25 km y siempre está alrededor tuyo—, y no cuando lo
+ * que encuadra son los PINES, que pueden estar a 300 km: ahí el piso deja de ser un
+ * recorte razonable y pasa a esconder justo lo que había que mostrar. Un socio de
+ * Tandil abría Beneficios y veía un mapa de su ciudad sin un solo local: el más
+ * cercano caía a 4891 px del centro del recuadro.
+ *
+ * Para ese caso el piso es ZOOM_MIN, o sea ninguno: si los locales están lejos, que
+ * se vean chiquitos y lejos. Sólo se nota cuando efectivamente están lejos — a quien
+ * los tiene en su ciudad, el encuadre natural le da 11 o más y el piso ni participa.
  */
-function zoomPara(metros: number, lado: number, lat: number): number {
+function zoomPara(metros: number, lado: number, lat: number, minimo = 11): number {
   if (!(metros > 0) || !(lado > 0)) return 13;
   const necesarios = metros / (lado / 2);
   const z = Math.log2((156543.03392 * Math.cos((lat * Math.PI) / 180)) / necesarios);
-  return Math.max(11, Math.min(15, Math.floor(z)));
+  return Math.max(minimo, Math.min(15, Math.floor(z)));
 }
 
 /**
- * Los topes del zoom que puede pedir la persona, más anchos que los de `zoomPara`.
+ * Los topes del zoom que puede pedir la persona, mucho más anchos que los de
+ * `zoomPara`. Son otro objetivo: `zoomPara` encuadra el círculo del radio, y acá lo
+ * que se quiere es mirar la cuadra —o el país—.
  *
- * Son otro objetivo: `zoomPara` encuadra el círculo del radio, y acá lo que se
- * quiere es mirar la cuadra. CARTO sirve teselas hasta z20; en 18 ya se leen los
- * portales, y bajar de 10 convierte la ciudad en una manchita sin pines.
+ * CARTO sirve teselas hasta z20; en 18 ya se leen los portales.
+ *
+ * EL TOPE DE ABAJO ERA 10 Y ESTABA MAL. Se puso pensando en el recuadro de 230 px,
+ * donde alejarse de más deja la ciudad hecha una manchita. Pero el socio no siempre
+ * vive donde están los prestadores: desde Tandil, el más cercano queda a 305 km, y
+ * en z10 se ven unos 50. O sea que el botón − se ponía gris mucho antes de llegar a
+ * ver un solo pin, y desde ahí el único camino era arrastrar siete veces. Los dos
+ * síntomas ("no deja alejar" y "no deja desplazar") eran este número.
+ *
+ * En 5 entra la Argentina entera, que es el peor caso real. Más abajo no hace falta:
+ * el club no tiene prestadores en otro continente.
  */
-const ZOOM_MIN = 10;
+const ZOOM_MIN = 5;
 const ZOOM_MAX = 18;
 
 /** La distancia entre dos dedos, que es lo único que define un pinch. */
@@ -195,6 +220,10 @@ export function MapaLugares({
    * al cerrar, porque el componente no se desmonta: sólo cambia dónde se dibuja.
    */
   const [abierto, setAbierto] = useState(false);
+  /* También en una referencia: el gesto se crea una sola vez y necesita saber si está
+     en pantalla completa para decidir con cuánto movimiento se queda el mapa. */
+  const abiertoRef = useRef(false);
+  abiertoRef.current = abierto;
 
   /* Cuántos niveles se corrió la persona respecto del encuadre automático. Se guarda
      el DESVÍO y no el zoom absoluto para que el encuadre siga mandando: si cambian
@@ -255,7 +284,9 @@ export function MapaLugares({
         return R * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
       }),
     );
-  const zBase = zoomPara(metros, Math.min(ancho || 320, alto), centro.lat);
+  /* Con radio (Servicios) encuadra el círculo y vale el piso de siempre; sin radio
+     (Beneficios) encuadran los pines y hay que poder llegar hasta ellos. */
+  const zBase = zoomPara(metros, Math.min(ancho || 320, alto), centro.lat, radioKm != null ? 11 : ZOOM_MIN);
   const z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zBase + zoomExtra));
 
   /* Se pide un zoom absoluto y se guarda como desvío del encuadre, con los topes
@@ -289,7 +320,10 @@ export function MapaLugares({
        * el mapa alcanza a irse al ScrollView antes de que el mapa lo reclame.
        */
       onMoveShouldSetPanResponder: (e, g) => e.nativeEvent.touches.length === 2
-        || Math.hypot(g.dx, g.dy) > 6,
+        /* En pantalla completa no hay ScrollView atrás al que dejarle el gesto, así
+           que el mapa se queda con el movimiento casi enseguida: ahí el umbral de 6
+           px sólo se siente como que el mapa tarda en responder. */
+        || Math.hypot(g.dx, g.dy) > (abiertoRef.current ? 2 : 6),
       onPanResponderGrant: (e) => {
         const t = e.nativeEvent.touches;
         if (t.length === 2) { inicial.current = separacion(t); factor.current = 1; }
@@ -343,15 +377,21 @@ export function MapaLugares({
    * normalizar: si no, la tesela del borde salta al otro extremo del mapa. `y` no se
    * normaliza: arriba del Polo Norte no hay tesela, y esas filas simplemente no van.
    */
-  const teselas: { x: number; y: number; left: number; top: number }[] = [];
+  const teselas: { x: number; y: number; col: number; fila: number; left: number; top: number }[] = [];
   if (ancho > 0) {
     const limite = 2 ** z;
-    for (let tx = Math.floor(origen.x / TESELA); tx <= Math.floor((origen.x + ancho) / TESELA); tx++) {
-      for (let ty = Math.floor(origen.y / TESELA); ty <= Math.floor((origen.y + alto) / TESELA); ty++) {
+    for (let tx = Math.floor((origen.x - MARGEN) / TESELA); tx <= Math.floor((origen.x + ancho + MARGEN) / TESELA); tx++) {
+      for (let ty = Math.floor((origen.y - MARGEN) / TESELA); ty <= Math.floor((origen.y + alto + MARGEN) / TESELA); ty++) {
         if (ty < 0 || ty >= limite) continue;
         teselas.push({
           x: ((tx % limite) + limite) % limite,
           y: ty,
+          /* Los índices SIN normalizar, que son los que identifican a la tesela en
+             la pantalla: dos teselas distintas pueden tener el mismo x normalizado
+             (dando la vuelta al mundo) y estar en lugares muy distintos. Se usan
+             como `key` — ver abajo por qué importa tanto. */
+          col: tx,
+          fila: ty,
           left: tx * TESELA - origen.x,
           top: ty * TESELA - origen.y,
         });
@@ -385,7 +425,19 @@ export function MapaLugares({
         {/* Las teselas */}
         {teselas.map((t) => (
           <Image
-            key={`${z}/${t.x}/${t.y}/${t.left}`}
+            /*
+             * La `key` es la tesela, NO dónde está dibujada.
+             *
+             * Antes incluía `left`, que cambia en cada cuadro del arrastre: React
+             * veía una key nueva y desmontaba y volvía a montar las treinta
+             * imágenes SESENTA VECES POR SEGUNDO mientras movías el dedo. De ahí
+             * que arrastrar se sintiera pegajoso, y peor en pantalla completa,
+             * donde hay muchas más teselas a la vista.
+             *
+             * Con la key estable, moverse es cambiarle `left` y `top` a una imagen
+             * que ya está montada y decodificada.
+             */
+            key={`${z}/${t.col}/${t.fila}`}
             source={{ uri: `${TESELAS}/${z}/${t.x}/${t.y}.png${CLAVE_TESELAS ? `?key=${CLAVE_TESELAS}` : ''}` }}
             style={{ position: 'absolute', left: t.left, top: t.top, width: TESELA, height: TESELA }}
           />
@@ -432,7 +484,7 @@ export function MapaLugares({
           const top = q.y - origen.y - 42;
           // Un pin que cae afuera del recuadro no se dibuja: en Android, una vista
           // fuera de los límites igual consume memoria y captura toques.
-          if (left < -34 || top < -42 || left > (ancho || 320) || top > alto) return null;
+          if (left < -34 - MARGEN || top < -42 - MARGEN || left > (ancho || 320) + MARGEN || top > alto + MARGEN) return null;
           return (
             <TouchableOpacity
               key={p.id}
