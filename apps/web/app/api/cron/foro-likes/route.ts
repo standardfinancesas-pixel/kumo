@@ -104,6 +104,32 @@ export async function GET(req: Request) {
     .in('id', [...porDueno.keys()])
     .in('status', CON_ACCESO);
 
+  /*
+   * Cómo se llama quien reaccionó, para los avisos de UNA sola persona: son los
+   * únicos que lo dicen ("A Sofía le gustó…"). En los de varios el nombre no entra
+   * y no aporta, así que no se pide.
+   *
+   * Una consulta sola para todos los avisos del día, y no una por aviso: esto corre
+   * sobre la lista entera de socios y el cron no tiene por qué crecer con ella.
+   *
+   * Sin nombre queda "alguien", que es exactamente lo que decía antes. La lista de
+   * adentro de la app ya venía nombrando (`avisos_del_foro` devuelve el autor), así
+   * que hasta ahora el mismo me gusta se contaba distinto según dónde lo vieras.
+   */
+  const solos = new Set<string>();
+  for (const { id } of conAcceso ?? []) {
+    for (const g of porDueno.get(id as string)?.values() ?? []) {
+      if (g.personas.size === 1) solos.add([...g.personas][0]!);
+    }
+  }
+  const nombres = new Map<string, string>();
+  if (solos.size > 0) {
+    const { data: perfiles } = await svc.from('profiles').select('id, full_name').in('id', [...solos]);
+    for (const pr of perfiles ?? []) {
+      if (pr.full_name) nombres.set(pr.id as string, pr.full_name as string);
+    }
+  }
+
   let avisados = 0;
   for (const { id: dueno } of conAcceso ?? []) {
     const posts = porDueno.get(dueno as string);
@@ -117,10 +143,11 @@ export async function GET(req: Request) {
          me gusta fue a una respuesta: es lo que ubica el hilo. Por eso el texto
          cambia la preposición —"tu respuesta EN «Aura»"— y no sólo el sustantivo. */
       const donde = sobre === 'respuesta' ? 'tu respuesta en' : 'tu publicación';
+      const quien = n === 1 ? nombres.get([...personas][0]!) ?? 'alguien' : '';
       await mandarPush(
         tokens.map((t) => t.token as string),
         'Le gustó lo que escribiste',
-        n === 1 ? `A alguien le gustó ${donde} "${titulo}".` : `A ${n} personas les gustó ${donde} "${titulo}".`,
+        n === 1 ? `A ${quien} le gustó ${donde} "${titulo}".` : `A ${n} personas les gustó ${donde} "${titulo}".`,
         { pantalla: 'foros' },
       );
       avisados++;
