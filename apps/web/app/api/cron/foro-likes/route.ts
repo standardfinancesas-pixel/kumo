@@ -9,7 +9,7 @@ import { mandarPush, CON_ACCESO } from '@/lib/push';
  * (que salen por `/api/avisos`). El motivo es simple: una publicación que junta
  * doce me gusta produciría doce notificaciones seguidas, y esa es la forma más
  * rápida de que alguien apague los avisos de Kumo para siempre. Acá se manda uno
- * por publicación y por día: "A 12 personas les gustó tu publicación".
+ * por día y por cosa escrita: "A 12 personas les gustó tu publicación".
  *
  * Corre a las 22:00 UTC, o sea 19:00 de Buenos Aires: al final del día, cuando el
  * foro ya tuvo movimiento, y sin pisarse con el recordatorio de vacunas de la
@@ -57,26 +57,38 @@ export async function GET(req: Request) {
       .gte('created_at', desde),
   ]);
 
-  /** dueño → publicación → quiénes le dieron me gusta (sin repetir personas). */
-  const porDueno = new Map<string, Map<string, { titulo: string; personas: Set<string> }>>();
-  const sumar = (dueno: string | null, postId: string, titulo: string, quien: string) => {
+  /**
+   * dueño → (publicación + dónde cayó el me gusta) → quiénes se lo dieron.
+   *
+   * La clave lleva el DÓNDE y no sólo la publicación, por dos razones que son la
+   * misma: en un hilo podés ser el autor de la publicación y además haber
+   * respondido. Agrupando sólo por publicación, un me gusta a tu texto original y
+   * otro a tu comentario se sumaban en un solo aviso —"a 2 personas les gustó tu
+   * publicación"— que además mentía sobre la mitad. Es el mismo criterio que usa
+   * `buildNotifs` para la lista de adentro de la app, que agrupa por
+   * `postId|sobre`.
+   */
+  type Grupo = { titulo: string; sobre: 'publicacion' | 'respuesta'; personas: Set<string> };
+  const porDueno = new Map<string, Map<string, Grupo>>();
+  const sumar = (dueno: string | null, postId: string, titulo: string, sobre: Grupo['sobre'], quien: string) => {
     // Darse me gusta solo no cuenta, y sin dueño no hay a quién avisarle.
     if (!dueno || dueno === quien) return;
-    const posts = porDueno.get(dueno) ?? new Map();
-    const acum = posts.get(postId) ?? { titulo, personas: new Set<string>() };
+    const posts = porDueno.get(dueno) ?? new Map<string, Grupo>();
+    const clave = `${postId}|${sobre}`;
+    const acum = posts.get(clave) ?? { titulo, sobre, personas: new Set<string>() };
     acum.personas.add(quien);
-    posts.set(postId, acum);
+    posts.set(clave, acum);
     porDueno.set(dueno, posts);
   };
 
   for (const l of enPosts ?? []) {
     const p = Array.isArray(l.community_posts) ? l.community_posts[0] : l.community_posts;
-    if (p) sumar(p.author_id as string | null, p.id as string, p.title as string, l.member_id as string);
+    if (p) sumar(p.author_id as string | null, p.id as string, p.title as string, 'publicacion', l.member_id as string);
   }
   for (const l of enRespuestas ?? []) {
     const a = Array.isArray(l.community_answers) ? l.community_answers[0] : l.community_answers;
     const p = a && (Array.isArray(a.community_posts) ? a.community_posts[0] : a.community_posts);
-    if (a && p) sumar(a.author_id as string | null, p.id as string, p.title as string, l.member_id as string);
+    if (a && p) sumar(a.author_id as string | null, p.id as string, p.title as string, 'respuesta', l.member_id as string);
   }
 
   if (porDueno.size === 0) {
@@ -99,12 +111,16 @@ export async function GET(req: Request) {
     const { data: tokens } = await svc.from('push_tokens').select('token').eq('member_id', dueno);
     if (!tokens?.length) continue;
 
-    for (const { titulo, personas } of posts.values()) {
+    for (const { titulo, sobre, personas } of posts.values()) {
       const n = personas.size;
+      /* El título que se muestra es siempre el de la PUBLICACIÓN, también cuando el
+         me gusta fue a una respuesta: es lo que ubica el hilo. Por eso el texto
+         cambia la preposición —"tu respuesta EN «Aura»"— y no sólo el sustantivo. */
+      const donde = sobre === 'respuesta' ? 'tu respuesta en' : 'tu publicación';
       await mandarPush(
         tokens.map((t) => t.token as string),
         'Le gustó lo que escribiste',
-        n === 1 ? `A alguien le gustó tu publicación "${titulo}".` : `A ${n} personas les gustó tu publicación "${titulo}".`,
+        n === 1 ? `A alguien le gustó ${donde} "${titulo}".` : `A ${n} personas les gustó ${donde} "${titulo}".`,
         { pantalla: 'foros' },
       );
       avisados++;
