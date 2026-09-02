@@ -1,7 +1,7 @@
 'use client';
 import type { CSSProperties } from 'react';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 
 /**
@@ -80,6 +80,22 @@ function pinHtml(pin: PinMapa): string {
   </svg>`;
 }
 
+/* Las esquinas del botón de pantalla completa: hacia afuera para ampliar, hacia
+   adentro para volver. Es el ícono estándar de cualquier reproductor, así que no
+   necesita explicación al lado. */
+const AMPLIAR = 'M9 4H4v5 M15 4h5v5 M9 20H4v-5 M15 20h5v-5';
+const ACHICAR = 'M4 9h5V4 M20 9h-5V4 M4 15h5v5 M20 15h-5v5';
+
+function Esquinas({ abierto }: { abierto: boolean }) {
+  return (
+    <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={VIOLETA} strokeWidth={2.4} strokeLinecap="round" aria-hidden>
+      {(abierto ? ACHICAR : AMPLIAR).split(' M').map((d, i) => (
+        <path key={d} d={i === 0 ? d : `M${d}`} />
+      ))}
+    </svg>
+  );
+}
+
 /** El centro: la casa del socio, en lima para que no se confunda con un prestador. */
 const CASA_HTML = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
   <circle cx="14" cy="14" r="12" fill="${LIMA}" stroke="#ffffff" stroke-width="3"/>
@@ -129,6 +145,20 @@ export function MapaPrestadores({
   const avisarCentro = useRef<(c: { lat: number; lng: number }) => void>(() => {});
   avisarCentro.current = (c) => onCentro?.(c);
 
+  /*
+   * Pantalla completa.
+   *
+   * Es un `position: fixed` que tapa la ventana, y NO la Fullscreen API del
+   * navegador: `requestFullscreen` sobre un div no existe en Safari de iPhone
+   * —ahí sólo los `<video>` van a pantalla completa—, y el teléfono es justo
+   * donde un mapa de 250 px pide agrandarse. Un overlay funciona igual en todas
+   * partes y se cierra con Escape.
+   */
+  const [abierto, setAbierto] = useState(false);
+  /* Los botones de zoom de Leaflet, que sólo existen en pantalla completa (ver
+     abajo por qué). */
+  const ctrlZoom = useRef<import('leaflet').Control.Zoom | null>(null);
+
   useEffect(() => {
     let vivo = true;
     (async () => {
@@ -142,11 +172,13 @@ export function MapaPrestadores({
         zoom: 13,
         // Sin los botones de zoom: el mapa es chico y tapaban un pin. El zoom lo
         // maneja el slider del radio (más abajo se encuadra el círculo), y en el
-        // teléfono se hace con dos dedos.
+        // teléfono se hace con dos dedos. En pantalla completa sí aparecen, donde
+        // no hay nada que tapar (ver el efecto de `abierto`).
         zoomControl: false,
         // La rueda NO hace zoom: este mapa vive en medio de una pantalla que se
         // scrollea, y con el zoom activado pasar el mouse por encima secuestra el
-        // scroll de la página. Doble clic y pinch siguen funcionando.
+        // scroll de la página. Doble clic y pinch siguen funcionando, y en pantalla
+        // completa la rueda se enciende porque ya no hay página atrás.
         scrollWheelZoom: false,
         attributionControl: true,
       });
@@ -307,10 +339,120 @@ export function MapaPrestadores({
     return () => { vivo = false; };
   }, [radioKm, centro.lat, centro.lng, firmaPins]);
 
+  /*
+   * Lo que hay que reacomodar al abrir y cerrar la pantalla completa.
+   *
+   *  · `invalidateSize`: el contenedor cambió de tamaño por CSS y Leaflet no se
+   *    entera solo. Sin esto queda con las teselas del recuadro chico y el resto
+   *    de la pantalla en gris hasta que algo lo mueva.
+   *  · La rueda del mouse: en el recuadro chico está apagada a propósito (el mapa
+   *    vive en medio de una página que scrollea y pasar el mouse por encima le
+   *    secuestraría el scroll). En pantalla completa no hay página atrás que
+   *    scrollear, así que la rueda pasa a ser lo que uno espera.
+   *  · Los botones de + y −: sin rueda y sin botones, en una computadora la única
+   *    forma de alejarse era Shift+doble clic, que nadie conoce. Se agregan acá y
+   *    no en la creación del mapa porque en el recuadro chico tapaban un pin.
+   */
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      const L = (await import('leaflet')).default;
+      const m = mapa.current;
+      if (!vivo || !m) return;
+      m.invalidateSize();
+      if (abierto) {
+        m.scrollWheelZoom.enable();
+        if (!ctrlZoom.current) ctrlZoom.current = L.control.zoom({ position: 'topleft' }).addTo(m);
+      } else {
+        m.scrollWheelZoom.disable();
+        ctrlZoom.current?.remove();
+        ctrlZoom.current = null;
+      }
+    })();
+    return () => { vivo = false; };
+  }, [abierto]);
+
+  /* Escape cierra, y mientras está abierto el cuerpo no scrollea: el overlay tapa
+     la página, pero sin esto el dedo sobre el mapa seguía moviendo lo que hay
+     detrás y al cerrar aparecías en otra parte de la pantalla. */
+  useEffect(() => {
+    if (!abierto) return;
+    const tecla = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(false); };
+    window.addEventListener('keydown', tecla);
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', tecla);
+      document.body.style.overflow = previo;
+    };
+  }, [abierto]);
+
   // Al desmontar hay que destruir el mapa: si no, Leaflet deja el contenedor
   // marcado como usado y al volver a la pantalla tira "Map container is already
   // initialized".
   useEffect(() => () => { mapa.current?.remove(); mapa.current = null; }, []);
 
-  return <div ref={nodo} style={{ height: 250, borderRadius: 20, overflow: 'hidden', border: '1px solid rgb(230,227,240)', background: 'rgb(238,240,244)', ...style }} />;
+  /*
+   * Tres capas, y las tres hacen falta:
+   *
+   *  1. El hueco en la página, que conserva su alto y sus márgenes SIEMPRE. Al
+   *     abrir la pantalla completa la capa de adentro se va a `fixed` y deja de
+   *     ocupar lugar; sin este hueco, todo lo que sigue en la pantalla salta
+   *     hacia arriba y al cerrar vuelve a bajar.
+   *  2. La caja del mapa, que es la que se convierte en overlay.
+   *  3. El div de Leaflet, que NO cambia de lugar en el árbol al abrir: si se
+   *     moviera, React lo desmontaría y Leaflet tiraría "Map container is
+   *     already initialized".
+   */
+  return (
+    <div style={{ position: 'relative', height: 250, ...style }}>
+      <div
+        style={
+          abierto
+            ? { position: 'fixed', inset: 0, zIndex: 1000, background: 'rgb(238,240,244)' }
+            : { position: 'absolute', inset: 0 }
+        }
+      >
+        <div
+          ref={nodo}
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: abierto ? 0 : 20,
+            overflow: 'hidden',
+            border: abierto ? 'none' : '1px solid rgb(230,227,240)',
+            background: 'rgb(238,240,244)',
+          }}
+        />
+        {/* Arriba a la derecha: abajo va la atribución (obligatoria) y arriba a la
+            izquierda, en pantalla completa, los botones de zoom. El z-index le
+            gana a los controles de Leaflet, que llegan a 800. */}
+        <button
+          type="button"
+          onClick={() => setAbierto((v) => !v)}
+          aria-label={abierto ? 'Cerrar el mapa' : 'Ver el mapa en pantalla completa'}
+          style={{
+            position: 'absolute',
+            top: 8,
+            right: 8,
+            zIndex: 900,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            padding: '7px 11px',
+            borderRadius: 100,
+            border: '1px solid rgb(230,227,240)',
+            background: 'rgba(255,255,255,0.94)',
+            color: VIOLETA,
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+          }}
+        >
+          <Esquinas abierto={abierto} />
+          {abierto ? 'Cerrar' : 'Ampliar'}
+        </button>
+      </div>
+    </div>
+  );
 }

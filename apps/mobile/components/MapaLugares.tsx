@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Animated, Image, PanResponder, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { Animated, Image, Modal, PanResponder, TouchableOpacity, View, type LayoutChangeEvent } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { colors } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, MUTED } from './ui/Texto';
@@ -19,13 +20,10 @@ import { Texto as Text, BRAND, INK, MUTED } from './ui/Texto';
  * `<Image>`. Las mismas de la web (CARTO Positron), así los dos mapas se ven igual.
  * Todo esto es JavaScript, así que viaja por OTA.
  *
- * Lo que NO tiene, a propósito: arrastrar. El mapa contesta "quién hay cerca" de un
- * vistazo, y para "llevame hasta acá" la ficha ya tiene la dirección, que abre la app
- * de mapas del teléfono. El día que haga falta moverlo, es Leaflet en un WebView y
- * este archivo se borra.
- *
- * Zoom sí tiene: con dos dedos y con los botones. Es todo JavaScript —una tesela es
- * una URL con el zoom adentro— así que viaja por OTA como el resto.
+ * Se mueve, hace zoom y se abre a pantalla completa, y todo eso es JavaScript —una
+ * tesela es una URL con el zoom adentro, y el arrastre es un desplazamiento en
+ * píxeles— así que viaja por OTA como el resto. Lo único que NO se puede hacer sin
+ * un APK nuevo es rotar o inclinar el mapa, y no hace falta.
  *
  * La atribución es obligatoria y va abajo a la derecha.
  */
@@ -151,7 +149,7 @@ function Gota({ etiqueta }: { etiqueta?: string }) {
 /* ── El mapa ───────────────────────────────────────────────────────── */
 
 export function MapaLugares({
-  pins, centro, radioKm, onPin, onCentro, alto = 230,
+  pins, centro, radioKm, onPin, onCentro, alto: altoPedido = 230,
 }: {
   pins: PinMapa[];
   /** El centro: el domicilio del socio. `etiqueta` es cómo se llama ("Tu casa") y es
@@ -176,7 +174,27 @@ export function MapaLugares({
      márgenes, y los teléfonos no miden todos lo mismo. Hasta que se mida no se
      dibuja nada, para no pedir teselas de un tamaño que no es. */
   const [ancho, setAncho] = useState(0);
-  const medir = (e: LayoutChangeEvent) => setAncho(Math.round(e.nativeEvent.layout.width));
+  /* El alto también se mide, y no sólo el ancho: en pantalla completa el recuadro lo
+     define el modal (`flex: 1`) y no el prop, así que el único que sabe cuánto mide
+     es el layout. Con el recuadro chico el medido y el pedido coinciden. */
+  const [altoMedido, setAltoMedido] = useState(0);
+  const medir = (e: LayoutChangeEvent) => {
+    setAncho(Math.round(e.nativeEvent.layout.width));
+    setAltoMedido(Math.round(e.nativeEvent.layout.height));
+  };
+
+  /*
+   * Pantalla completa.
+   *
+   * Va en un `Modal` de React Native y no cambiando el alto del recuadro: el mapa
+   * vive adentro de un ScrollView y agrandarlo ahí dejaría media pantalla de
+   * contenido debajo, con el mapa robándole el gesto vertical al scroll. El modal
+   * lo saca de la página y le da el gesto entero.
+   *
+   * El estado del mapa (lo que se movió y lo que se acercó) se conserva al abrir y
+   * al cerrar, porque el componente no se desmonta: sólo cambia dónde se dibuja.
+   */
+  const [abierto, setAbierto] = useState(false);
 
   /* Cuántos niveles se corrió la persona respecto del encuadre automático. Se guarda
      el DESVÍO y no el zoom absoluto para que el encuadre siga mandando: si cambian
@@ -196,6 +214,11 @@ export function MapaLugares({
   movRef.current = mov;
   const movInicio = useRef({ x: 0, y: 0 });
   const arrastrando = useRef(false);
+
+  /* El alto con el que se hacen todas las cuentas —teselas, círculo, casa, pines—.
+     Con el recuadro chico manda el prop (así el primer cuadro ya dibuja, sin esperar
+     la medición); abierto manda lo medido. */
+  const alto = abierto ? (altoMedido || altoPedido) : altoPedido;
 
   /* El slider re-encuadra: mover el radio vuelve al zoom que hace entrar el círculo.
      Sin esto, después de acercarse con los dedos el slider parecía no hacer nada —
@@ -338,10 +361,18 @@ export function MapaLugares({
 
   const radioPx = radioKm != null ? (radioKm * 1000) / metrosPorPixel(centro.lat, z) : 0;
 
-  return (
+  const cuerpo = (
     <View
       onLayout={medir}
-      style={{ height: alto, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: '#e6e3f0', backgroundColor: '#eef0f4' }}
+      style={{
+        /* Abierto, el alto lo pone el modal; cerrado, el prop. El resto del marco
+           —bordes redondeados y línea— es del recuadro chico: en pantalla completa
+           un borde a 1 px del filo de la pantalla se ve como un error de dibujo. */
+        ...(abierto ? { flex: 1 } : { height: altoPedido, borderRadius: 20, borderWidth: 1 }),
+        overflow: 'hidden',
+        borderColor: '#e6e3f0',
+        backgroundColor: '#eef0f4',
+      }}
     >
       {/* Todo lo que es "el mapa" va acá adentro: se estira junto durante el pinch.
           El escalado de React Native es respecto del centro de la vista, y el centro
@@ -406,7 +437,10 @@ export function MapaLugares({
             <TouchableOpacity
               key={p.id}
               disabled={!onPin}
-              onPress={() => onPin?.(p.id)}
+              /* Cerrar antes de avisar: quien escucha `onPin` reemplaza la pantalla
+                 por la ficha del prestador, y si el modal sigue abierto la ficha
+                 queda debajo del mapa y parece que el toque no hizo nada. */
+              onPress={() => { setAbierto(false); onPin?.(p.id); }}
               style={{ position: 'absolute', left, top }}
             >
               <Gota etiqueta={p.etiqueta} />
@@ -454,6 +488,23 @@ export function MapaLugares({
             </TouchableOpacity>
           );
         })}
+        {/* Pantalla completa, en la misma columna: se abre y se cierra desde el mismo
+            lugar, que es donde uno vuelve a buscar el botón. */}
+        <TouchableOpacity
+          onPress={() => setAbierto((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={abierto ? 'Cerrar el mapa' : 'Ver el mapa en pantalla completa'}
+          style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderTopWidth: 1, borderTopColor: '#e6e3f0' }}
+        >
+          <Svg width={15} height={15} viewBox="0 0 24 24">
+            {(abierto
+              ? ['M4 9h5V4', 'M20 9h-5V4', 'M4 15h5v5', 'M20 15h-5v5']
+              : ['M9 4H4v5', 'M15 4h5v5', 'M9 20H4v-5', 'M15 20h5v-5']
+            ).map((d) => (
+              <Path key={d} d={d} fill="none" stroke={BRAND} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+          </Svg>
+        </TouchableOpacity>
       </View>
 
       {/* La atribución, obligatoria. */}
@@ -461,5 +512,24 @@ export function MapaLugares({
         <Text style={{ fontSize: 9.5, color: MUTED }}>© OpenStreetMap © CARTO</Text>
       </View>
     </View>
+  );
+
+  if (!abierto) return cuerpo;
+
+  return (
+    <>
+      {/* El hueco que deja el mapa al irse al modal. Sin esto, todo lo que sigue en
+          la pantalla sube y el ScrollView se reacomoda; no se ve mientras está
+          abierto, pero al cerrar aparecés en otro punto del scroll. */}
+      <View style={{ height: altoPedido }} />
+      {/* `onRequestClose` es el botón Atrás de Android: sin él, atrás sale de la
+          pantalla entera en vez de cerrar el mapa. */}
+      <Modal visible animationType="fade" onRequestClose={() => setAbierto(false)} statusBarTranslucent>
+        {/* Los bordes: los controles van pegados arriba y en un teléfono con muesca
+            quedarían debajo de ella. El fondo es el del mapa para que no se vea una
+            franja blanca mientras cargan las teselas. */}
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#eef0f4' }}>{cuerpo}</SafeAreaView>
+      </Modal>
+    </>
   );
 }
