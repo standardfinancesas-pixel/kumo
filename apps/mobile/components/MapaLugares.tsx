@@ -126,8 +126,8 @@ const ZOOM_MIN = 5;
 const ZOOM_MAX = 18;
 
 /** La distancia entre dos dedos, que es lo único que define un pinch. */
-const separacion = (t: { pageX: number; pageY: number }[]): number => {
-  const [a, b] = t;
+const separacion = (t?: { pageX: number; pageY: number }[]): number => {
+  const [a, b] = t ?? [];
   /* Devolver 0 y no romper si llegó un solo dedo: el 0 hace que el gesto se
      considere no iniciado y el movimiento se ignore, que es lo correcto. */
   if (!a || !b) return 0;
@@ -339,7 +339,20 @@ export function MapaLugares({
        * comienzo de un scroll vertical. Con el umbral, un desliz que arranca sobre
        * el mapa alcanza a irse al ScrollView antes de que el mapa lo reclame.
        */
-      onMoveShouldSetPanResponder: (e, g) => e.nativeEvent.touches.length === 2
+      /*
+       * CUÁNTOS DEDOS: se pregunta a `gestureState`, no al array del evento.
+       *
+       * Antes esto era `e.nativeEvent.touches.length`, y ese array no está
+       * garantizado en todos los eventos que llegan acá. Cuando falta, la línea no
+       * devuelve false: TIRA UNA EXCEPCIÓN, justo en el handler que decide si el
+       * mapa se queda con el gesto. Y como es el mismo handler para las dos cosas,
+       * se caen el arrastre Y el pinch de una vez, mientras los botones de zoom
+       * siguen andando porque no pasan por acá — un cuadro de síntomas que no se
+       * parece en nada a su causa.
+       *
+       * `numberActiveTouches` lo lleva PanResponder por su cuenta y siempre está.
+       */
+      onMoveShouldSetPanResponder: (e, g) => g.numberActiveTouches === 2
         /* En pantalla completa no hay ScrollView atrás al que dejarle el gesto, así
            que el mapa se queda con el movimiento casi enseguida: ahí el umbral de 6
            px sólo se siente como que el mapa tarda en responder. */
@@ -348,14 +361,13 @@ export function MapaLugares({
          que levantás el dedo. Adentro de la pantalla sí lo cede: ahí el ScrollView
          tiene tanto derecho como el mapa y quien manda es hacia dónde arrancaste. */
       onPanResponderTerminationRequest: () => !abiertoRef.current,
-      onPanResponderGrant: (e) => {
-        const t = e.nativeEvent.touches;
-        if (t.length === 2) { inicial.current = separacion(t); factor.current = 1; }
+      onPanResponderGrant: (e, g) => {
+        if (g.numberActiveTouches === 2) { inicial.current = separacion(e.nativeEvent.touches); factor.current = 1; }
         else { arrastrando.current = true; movInicio.current = movRef.current; }
       },
       onPanResponderMove: (e, g) => {
-        const t = e.nativeEvent.touches;
-        if (t.length === 2) {
+        if (g.numberActiveTouches === 2) {
+          const t = e.nativeEvent.touches;
           /* Pasó de arrastrar a pellizcar: se corta el arrastre para que el mapa no
              salga disparado mientras los dedos se acomodan. */
           arrastrando.current = false;
