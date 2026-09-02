@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, createElement, type ReactNode } from 'reac
 import { StatusBar } from 'expo-status-bar';
 import { Alert, AppState, Modal, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import * as Updates from 'expo-updates';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
@@ -1964,7 +1965,42 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
       <TouchableOpacity disabled={busy} onPress={eliminarCuenta} style={{ paddingBottom: 20, alignItems: 'center' }}>
         <Text style={{ color: '#963c34', fontWeight: '600', fontSize: 12.5, textDecorationLine: 'underline' }}>Eliminar mi cuenta</Text>
       </TouchableOpacity>
+      <Version />
     </ScrollView>
+  );
+}
+
+/**
+ * Qué versión está corriendo el teléfono.
+ *
+ * Existe porque sin esto no hay forma de contestar la pregunta más básica cuando
+ * alguien reporta que algo sigue fallando: ¿está viendo el arreglo o todavía tiene
+ * el bundle viejo? Los OTA se bajan en una apertura y recién se aplican en la
+ * siguiente, así que "ya actualicé" no alcanza como respuesta.
+ *
+ * `1.0.0` es la app instalada (la del build nativo) y los ocho caracteres de al lado
+ * son el OTA que está aplicado. Si dice "de fábrica" es que nunca bajó ninguno.
+ *
+ * En desarrollo `updateId` es null y no hay nada que mostrar; ahí la versión sale
+ * sola. Chiquito y apagado a propósito: es un dato de soporte, no de producto.
+ */
+function Version() {
+  /* La versión sale de `runtimeVersion` y no de expo-constants: la política del
+     proyecto es `appVersion` (ver eas.json), así que el runtime ES la versión de la
+     app instalada, y así no hay que sumar una dependencia para mostrar un texto. */
+  const nativa = Updates.runtimeVersion || '1.0.0';
+  /* Null cuando corre el bundle que vino adentro del build. Los primeros ocho
+     caracteres alcanzan para distinguir dos OTA del mismo día. */
+  const ota = Updates.updateId?.slice(0, 8);
+  /* El canal, sólo si NO es el de producción. Es el dato que explica el caso más
+     confuso de todos: un teléfono con un build del canal `apk` no recibe jamás un
+     OTA publicado en `production`, y desde afuera se ve igual que un arreglo que
+     no funciona. */
+  const canal = Updates.channel && Updates.channel !== 'production' ? Updates.channel : null;
+  return (
+    <Text style={{ textAlign: 'center', fontSize: 11, color: '#b8b3c8', paddingBottom: 24 }}>
+      Kumo {nativa}{ota ? ` · ${ota}` : ' · de fábrica'}{canal ? ` · ${canal}` : ''}
+    </Text>
   );
 }
 

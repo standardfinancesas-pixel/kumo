@@ -303,7 +303,27 @@ export function MapaLugares({
     const p = aPixeles(centro.lat, centro.lng, z);
     onCentro(aCoords(p.x - mov.x, p.y - mov.y, z));
   };
-  alSoltar.current = (f: number) => irA(Math.round(z + Math.log2(f)));
+  /*
+   * Qué zoom queda cuando soltás el pinch.
+   *
+   * `Math.log2` convierte el estirón en niveles: separar los dedos al doble es un
+   * nivel, juntarlos a la mitad es menos uno.
+   *
+   * ANTES ESTO ERA `Math.round`, Y ESE ERA EL BUG: redondear pide que el pinch pase
+   * de 1,41× para contar un solo nivel, y un pinch de teléfono anda por 1,2 o 1,3.
+   * O sea que el gesto estiraba las teselas mientras tenías los dedos apoyados y al
+   * soltar volvía EXACTAMENTE a donde estaba. Se sentía como que el pinch no
+   * funciona, cuando en realidad funcionaba y se descartaba al final.
+   *
+   * Ahora alcanza con un 15% de intención: menos que eso es un roce con dos dedos y
+   * no tiene que mover nada, más que eso va para el lado que pediste. Se redondea
+   * SIEMPRE alejándose de cero, nunca al más cercano.
+   */
+  alSoltar.current = (f: number) => {
+    const niveles = Math.log2(f);
+    if (Math.abs(niveles) < 0.2) return;
+    irA(z + (niveles > 0 ? Math.ceil(niveles) : Math.floor(niveles)));
+  };
 
   const gestos = useRef(
     PanResponder.create({
@@ -324,6 +344,10 @@ export function MapaLugares({
            que el mapa se queda con el movimiento casi enseguida: ahí el umbral de 6
            px sólo se siente como que el mapa tarda en responder. */
         || Math.hypot(g.dx, g.dy) > (abiertoRef.current ? 2 : 6),
+      /* En pantalla completa, una vez que el mapa tomó el gesto no lo suelta hasta
+         que levantás el dedo. Adentro de la pantalla sí lo cede: ahí el ScrollView
+         tiene tanto derecho como el mapa y quien manda es hacia dónde arrancaste. */
+      onPanResponderTerminationRequest: () => !abiertoRef.current,
       onPanResponderGrant: (e) => {
         const t = e.nativeEvent.touches;
         if (t.length === 2) { inicial.current = separacion(t); factor.current = 1; }
