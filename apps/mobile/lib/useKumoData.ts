@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion } from '@kumo/shared';
+import { diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion, sinBloqueados } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -85,7 +85,13 @@ export type ForumPost = {
   photo: string | null;
   /** Para mostrar el botón de borrar solo en lo propio. */
   propia: boolean;
+  /** Quién la escribió. Lo necesita el botón de bloquear. */
+  autorId: string | null;
 };
+
+/** A quién bloqueó el socio. El nombre viene copiado en la fila porque la RLS de
+ *  `profiles` no deja leer el perfil de otro socio. */
+export type Bloqueado = { id: string; nombre: string };
 
 export type KumoData = {
   profile: Profile | null;
@@ -112,6 +118,8 @@ export type KumoData = {
   reviews: Record<string, Review[]>;
   /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
   misLikes: { posts: string[]; answers: string[] };
+  /** A quién bloqueó, para poder deshacerlo desde Mi perfil. */
+  bloqueados: Bloqueado[];
 };
 
 /** Contactos de emergencia del carnet. La webapp ya los tenía; en mobile no
@@ -212,12 +220,13 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async (esReintento = false) => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
+      supabase.from('member_blocks').select('blocked_id, blocked_name').eq('blocker_id', userId),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
       /* Son VARIOS: un socio puede tener un servicio y un comercio. Antes esto era
          un maybeSingle(), que con dos filas del mismo dueño no devuelve una:
@@ -419,12 +428,22 @@ export function useKumoData(userId: string | null) {
     // El nombre viene en la fila: el join a `profiles` devolvía null por la RLS y
     // todos los autores salían como "Socio".
     type AnsRow = { id: string; text: string; likes: number; best: boolean; created_at: string; author_name: string; author_id: string | null };
-    const posts: ForumPost[] = (postsRes.data ?? []).map((row) => ({
+    /* El foro, sin lo que escribió la gente que el socio bloqueó. El filtro vive en
+       @kumo/shared y corre sobre las filas crudas: así la app y la webapp esconden
+       exactamente lo mismo. */
+    const bloqueados: Bloqueado[] = (bloqueosRes.data ?? []).map((b) => ({ id: b.blocked_id as string, nombre: (b.blocked_name as string) || 'Alguien' }));
+    type PostRow = {
+      id: string; category: string; title: string; body: string | null; photo_url: string | null;
+      zone: string | null; replies: number; likes: number; created_at: string; author_name: string;
+      author_id: string | null; community_answers?: AnsRow[] | null;
+    };
+    const posts: ForumPost[] = sinBloqueados((postsRes.data ?? []) as unknown as PostRow[], bloqueados.map((b) => b.id)).map((row) => ({
       id: row.id, cat: row.category, title: row.title, body: row.body ?? '', photo: row.photo_url ?? null,
       author: row.author_name?.trim().split(' ')[0] || 'Socio',
       meta: `${row.zone || 'General'} · ${relTime(row.created_at)}`,
       replies: row.replies, likes: row.likes, trend: row.likes >= 20,
       propia: row.author_id === userId,
+      autorId: row.author_id ?? null,
       answers: ((row.community_answers ?? []) as AnsRow[])
         .slice()
         .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
@@ -517,7 +536,7 @@ export function useKumoData(userId: string | null) {
         detalle: p.method === 'manual' ? p.detail : null,
       }));
 
-    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocios, notifInput, guardados, reviews, misLikes, centro: { lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) } });
+    setData({ profile, pets, providers, benefits, reintegros, reintTotal, posts, planes, pagos, contacts, negocios, notifInput, guardados, reviews, misLikes, bloqueados, centro: { lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) } });
     setLoading(false);
   }, [userId]);
 

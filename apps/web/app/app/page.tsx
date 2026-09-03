@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
+import { urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM, type PagoVM } from './AppClient';
 
@@ -143,10 +143,11 @@ function mapPost(row: PostRow, userId: string): ForumPost {
     replies: row.replies,
     likes: row.likes,
     propia: row.author_id === userId,
+    autorId: row.author_id,
     answers: (row.community_answers ?? [])
       .slice()
       .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
-      .map((a) => ({ id: a.id, author: authorName(a.author_name), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId })),
+      .map((a) => ({ id: a.id, author: authorName(a.author_name), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId, autorId: a.author_id })),
   };
 }
 
@@ -210,6 +211,7 @@ export default async function Page() {
     { data: negocioRows },
     { data: benefitRows },
     { data: postRows },
+    { data: blockRows },
     { data: postLikeRows },
     { data: ansLikeRows },
     { data: favRows },
@@ -261,6 +263,9 @@ export default async function Page() {
       .select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')
       .order('created_at', { ascending: false }),
     // Qué likeó el socio, para pintar el corazón lleno y no dejarlo likear dos veces.
+    /* A quién bloqueó: se usa para esconder del foro lo que escribió esa gente y
+       para la lista de "Personas bloqueadas" de Mi perfil. */
+    supabase.from('member_blocks').select('blocked_id, blocked_name').eq('blocker_id', auth.user.id),
     supabase.from('post_likes').select('post_id').eq('member_id', auth.user.id),
     supabase.from('answer_likes').select('answer_id').eq('member_id', auth.user.id),
     supabase.from('provider_favorites').select('provider_id').eq('member_id', auth.user.id),
@@ -438,7 +443,12 @@ export default async function Page() {
   }));
 
   const benefits: BenefitVM[] = (benefitRows ?? []).map((r) => mapBenefit(r as BenefitRow, desde));
-  const posts: ForumPost[] = (postRows ?? []).map((r) => mapPost(r as unknown as PostRow, auth.user.id));
+  /* El foro, sin lo que escribió la gente que el socio bloqueó. Se filtra sobre las
+     filas crudas y no sobre el modelo, así la webapp y la app esconden lo mismo
+     (ver `sinBloqueados` en @kumo/shared). */
+  const bloqueados = (blockRows ?? []).map((b) => ({ id: b.blocked_id as string, nombre: (b.blocked_name as string) || 'Alguien' }));
+  const posts: ForumPost[] = sinBloqueados((postRows ?? []) as unknown as PostRow[], bloqueados.map((b) => b.id))
+    .map((r) => mapPost(r, auth.user.id));
   const misLikes = {
     posts: (postLikeRows ?? []).map((l) => l.post_id),
     answers: (ansLikeRows ?? []).map((l) => l.answer_id),
@@ -481,5 +491,5 @@ export default async function Page() {
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} bloqueados={bloqueados} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
 }

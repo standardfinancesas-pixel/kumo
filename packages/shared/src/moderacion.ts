@@ -17,6 +17,44 @@ export const MOTIVOS_REPORTE = [
 
 export type MotivoReporte = (typeof MOTIVOS_REPORTE)[number];
 
+/* ── Bloquear a una persona ──────────────────────────────────────────────── */
+
+/**
+ * Saca del foro lo que escribió quien bloqueaste.
+ *
+ * Trabaja sobre las filas CRUDAS de la base y no sobre el modelo de cada pantalla:
+ * los dos modelos se arman distinto, pero las dos superficies leen exactamente las
+ * mismas columnas, así que el filtro es uno solo y corre antes de que se separen.
+ *
+ * Vive acá y no en cada app por la misma razón que los motivos y las categorías:
+ * si una superficie escondiera la publicación y la otra no, el bloqueo no sería un
+ * bloqueo — sería un lugar donde funciona y otro donde no.
+ *
+ * Esconde LAS DOS COSAS: la publicación entera si es de esa persona, y sus
+ * respuestas adentro de publicaciones de cualquier otro. Filtrar sólo las
+ * publicaciones deja la mitad del problema intacta, que además es la peor: las
+ * respuestas son las que aparecen abajo de lo que vos escribiste.
+ *
+ * El contador de respuestas se recalcula sobre lo que queda: si dice "3
+ * respuestas" y adentro hay una, la persona bloqueada sigue estando ahí en forma
+ * de número que no cierra.
+ */
+export function sinBloqueados<
+  A extends { author_id?: string | null },
+  P extends { author_id?: string | null; community_answers?: A[] | null; replies?: number },
+>(posts: P[], bloqueados: Iterable<string>): P[] {
+  const fuera = new Set(bloqueados);
+  if (fuera.size === 0) return posts;
+  return posts
+    .filter((p) => !(p.author_id && fuera.has(p.author_id)))
+    .map((p) => {
+      const respuestas = p.community_answers;
+      if (!respuestas?.length) return p;
+      const quedan = respuestas.filter((r) => !(r.author_id && fuera.has(r.author_id)));
+      return quedan.length === respuestas.length ? p : { ...p, community_answers: quedan, replies: quedan.length };
+    });
+}
+
 /**
  * Las categorías del foro.
  *

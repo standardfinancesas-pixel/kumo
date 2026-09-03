@@ -183,6 +183,25 @@ create table if not exists vaccinations (
   next_on     date
 );
 
+-- Bloquear a una persona en el foro: esconde de TU foro lo que escribió, sin
+-- avisarle y sin borrarla. Lo exige la regla 1.2 de la App Store junto con
+-- reportar (ver la migración 20260903120000).
+create table if not exists member_blocks (
+  blocker_id uuid not null references profiles(id) on delete cascade,
+  blocked_id uuid not null references profiles(id) on delete cascade,
+  -- El nombre va copiado, igual que en `community_posts.author_name` y por lo
+  -- mismo: la RLS de `profiles` no deja leer el perfil de otro socio, así que sin
+  -- esto la lista de "Personas bloqueadas" sería una lista de identificadores. Lo
+  -- manda el cliente desde el nombre que ya tiene en pantalla; acá no hace falta
+  -- trigger como en las publicaciones, porque esta fila la ve una sola persona
+  -- —quien bloqueó— y firmarla mal solo se confunde a sí misma.
+  blocked_name text not null default '',
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  constraint no_bloquearse_solo check (blocker_id <> blocked_id)
+);
+create index if not exists member_blocks_blocker_idx on member_blocks (blocker_id);
+
 create table if not exists providers (
   id           uuid primary key default uuid_generate_v4(),
   owner_id     uuid references profiles(id) on delete set null,
@@ -708,6 +727,7 @@ alter table profiles           enable row level security;
 alter table plans              enable row level security;
 alter table pets               enable row level security;
 alter table vaccinations       enable row level security;
+alter table member_blocks      enable row level security;
 alter table providers          enable row level security;
 alter table benefits           enable row level security;
 alter table reimbursements     enable row level security;
@@ -780,6 +800,14 @@ create policy "mascotas del dueño - delete" on pets for delete
   using ((owner_id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "mascotas - alta del admin" on pets for insert
   with check (is_admin());
+
+-- Cada socio ve y maneja SÓLO sus bloqueos. Nadie puede averiguar quién lo bloqueó.
+create policy "mis bloqueos - ver" on member_blocks for select
+  using (blocker_id = auth.uid());
+create policy "mis bloqueos - bloquear" on member_blocks for insert
+  with check (blocker_id = auth.uid());
+create policy "mis bloqueos - desbloquear" on member_blocks for delete
+  using (blocker_id = auth.uid());
 
 create policy "vacunas del dueño" on vaccinations for all
   using (exists (select 1 from pets p where p.id = pet_id and ((p.owner_id = auth.uid() and tiene_acceso()) or is_admin())))

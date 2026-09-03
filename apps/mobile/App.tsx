@@ -33,7 +33,7 @@ import { MapaLugares } from './components/MapaLugares';
 import { Selector } from './components/ui/Controles';
 import * as Notifications from 'expo-notifications';
 import { registrarDispositivo, olvidarDispositivo, pushActivo, guardarPushActivo, alTocarNotificacion } from './lib/push';
-import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio, type PagoVM } from './lib/useKumoData';
+import { useKumoData, type Pet, type Vac, type Profile, type PlanVM, type EmergencyContact, type ForumAnswer, type ProviderVM, type BenefitVM, type ReintVM, type ForumPost, type MiNegocio, type PagoVM, type Bloqueado } from './lib/useKumoData';
 import Entrada from './components/Entrada';
 import Alta from './components/alta/Alta';
 import AltaListo from './components/alta/AltaListo';
@@ -1652,7 +1652,7 @@ function MasSheet({ onClose, onGo, pago, onPlan }: { onClose: () => void; onGo: 
  * cosas simplemente no existían. No era que "decía guardado y no guardaba":
  * faltaban.
  */
-function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile | null; pagos: PagoVM[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
+function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { profile: Profile | null; pagos: PagoVM[]; bloqueados: Bloqueado[]; go: (t: Screen) => void; reload: () => void; pago: boolean; onPlan: () => void }) {
   const [editando, setEditando] = useState(false);
   const [pagosOpen, setPagosOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2069,6 +2069,30 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
           ACTUAL seleccionado, así que tocar "VIP" y ver seleccionado "AMIGO"
           promete algo que no cumple. Un enlace no promete nada y lleva al mismo
           lugar, que es el único que sabe cobrar. */}
+      {/* Personas bloqueadas. Sólo si hay alguna: un apartado que dice "no
+          bloqueaste a nadie" es ruido en la pantalla de todos, y bloquear tiene
+          que poder deshacerse desde un lugar fijo. */}
+      {bloqueados.length > 0 ? (
+        <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 12 }}>
+          <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>Personas bloqueadas</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 6 }}>No ves lo que publican ni lo que responden en el foro.</Text>
+          {bloqueados.map((b) => (
+            <View key={b.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 8 }}>
+              <Text style={{ fontSize: 13.5, color: '#4a4560', flex: 1 }}>{b.nombre}</Text>
+              <TouchableOpacity
+                onPress={async () => {
+                  if (!profile) return;
+                  await supabase.from('member_blocks').delete().eq('blocker_id', profile.id).eq('blocked_id', b.id);
+                  reload();
+                }}
+              >
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: BRAND }}>Desbloquear</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
       <TouchableOpacity onPress={onPlan} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, marginBottom: 20 }}>
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>Cambiar de plan</Text>
@@ -4025,6 +4049,40 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
    * Los motivos van en un Alert y no en chips como en la web porque en el
    * celular un menú nativo es más rápido que cuatro botones apretados.
    */
+  /**
+   * Bloquear a quien escribió la publicación.
+   *
+   * Es lo que le falta al reporte: reportar es pedirle algo al club y esperar, y
+   * con alguien que te molesta la persona necesita cortar el contacto ella misma
+   * y en el momento. Lo exige además la regla 1.2 de la App Store.
+   *
+   * No se le avisa a la otra persona —avisarle es lo que hace escalar— y no se la
+   * echa del club: para eso está el reporte. El nombre se copia en la fila porque
+   * la RLS de `profiles` no deja leer el perfil ajeno.
+   */
+  const bloquear = () => {
+    if (!p.autorId) return;
+    Alert.alert(
+      `¿Bloquear a ${p.author}?`,
+      'No vas a ver más lo que publique ni lo que responda. No se le avisa, y podés deshacerlo desde Mi perfil.',
+      [
+        { text: 'Cancelar', style: 'cancel' as const },
+        {
+          text: 'Bloquear',
+          style: 'destructive' as const,
+          onPress: async () => {
+            setBusy(true);
+            const { error } = await supabase.from('member_blocks').insert({ blocker_id: userId, blocked_id: p.autorId, blocked_name: p.author });
+            setBusy(false);
+            if (error) { Alert.alert('No pudimos bloquearla', 'Probá de nuevo.'); return; }
+            onVolver();
+            reload();
+          },
+        },
+      ],
+    );
+  };
+
   const reportar = () => {
     Alert.alert(
       '¿Qué pasa con esta publicación?',
@@ -4060,11 +4118,21 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
             <Text style={{ fontSize: 12.5, fontWeight: '700', color: '#b0483f' }}>Borrar publicación</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity onPress={reportar} disabled={busy || reportado} style={{ marginBottom: 6 }}>
-            <Text style={{ fontSize: 12.5, fontWeight: '700', color: reportado ? '#2f8f5b' : MUTED }}>
-              {reportado ? '✓ Reportado' : '⚑ Reportar'}
-            </Text>
-          </TouchableOpacity>
+          /* Bloquear al lado de reportar y no adentro de un menú: son dos cosas
+             distintas —una le pide al club, la otra la resuelve la persona— y
+             quien está incómodo tiene que poder elegir sin buscar. */
+          <View style={{ flexDirection: 'row', gap: 16, alignItems: 'center', marginBottom: 6 }}>
+            <TouchableOpacity onPress={reportar} disabled={busy || reportado}>
+              <Text style={{ fontSize: 12.5, fontWeight: '700', color: reportado ? '#2f8f5b' : MUTED }}>
+                {reportado ? '✓ Reportado' : '⚑ Reportar'}
+              </Text>
+            </TouchableOpacity>
+            {p.autorId ? (
+              <TouchableOpacity onPress={bloquear} disabled={busy}>
+                <Text style={{ fontSize: 12.5, fontWeight: '700', color: MUTED }}>Bloquear</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         )}
       </View>
 
@@ -4738,7 +4806,7 @@ export default function App() {
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
           {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
-          {pantalla === 'perfil' && <Perfil profile={data.profile} pagos={data.pagos} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil profile={data.profile} pagos={data.pagos} bloqueados={data.bloqueados} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
           {pantalla === 'minegocio' && <Negocio negocios={data.negocios} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}

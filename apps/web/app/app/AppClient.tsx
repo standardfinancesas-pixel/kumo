@@ -142,8 +142,12 @@ export type PagoVM = {
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null; /** La portada de su ficha. Null = todavia no subio ninguna, y no se le inventa una. */ photoUrl: string | null; /** El logo cuadrado. Null = no subio, se usa la portada. */ logoUrl: string | null };
-export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
-export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean };
+export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean; autorId: string | null };
+export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean; autorId: string | null };
+
+/** A quién bloqueó el socio. El nombre viene copiado en la fila: la RLS de
+ *  `profiles` no deja leer el perfil de otro socio (ver la migración 20260903120000). */
+export type Bloqueado = { id: string; nombre: string };
 /** Lo que likeó el socio, para pintar el corazón y no contar dos veces. */
 export type MisLikes = { posts: string[]; answers: string[] };
 
@@ -2364,6 +2368,29 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
     setReportado(true);
   };
 
+  /**
+   * Bloquear a quien escribió la publicación.
+   *
+   * Es lo que le falta al reporte: reportar es pedirle algo al club y esperar,
+   * y con alguien que te molesta la persona necesita poder cortar el contacto
+   * ella misma y en el momento. Lo exige además la regla 1.2 de la App Store.
+   *
+   * No se le avisa a la otra persona —avisarle es lo que hace escalar— y no se la
+   * echa del club: para eso está el reporte. El nombre se copia en la fila porque
+   * la RLS de `profiles` no deja leer el perfil ajeno, así que sin eso la lista
+   * de bloqueados de Mi perfil sería una lista de identificadores.
+   */
+  const bloquear = async () => {
+    if (!p.autorId) return;
+    if (!confirm(`¿Bloquear a ${p.author}? No vas a ver más lo que publique ni lo que responda. No se le avisa, y podés deshacerlo desde Mi perfil.`)) return;
+    setBusy(true);
+    const { error } = await supabase.from('member_blocks').insert({ blocker_id: profile.id, blocked_id: p.autorId, blocked_name: p.author });
+    setBusy(false);
+    if (error) { alert('No pudimos bloquearla. Probá de nuevo.'); return; }
+    onVolver();
+    router.refresh();
+  };
+
   const likesPost = p.likes + (likes.post && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likes.post && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
@@ -2381,9 +2408,19 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
                arranque y nunca podía recibir nada, porque no había de dónde: esto
                es lo que la llena. Pide el motivo, que es lo que necesita quien
                modera para decidir. */
-            <button onClick={() => setReportando((s) => !s)} disabled={reportado} style={{ background: 'none', border: 'none', color: reportado ? 'rgb(47,143,91)' : 'rgb(135,129,160)', fontWeight: 600, fontSize: 13, cursor: reportado ? 'default' : 'pointer', padding: '6px 0', fontFamily: '"DM Sans"' }}>
-              {reportado ? '✓ Reportado' : '⚑ Reportar'}
-            </button>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+              <button onClick={() => setReportando((s) => !s)} disabled={reportado} style={{ background: 'none', border: 'none', color: reportado ? 'rgb(47,143,91)' : 'rgb(135,129,160)', fontWeight: 600, fontSize: 13, cursor: reportado ? 'default' : 'pointer', padding: '6px 0', fontFamily: '"DM Sans"' }}>
+                {reportado ? '✓ Reportado' : '⚑ Reportar'}
+              </button>
+              {/* Bloquear va al lado de reportar y no adentro: son dos cosas
+                  distintas —una le pide al club, la otra la resuelve la persona—
+                  y quien está incómodo tiene que poder elegir sin leer un menú. */}
+              {p.autorId && (
+                <button onClick={bloquear} disabled={busy} style={{ background: 'none', border: 'none', color: 'rgb(135,129,160)', fontWeight: 600, fontSize: 13, cursor: busy ? 'default' : 'pointer', padding: '6px 0', fontFamily: '"DM Sans"' }}>
+                  Bloquear
+                </button>
+              )}
+            </div>
           )}
       </div>
 
@@ -3225,7 +3262,7 @@ const cardIcon = <><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2
  *  "Guardar cambios" de los datos personales no guardaba nada, la tarjeta era un
  *  '4287' fijo en el código, el historial de pagos eran cuatro filas inventadas y
  *  "Cambiar" plan te sacaba a la landing. */
-function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pagos, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocios: MiNegocio[]; cuota: CuotaVM; pago: boolean; pagos: PagoVM[]; onPlan: () => void }) {
+function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pagos, bloqueados, onPlan }: { go: (s: Screen) => void; profile: Profile; pets: Pet[]; reintegradoTotal: number; negocios: MiNegocio[]; cuota: CuotaVM; pago: boolean; pagos: PagoVM[]; bloqueados: Bloqueado[]; onPlan: () => void }) {
   const router = useRouter();
   const [showAddPet, setShowAddPet] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -3602,6 +3639,29 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
             caro. Se sacó, y volvió como enlace —no como lista— a la MISMA hoja que
             cobra (HojaPlan → /api/pagos/crear), que recalcula el monto en el
             servidor y cancela la suscripción vieja si cambió. */}
+        {/* Personas bloqueadas. Sólo aparece si hay alguna: un apartado vacío que
+            dice "no bloqueaste a nadie" es ruido en la pantalla de todos, y
+            bloquear tiene que poder deshacerse desde algún lado fijo. */}
+        {bloqueados.length > 0 && (
+          <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px' }}>
+            <div style={{ fontWeight: 600, fontSize: 14, color: 'rgb(33,30,51)', marginBottom: 2 }}>Personas bloqueadas</div>
+            <p style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '0 0 10px' }}>No ves lo que publican ni lo que responden en el foro.</p>
+            {bloqueados.map((b) => (
+              <div key={b.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingTop: 8 }}>
+                <span style={{ fontSize: 13.5, color: 'rgb(74,69,96)' }}>{b.nombre}</span>
+                <button
+                  onClick={async () => {
+                    await supabase.from('member_blocks').delete().eq('blocker_id', profile.id).eq('blocked_id', b.id);
+                    router.refresh();
+                  }}
+                  style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: '"DM Sans"' }}
+                >
+                  Desbloquear
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <button onClick={onPlan} style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, padding: '13px 15px', cursor: 'pointer', fontFamily: '"DM Sans"' }}>
           <span>
             <span style={{ display: 'block', fontWeight: 600, fontSize: 14, color: 'rgb(33,30,51)' }}>Cambiar de plan</span>
@@ -4342,7 +4402,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
 /** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
 const VISTO_KEY = 'kumo:notif-visto';
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, bloqueados, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; /** A quién bloqueó el socio, para poder deshacerlo desde Mi perfil. */ bloqueados: Bloqueado[]; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -4423,7 +4483,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
           {pantalla === 'negocio' && <Negocio go={go} negocios={negocios} profile={profile} misReviews={negocios.flatMap((n) => reviews[n.id] ?? [])} />}
           {pantalla === 'mismascotas' && <MisMascotas go={go} ownerId={profile.id} pets={pets} reintegros={reintegros} setPetIdx={setPetIdx} />}
-          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocios={negocios} cuota={cuota} pago={pago} pagos={pagos} onPlan={() => setPlanAbierto(true)} />}
+          {pantalla === 'perfil' && <Perfil go={go} profile={profile} pets={pets} reintegradoTotal={reintegradoTotal} negocios={negocios} cuota={cuota} pago={pago} pagos={pagos} bloqueados={bloqueados} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} onAbrirHilo={setHiloDesdeAviso} />}
         </div>
       </div>
