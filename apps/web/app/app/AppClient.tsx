@@ -446,7 +446,11 @@ const promos = [
 function SelloCarnet({ sello }: { sello: SelloVM }) {
   const tonos = {
     ok: { background: 'rgb(225,251,98)', color: 'rgb(33,30,51)' },
-    neutro: { background: 'rgba(255,255,255,0.18)', color: '#fff' },
+    /* Era blanco al 18% con letra blanca, pensado para apoyarse sobre el violeta
+       de la tarjeta. Pero el sello va montado sobre el borde de la FOTO de la
+       mascota, y sobre una foto clara eso no se lee. Es además el tono del socio
+       que no está activo, o sea el que más necesita entender qué dice. */
+    neutro: { background: 'rgb(240,237,249)', color: 'rgb(93,84,145)' },
     alerta: { background: 'rgb(251,232,239)', color: 'rgb(193,77,122)' },
   } as const;
   return <span style={{ ...tonos[sello.tono], fontWeight: 700, fontSize: 10, padding: '4px 9px', borderRadius: 100, whiteSpace: 'nowrap' }}>{sello.texto}</span>;
