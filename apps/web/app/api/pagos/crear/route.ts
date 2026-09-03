@@ -67,20 +67,38 @@ export async function POST(req: Request) {
     odonto = elegido.odonto === true;
     plan = { name: planRow.name, base_price: planRow.base_price };
     planId = planRow.id;
-    await svc.from('profiles').update({
-      plan_id: planRow.id,
-      addon_odonto: odonto,
-      monthly_fee_agreed: cuotaMensual(planRow.base_price, odonto),
-    }).eq('id', perfil.id);
+    /* Por `asignar_plan` y no con un update directo: desde el 03/09/2026 el plan,
+       la cuota y el add-on están blindados en el perfil igual que la fecha de la
+       cuota, porque la RLS es por fila y el socio podía cambiárselos con un PATCH
+       desde el navegador. Esa función es la única puerta y sólo la abre la
+       service-role key (ver la migración 20260903190000). */
+    const { error: eAsignar } = await svc.rpc('asignar_plan', {
+      p_member_id: perfil.id,
+      p_plan_id: planRow.id,
+      p_odonto: odonto,
+      p_monto: cuotaMensual(planRow.base_price, odonto),
+    });
+    if (eAsignar) {
+      console.error('[pagos/crear] asignar_plan', eAsignar);
+      return NextResponse.json({ error: 'No pudimos asignarte el plan.' }, { status: 500 });
+    }
   }
 
   /*
    * La cuota: plan más add-ons, calculada acá. El precio sale de la base y el
    * add-on de una constante compartida, así que el navegador no puede inventarlo.
+   *
+   * SIN PLAN NO HAY MONTO. Antes acá caía a `perfil.monthly_fee_agreed`, y ese
+   * campo lo podía escribir el socio con un PATCH a su propio perfil: poniéndolo
+   * en 1 y dejando `plan_id` en null, esta ruta le creaba una suscripción de UN
+   * PESO por mes —y `acreditar_cuota`, que compara lo que llega contra lo que Kumo
+   * registró, le acreditaba el mes completo—. El campo ya está blindado, pero
+   * tampoco se usa más como fuente del monto: el precio se lee del plan o no hay
+   * cobro.
    */
-  const monto = plan ? cuotaMensual(plan.base_price, odonto) : perfil.monthly_fee_agreed;
+  const monto = plan ? cuotaMensual(plan.base_price, odonto) : null;
   if (!monto || monto <= 0) {
-    return NextResponse.json({ error: 'No pudimos calcular tu cuota. Escribinos por WhatsApp.' }, { status: 409 });
+    return NextResponse.json({ error: 'Elegí un plan para activar tu cuota.' }, { status: 409 });
   }
 
   /*
