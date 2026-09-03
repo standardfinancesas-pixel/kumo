@@ -3828,6 +3828,53 @@ const CAT_TONE: Record<string, { bg: string; fg: string }> = {
  * su perro o la etiqueta de un alimento, lo que importa puede estar justo en lo
  * recortado. Tocarla la abre entera. Es lo mismo que hace la webapp.
  */
+/**
+ * La foto de una publicación del foro: ENTERA, y no más alta de lo necesario.
+ *
+ * Estaba con `cover` a 200 px, que rellena el recuadro cortando lo que sobra: una
+ * foto vertical perdía el 26% (medido). En el foro eso corta justo lo que se
+ * quiere mostrar —la etiqueta de un alimento, una radiografía—, y lo reportó el
+ * cliente: "error al subir una imagen, se ve cortada".
+ *
+ * El recuadro toma la forma de la foto hasta un tope de 300, y a partir de ahí
+ * `contain` la achica en vez de cortarla. Así una apaisada o una cuadrada no
+ * llevan franjas, y sólo las verticales largas quedan con gris al costado — el
+ * mismo gris del resto, para que se lea como aire y no como marco.
+ *
+ * Con alto FIJO, que fue el primer intento, una vertical se veía a 135 px de
+ * ancho con más de la mitad del recuadro vacío: no cortaba, pero se veía pobre.
+ *
+ * Hacen falta las dos medidas porque en React Native una `Image` no toma sola la
+ * proporción de lo que carga: `getSize` da la forma de la foto y `onLayout`, el
+ * ancho real de la tarjeta. Hasta que llegan, 210 —un alto intermedio— para que
+ * el salto al acomodarse sea chico.
+ */
+function FotoDePost({ uri, onPress }: { uri: string; onPress: () => void }) {
+  const [proporcion, setProporcion] = useState(0);
+  const [ancho, setAncho] = useState(0);
+  useEffect(() => {
+    let vivo = true;
+    Image.getSize(uri, (w, h) => { if (vivo && h > 0) setProporcion(w / h); }, () => {});
+    return () => { vivo = false; };
+  }, [uri]);
+  const alto = proporcion > 0 && ancho > 0 ? Math.min(ancho / proporcion, 300) : 210;
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onLayout={(e) => setAncho(Math.round(e.nativeEvent.layout.width))}
+      accessibilityRole="button"
+      accessibilityLabel="Ver la foto completa"
+      activeOpacity={0.85}
+    >
+      <Image
+        source={{ uri }}
+        style={{ width: '100%', height: alto, borderRadius: 14, marginBottom: 14, backgroundColor: '#f7f6fa' }}
+        resizeMode="contain"
+      />
+    </TouchableOpacity>
+  );
+}
+
 function FotoGrande({ uri, alt = 'Foto', onCerrar }: { uri: string; alt?: string; onCerrar: () => void }) {
   return (
     /* `onRequestClose` es lo que atiende el botón "atrás" de Android: sin esto,
@@ -4023,16 +4070,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
 
       <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, lineHeight: 25, color: INK, marginBottom: 10 }}>{p.title}</Text>
       <Text style={{ fontSize: 14, color: '#4a4560', lineHeight: 22, marginBottom: 14 }}>{p.body}</Text>
-      {p.photo ? (
-        <TouchableOpacity
-          onPress={() => setFotoAbierta(p.photo)}
-          accessibilityRole="button"
-          accessibilityLabel="Ver la foto completa"
-          activeOpacity={0.85}
-        >
-          <Image source={{ uri: p.photo }} style={{ width: '100%', height: 200, borderRadius: 14, marginBottom: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" />
-        </TouchableOpacity>
-      ) : null}
+      {p.photo ? <FotoDePost uri={p.photo} onPress={() => setFotoAbierta(p.photo)} /> : null}
       {fotoAbierta ? <FotoGrande uri={fotoAbierta} alt="Foto de la publicación" onCerrar={() => setFotoAbierta(null)} /> : null}
 
       <View style={{ flexDirection: 'row', gap: 10, marginBottom: 18 }}>

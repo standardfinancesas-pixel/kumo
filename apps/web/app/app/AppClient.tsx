@@ -2212,10 +2212,9 @@ const sendIcon = <><line x1="12" y1="19" x2="12" y2="5" /><path d="M5 12l7-7 7 7
 /**
  * La foto de una publicación, en grande.
  *
- * En el hilo la foto va recortada a 320 px de alto (`object-fit: cover`) para que
- * un post no se coma la pantalla, pero eso esconde parte de la imagen: si alguien
- * sube la radiografía de su perro o la etiqueta de un alimento, lo que importa
- * puede estar justo en lo recortado. Tocarla la abre entera, sin recortar.
+ * En el hilo la foto ya se ve entera, sólo achicada para que un post no se coma
+ * la pantalla. Esto es para mirarla de cerca: una radiografía o la etiqueta de un
+ * alimento no se leen a 460 px de alto.
  */
 function FotoGrande({ src, alt = 'Foto', onCerrar }: { src: string; alt?: string; onCerrar: () => void }) {
   /* Escape para cerrar y el scroll del fondo trabado mientras está abierta: sin
@@ -2426,7 +2425,25 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
           aria-label="Ver la foto completa"
           style={{ display: 'block', width: '100%', padding: 0, border: 'none', background: 'none', cursor: 'zoom-in', marginBottom: 14 }}
         >
-          <img src={p.photo} alt="Foto de la publicación" style={{ width: '100%', maxHeight: 320, objectFit: 'cover', borderRadius: 14, display: 'block', background: 'rgb(240,237,249)' }} />
+          {/*
+            * ENTERA, pero CHICA. Son dos cosas distintas y acá se decide sólo la
+            * segunda: la vista previa no recorta, y para verla en serio se toca.
+            *
+            * Estaba en `cover`, que rellena el recuadro cortando lo que sobra —una
+            * foto vertical perdía el 26%, medido—. Y en el foro eso corta justo lo
+            * que se quiere mostrar: la etiqueta de un alimento, una radiografía.
+            * Lo reportó el cliente: "error al subir una imagen, se ve cortada".
+            *
+            * El alto SIGUE A LA FOTO (`height: auto`) hasta un tope de 300, y ahí
+            * `contain` la achica en vez de cortarla. Así una apaisada y una cuadrada
+            * no llevan franjas —el recuadro tiene su forma— y sólo las verticales
+            * largas quedan con gris a los costados, con el mismo gris del resto para
+            * que se lea como aire y no como un marco.
+            *
+            * Con alto FIJO, que fue el primer intento, una vertical se veía a 135 px
+            * de ancho con el 55% del recuadro vacío: no cortaba, pero se veía pobre.
+            */}
+          <img src={p.photo} alt="Foto de la publicación" style={{ width: '100%', height: 'auto', maxHeight: 300, objectFit: 'contain', borderRadius: 14, display: 'block', background: 'rgb(247,246,250)' }} />
         </button>
       )}
       {fotoAbierta && <FotoGrande src={fotoAbierta} alt="Foto de la publicación" onCerrar={() => setFotoAbierta(null)} />}
