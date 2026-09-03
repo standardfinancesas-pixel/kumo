@@ -14,7 +14,7 @@ import { diasHasta, diaISO } from './fechas';
  *  de mails y push, así que el aviso de la app y el del teléfono coinciden. */
 export const DIAS_AVISO_CARNET = 2;
 
-export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like';
+export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like' | 'cuota-ok' | 'cuota-no';
 
 export type Notif = {
   id: string;
@@ -26,7 +26,7 @@ export type Notif = {
   /** Texto del pie. Si no está, se muestra el tiempo relativo a `date`. */
   timeLabel?: string;
   /** A qué pantalla lleva al tocarla. */
-  to: 'carnet' | 'reintegros' | 'minegocio' | 'foros';
+  to: 'carnet' | 'reintegros' | 'minegocio' | 'foros' | 'perfil';
   /**
    * Qué abrir dentro de esa pantalla. Hoy sólo el foro lo usa: sin esto, tocar
    * "respondieron tu publicación" te dejaba en la lista del foro a buscar cuál
@@ -47,6 +47,9 @@ export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield' |
   'negocio-revision': { ic: 'shield', chip: '#fbf3e2', color: '#92690a' },
   'foro-respuesta': { ic: 'chat', chip: '#e8e5f5', color: '#5d5491' },
   'foro-like': { ic: 'heart', chip: '#fbe9ee', color: '#c04863' },
+  /* Billetera como los reintegros: es la misma plata, entrando o saliendo. */
+  'cuota-ok': { ic: 'wallet', chip: '#e2f5ea', color: '#2f8f5b' },
+  'cuota-no': { ic: 'wallet', chip: '#fbe8ef', color: '#b0483f' },
 };
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
@@ -90,7 +93,19 @@ export type NotifInput = {
     respuestas: { id: string; postId: string; postTitle: string; autor: string; createdAt: string }[];
     likes: { id: string; postId: string; postTitle: string; sobre: 'publicacion' | 'respuesta'; autor: string; createdAt: string }[];
   };
+  /** Los cobros de la cuota. Las dos superficies ya los traen para el historial. */
+  pagos: { id: string; amount: number; status: string; coversUntil: string | null; createdAt: string; paidAt: string | null }[];
 };
+
+/**
+ * Cuánto tiempo se muestra un cobro en la campanita.
+ *
+ * A diferencia de un reintegro o una vacuna, la cuota vuelve TODOS LOS MESES: sin
+ * un límite, después de un año la lista es un extracto bancario con doce "cuota al
+ * día". Dos ciclos alcanzan para que un rechazo siga a la vista mientras importa,
+ * y el historial completo ya vive en "Mis pagos".
+ */
+const DIAS_PAGO = 60;
 
 /**
  * Arma las notificaciones y las agrupa por fecha.
@@ -230,6 +245,41 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
       to: 'foros',
       targetId: ultimo.postId,
     });
+  }
+
+  /*
+   * LOS COBROS DE LA CUOTA.
+   *
+   * Faltaban, y era el hueco que más dolía: a un socio al que se le rechazó la
+   * tarjeta se le corta el acceso, y adentro de la app no había ni una palabra
+   * sobre por qué. El push y el mail sí salían, pero un push se toca una vez y se
+   * va, y el mail se pierde. La campanita es el único lugar donde el motivo queda.
+   *
+   * Sólo aprobado y rechazado: "pendiente" es un intento abierto —todavía no pasó
+   * nada— y "devuelto" lo maneja el club a mano, hablando con el socio.
+   */
+  for (const pago of input.pagos) {
+    const cuando = pago.paidAt ?? pago.createdAt;
+    if (Math.floor((Date.now() - asDate(cuando).getTime()) / 86400000) > DIAS_PAGO) continue;
+    if (pago.status === 'rechazado') {
+      items.push({
+        id: `pago-${pago.id}`,
+        kind: 'cuota-no',
+        title: 'No pudimos cobrar tu cuota',
+        body: `Tu tarjeta rechazó el pago de ${money(pago.amount)}. Revisá los datos en Mi perfil así no se corta tu cobertura.`,
+        date: cuando,
+        to: 'perfil',
+      });
+    } else if (pago.status === 'aprobado') {
+      items.push({
+        id: `pago-${pago.id}`,
+        kind: 'cuota-ok',
+        title: 'Cuota al día',
+        body: `Recibimos ${money(pago.amount)} de tu cuota.${pago.coversUntil ? ` Tu cobertura sigue activa hasta el ${fmtDia(pago.coversUntil)}.` : ''}`,
+        date: cuando,
+        to: 'perfil',
+      });
+    }
   }
 
   items.sort((a, b) => asDate(b.date).getTime() - asDate(a.date).getTime());

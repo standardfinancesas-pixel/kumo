@@ -4252,7 +4252,7 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
 /* ── Pantalla: Notificaciones ──────────────────────────────────── */
 const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath, chat, heart: heartPath } as const;
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
-const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros' };
+const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros', perfil: 'perfil' };
 
 function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; onAbrirHilo: (id: string | null) => void }) {
   /*

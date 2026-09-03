@@ -471,6 +471,11 @@ export default async function Page() {
         id: f.id, postId: f.post_id, postTitle: f.post_title, sobre: f.sobre === 'respuesta' ? 'respuesta' as const : 'publicacion' as const, autor: f.autor, createdAt: f.created_at,
       })),
     },
+    /* Los mismos pagos que el historial: la campanita se queda con los recientes
+       (ver DIAS_PAGO en @kumo/shared). */
+    pagos: (pagoRows ?? []).map((p) => ({
+      id: p.id, amount: p.amount, status: p.status, coversUntil: p.covers_until, createdAt: p.created_at, paidAt: p.paid_at,
+    })),
   };
 
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);

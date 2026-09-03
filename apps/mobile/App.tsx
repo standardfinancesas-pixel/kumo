@@ -2951,7 +2951,7 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
 
 /* ── Sub-pantalla: Notificaciones ──────────────────────────────── */
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
-const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros' };
+const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros', perfil: 'perfil' };
 
 function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null; onAbrirHilo: (id: string | null) => void }) {
   /*
