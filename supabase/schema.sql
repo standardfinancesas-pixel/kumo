@@ -433,6 +433,14 @@ comment on table mp_member_plans is
 
 -- El cron de vacunas corre todos los días y una vacuna vence una sola vez: sin
 -- esta marca, el socio recibiría el mismo aviso cada mañana durante un mes.
+-- Hasta cuándo llegó cada cron. Sin esto, un cron que mira "las últimas 24 horas"
+-- repite o pierde apenas el reloj se corre un poco (ver la migración
+-- 20260902180000). La ventana va desde donde terminó la corrida anterior.
+create table if not exists cron_runs (
+  job      text primary key,
+  last_run timestamptz not null
+);
+
 create table if not exists vaccine_reminders (
   vaccination_id uuid primary key references vaccinations(id) on delete cascade,
   due_on         date not null,
@@ -717,6 +725,7 @@ alter table health_declarations enable row level security;
 alter table declaracion_versions enable row level security;
 alter table push_tokens        enable row level security;
 alter table vaccine_reminders  enable row level security;
+alter table cron_runs          enable row level security;
 create policy "versiones visibles" on declaracion_versions for select using (true);
 
 -- Catálogo público (planes, beneficios, faqs, ajustes, prestadores verificados)

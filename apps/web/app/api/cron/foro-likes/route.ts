@@ -38,7 +38,31 @@ export async function GET(req: Request) {
   }
 
   const svc = getServiceClient();
-  const desde = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  /*
+   * DESDE DÓNDE MIRA, y por qué no es "las últimas 24 horas".
+   *
+   * Contar 24 horas hacia atrás desde el momento de correr asume que el cron
+   * dispara exactamente cada 24 horas, y eso no lo promete ninguna plataforma. Si
+   * una corrida sale antes que la anterior + 24 h, el pedazo que se solapa se
+   * avisa DOS VECES —al socio le llegan las mismas personas otra vez— y si sale
+   * después, los me gusta de ese hueco no se avisan nunca, que es peor porque no
+   * se nota. El desfasaje es el tamaño del problema.
+   *
+   * Así que la ventana arranca donde terminó la corrida anterior (`cron_runs`) y
+   * TERMINA en un instante fijo tomado acá, antes de consultar. Ese tope arriba
+   * hace que las ventanas encajen sin solaparse: lo que llegue mientras esto
+   * corre cae del lado de mañana, una sola vez.
+   *
+   * La primera vez no hay marca y se usan 24 horas, que es lo que hacía siempre.
+   */
+  const hasta = new Date().toISOString();
+  const { data: marca } = await svc.from('cron_runs').select('last_run').eq('job', 'foro-likes').maybeSingle();
+  const desde = (marca?.last_run as string | undefined) ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  /* La marca se escribe DESPUÉS de mandar. Si algo revienta en el medio, la
+     próxima corrida vuelve a mirar la misma ventana: repetir un aviso es molesto,
+     perderlo es peor. */
+  const cerrarVentana = () => svc.from('cron_runs').upsert({ job: 'foro-likes', last_run: hasta });
 
   /*
    * Los me gusta del día a publicaciones y a respuestas, con el dueño de lo
@@ -50,11 +74,13 @@ export async function GET(req: Request) {
     svc
       .from('post_likes')
       .select('member_id, created_at, community_posts!inner(id, title, author_id)')
-      .gte('created_at', desde),
+      .gte('created_at', desde)
+      .lt('created_at', hasta),
     svc
       .from('answer_likes')
       .select('member_id, created_at, community_answers!inner(author_id, community_posts!inner(id, title))')
-      .gte('created_at', desde),
+      .gte('created_at', desde)
+      .lt('created_at', hasta),
   ]);
 
   /**
@@ -92,7 +118,8 @@ export async function GET(req: Request) {
   }
 
   if (porDueno.size === 0) {
-    console.log('[cron/foro-likes] sin me gusta en las últimas 24 h');
+    await cerrarVentana();
+    console.log(`[cron/foro-likes] sin me gusta entre ${desde} y ${hasta}`);
     return NextResponse.json({ ok: true, avisados: 0 });
   }
 
@@ -146,7 +173,9 @@ export async function GET(req: Request) {
       const quien = n === 1 ? nombres.get([...personas][0]!) ?? 'alguien' : '';
       await mandarPush(
         tokens.map((t) => t.token as string),
-        'Le gustó lo que escribiste',
+        /* El título concuerda con el cuerpo: "Le gustó" arriba y "a 3 personas les
+           gustó" abajo se contradicen dentro del mismo aviso. */
+        n === 1 ? 'Le gustó lo que escribiste' : 'Les gustó lo que escribiste',
         n === 1 ? `A ${quien} le gustó ${donde} "${titulo}".` : `A ${n} personas les gustó ${donde} "${titulo}".`,
         { pantalla: 'foros' },
       );
@@ -154,6 +183,7 @@ export async function GET(req: Request) {
     }
   }
 
-  console.log(`[cron/foro-likes] ${avisados} avisos a ${conAcceso?.length ?? 0} socios`);
+  await cerrarVentana();
+  console.log(`[cron/foro-likes] ${avisados} avisos a ${conAcceso?.length ?? 0} socios (${desde} → ${hasta})`);
   return NextResponse.json({ ok: true, avisados });
 }

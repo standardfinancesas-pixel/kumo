@@ -217,7 +217,10 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
     items.push({
       id: `foro-like-${ultimo.postId}-${ultimo.sobre}`,
       kind: 'foro-like',
-      title: 'Le gustó lo que escribiste',
+      /* El título concuerda con el cuerpo: "Le gustó" arriba y "a 3 personas les
+         gustó" abajo se contradicen dentro del mismo aviso. El de respuestas no
+         tiene el problema porque "Respondieron" sirve para uno o para veinte. */
+      title: personas === 1 ? 'Le gustó lo que escribiste' : 'Les gustó lo que escribiste',
       body: personas === 1
         ? `A ${ultimo.autor} le gustó ${donde} "${ultimo.postTitle}".`
         : `A ${personas} personas les gustó ${donde} "${ultimo.postTitle}".`,
