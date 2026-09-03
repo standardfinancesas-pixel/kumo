@@ -2814,6 +2814,10 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
    * acababa de comprar.
    */
   const activando = estado === 'activando';
+  /* Con la cuota al día la hoja cambia de sentido: no es "contratá", es "cambiá".
+     `sinCambios` evita que confirmar lo mismo abra Mercado Pago al pedo. */
+  const alDia = estado === 'listo';
+  const sinCambios = alDia && planSel === profile.planName && odonto === profile.addonOdonto;
   const esperando = estado === 'confirmando' || activando;
   /* Mientras espera, le pregunta a Mercado Pago en vez de esperar su aviso: ver
      `lib/esperarPago.ts`. Antes la hoja solo se refrescaba si el socio tocaba el
@@ -2897,11 +2901,19 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
           <Text style={{ fontSize: 13, color: '#2f8f5b', lineHeight: 19 }}>{actualizado}</Text>
         </View>
       ) : null}
-      {estado === 'listo' ? (
-        <TouchableOpacity onPress={irABeneficios} activeOpacity={0.85} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>{copy.cta} →</Text>
-        </TouchableOpacity>
-      ) : activando ? (
+      {/*
+        * AL DÍA TAMBIÉN VE LOS PLANES.
+        *
+        * Antes, con la cuota al día esta hoja mostraba un solo botón que llevaba a
+        * Beneficios y nada más. O sea que "Cambiar de plan" no dejaba cambiar de
+        * plan justo al único que puede querer hacerlo: el que ya tiene uno. Al que
+        * no pagó no se le ofrece un cambio, se le ofrece empezar.
+        *
+        * La lista es la misma y el camino de cobro también —el que recalcula el
+        * monto en el servidor y cancela la suscripción vieja si cambió—; lo único
+        * que cambia es que ahora se muestra en este caso.
+        */}
+      {activando ? (
         /* Sin spinner ni "volver a chequear": el plan ya quedó activo y el cobro es un
            trámite nuestro con Mercado Pago. */
         <TouchableOpacity onPress={onClose} activeOpacity={0.85} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginBottom: 14 }}>
@@ -2972,16 +2984,26 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
             </View>
           )}
 
+          {/* Con la cuota al día, el botón no deja volver a comprar lo mismo: sin
+              esto, tocar "Cambiar de plan" y confirmar el plan que ya tenés abre
+              Mercado Pago para cobrar de nuevo algo que no cambió. */}
           <TouchableOpacity
             onPress={suscribirme}
-            disabled={yendo || !planSel}
+            disabled={yendo || !planSel || sinCambios}
             activeOpacity={0.85}
-            style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo || !planSel ? 0.5 : 1, marginBottom: 8 }}
+            style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 15, alignItems: 'center', opacity: yendo || !planSel || sinCambios ? 0.5 : 1, marginBottom: 8 }}
           >
             <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>
-              {yendo ? 'Abriendo Mercado Pago…' : planSel ? copy.cta : 'Elegí un plan'}
+              {yendo ? 'Abriendo Mercado Pago…' : !planSel ? 'Elegí un plan' : sinCambios ? 'Ya tenés este plan' : alDia ? 'Cambiar de plan' : copy.cta}
             </Text>
           </TouchableOpacity>
+          {/* Al día, la salida natural sigue siendo mirar los beneficios: era lo
+              único que ofrecía esta hoja y no se pierde, pasa a segundo plano. */}
+          {alDia ? (
+            <TouchableOpacity onPress={irABeneficios} style={{ paddingVertical: 10, alignItems: 'center' }}>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: BRAND }}>{copy.cta} →</Text>
+            </TouchableOpacity>
+          ) : null}
           <Text style={{ fontSize: 11.5, color: '#a29dba', textAlign: 'center', lineHeight: 16, marginBottom: 14 }}>
             Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras.
           </Text>

@@ -235,6 +235,10 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
    */
   const activando = estado === 'activando';
   const esperando = estado === 'confirmando' || activando;
+  /* Con la cuota al día la hoja cambia de sentido: no es "contratá", es "cambiá".
+     `sinCambios` evita que confirmar lo mismo abra Mercado Pago al pedo. */
+  const alDia = estado === 'listo';
+  const sinCambios = alDia && planSel === cuota.planName && odonto === cuota.odonto;
 
   /*
    * Cada pasada le PREGUNTA a Mercado Pago cómo salió el cobro, en vez de esperar
@@ -328,11 +332,19 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
         <h2 id="plan-titulo" style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: 'rgb(33,30,51)', margin: '0 0 8px' }}>{copy.titulo}</h2>
         <p style={{ fontSize: 14.5, lineHeight: 1.55, color: 'rgb(91,86,112)', margin: '0 0 18px' }}>{copy.cuerpo}</p>
 
-        {estado === 'listo' ? (
-          <button onClick={irABeneficios} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: 'pointer' }}>
-            {copy.cta} →
-          </button>
-        ) : esperando ? (
+        {/*
+          * AL DÍA TAMBIÉN VE LOS PLANES.
+          *
+          * Antes, con la cuota al día esta hoja mostraba un solo botón que llevaba
+          * a Beneficios y nada más. O sea que "Cambiar de plan" no dejaba cambiar
+          * de plan justo al único que puede querer hacerlo: el que ya tiene uno. Al
+          * que no pagó no se le ofrece un cambio, se le ofrece empezar.
+          *
+          * La lista y el camino de cobro son los mismos —el que recalcula el monto
+          * en el servidor y cancela la suscripción vieja si cambió—; lo único que
+          * cambia es que ahora se muestra también en este caso.
+          */}
+        {esperando ? (
           <>
             {activando ? (
               /* Sin spinner: la suscripción ya quedó activa y el cobro es un trámite
@@ -404,13 +416,23 @@ function HojaPlan({ cuota, nombre, planes, onClose, irABeneficios }: { cuota: Cu
             ) : null}
             {error && <div style={{ background: 'rgb(253,242,242)', color: 'rgb(176,58,58)', border: '1px solid rgb(245,214,214)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, marginBottom: 14 }}>{error}</div>}
             {actualizado && <div style={{ background: 'rgb(240,247,241)', color: 'rgb(47,143,91)', border: '1px solid rgb(214,235,220)', borderRadius: 12, padding: '11px 13px', fontSize: 13.5, lineHeight: 1.45, marginBottom: 14 }}>{actualizado}</div>}
+            {/* Con la cuota al día no deja volver a comprar lo mismo: sin esto,
+                confirmar el plan que ya tenés abre Mercado Pago para cobrar de
+                nuevo algo que no cambió. */}
             <button
               onClick={pagar}
-              disabled={yendo || !planSel}
-              style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: yendo || !planSel ? 'default' : 'pointer', opacity: yendo || !planSel ? 0.5 : 1, marginBottom: 10 }}
+              disabled={yendo || !planSel || sinCambios}
+              style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15.5, padding: '15px 20px', borderRadius: 14, cursor: yendo || !planSel || sinCambios ? 'default' : 'pointer', opacity: yendo || !planSel || sinCambios ? 0.5 : 1, marginBottom: 10 }}
             >
-              {yendo ? 'Abriendo Mercado Pago…' : planSel ? `${copy.cta} →` : 'Elegí un plan'}
+              {yendo ? 'Abriendo Mercado Pago…' : !planSel ? 'Elegí un plan' : sinCambios ? 'Ya tenés este plan' : alDia ? 'Cambiar de plan →' : `${copy.cta} →`}
             </button>
+            {/* Al día, la salida natural sigue siendo mirar los beneficios: era lo
+                único que ofrecía esta hoja y no se pierde, pasa a segundo plano. */}
+            {alDia && (
+              <button onClick={irABeneficios} style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: 'rgb(93,84,145)', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 13, padding: '4px 0 10px', cursor: 'pointer' }}>
+                {copy.cta} →
+              </button>
+            )}
             <p style={{ fontSize: 12, color: '#a29dba', textAlign: 'center', margin: '0 0 14px', lineHeight: 1.5 }}>
               Autorizás el débito en el sitio de Mercado Pago: los datos de tu tarjeta no pasan por Kumo. Podés darlo de baja cuando quieras desde Mi perfil.
             </p>
