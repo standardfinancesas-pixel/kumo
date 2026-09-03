@@ -116,7 +116,7 @@ const th: CSSProperties = { fontSize: 11, fontWeight: 700, color: '#a29dba', let
 const td: CSSProperties = { fontSize: 14, color: '#211e33', padding: '13px 14px', borderTop: '1px solid #eeecf5' };
 const inp: CSSProperties = { width: '100%', padding: '11px 13px', border: '1.5px solid #e6e3f0', borderRadius: 10, fontSize: 14, fontFamily: '"DM Sans"', outline: 'none', boxSizing: 'border-box', background: '#fff' };
 const badge = (bg: string, fg: string): CSSProperties => ({ background: bg, color: fg, fontSize: 11.5, fontWeight: 700, padding: '3px 10px', borderRadius: 100, display: 'inline-block' });
-const estadoBadge = (e: string) => e === 'Al día' || e === 'Verificado' || e === 'Validado' || e === 'Acreditado' || e === 'Activo'
+const estadoBadge = (e: string) => e === 'Al día' || e === 'Verificado' || e === 'Validado' || e === 'Aprobado' || e === 'Activo'
   ? badge('rgb(226,245,234)', 'rgb(47,143,91)')
   : e === 'En mora' || e === 'Pendiente' || e === 'En revisión' || e === 'Pausado'
   ? badge('rgb(251,243,226)', 'rgb(184,134,11)')
@@ -495,7 +495,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
                     </div>
                   ))}
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 10, fontWeight: 700, fontSize: 14 }}>
-                    <span>Total acreditado</span>
+                    <span>Total aprobado</span>
                     <span style={{ color: 'rgb(93,84,145)' }}>{money(acreditado)}</span>
                   </div>
                 </>

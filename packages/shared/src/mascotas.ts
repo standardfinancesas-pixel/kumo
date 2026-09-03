@@ -25,7 +25,8 @@ export type PetHistoryInput = {
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 const ESTADO_REINT: Record<string, string> = {
-  acreditado: 'Acreditado', aprobado: 'Aprobado', rechazado: 'No aprobado', en_revision: 'En revisión',
+  // `acreditado` se muestra "Aprobado": la plata tarda hasta 30 días en llegar.
+  acreditado: 'Aprobado', aprobado: 'Aprobado', rechazado: 'No aprobado', en_revision: 'En revisión',
 };
 
 /** Todo junto y de lo más nuevo a lo más viejo. Sin fecha no entra: no hay dónde ubicarlo. */

@@ -150,7 +150,9 @@ function mapPost(row: PostRow, userId: string): ForumPost {
   };
 }
 
-const REINT_STATUS: Record<string, Reint['status']> = { en_revision: 'En revisión', aprobado: 'Aprobado', rechazado: 'Rechazado', acreditado: 'Acreditado' };
+/* `acreditado` se muestra como "Aprobado": es lo que realmente pasó —el club lo
+   aprobó y transfirió— y la acreditación en el banco tarda hasta 30 días. */
+const REINT_STATUS: Record<string, Reint['status']> = { en_revision: 'En revisión', aprobado: 'Aprobado', rechazado: 'Rechazado', acreditado: 'Aprobado' };
 type ReintRow = {
   id: string; provider_name: string; concept: string; amount: number; refund: number; refund_pct: number;
   status: string; requested_on: string; resolved_at: string | null; created_at: string; receipt_no: string | null; receipt_path: string | null;

@@ -263,7 +263,7 @@ export default async function Page() {
 
   const hist: HistRow[] = (histRows ?? []).map((r) => {
     const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles;
-    return { socio: `#${p?.member_no} · ${p?.full_name?.split(' ')[0]}`, prestador: r.provider_name, concepto: r.concept, gastado: r.amount, reintegro: r.refund, estado: r.status === 'acreditado' ? 'Acreditado' : 'Rechazado' };
+    return { socio: `#${p?.member_no} · ${p?.full_name?.split(' ')[0]}`, prestador: r.provider_name, concepto: r.concept, gastado: r.amount, reintegro: r.refund, estado: r.status === 'acreditado' ? 'Aprobado' : 'Rechazado' };
   });
 
   const benefits: BenefitAdminVM[] = (benefitRows ?? []).map((b) => ({

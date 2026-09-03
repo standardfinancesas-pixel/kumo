@@ -1636,7 +1636,7 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
 }
 
 /* ── Pantalla: Reintegros ──────────────────────────────────────── */
-export type ReintStatus = 'Acreditado' | 'Aprobado' | 'En revisión' | 'Rechazado';
+export type ReintStatus = 'Aprobado' | 'En revisión' | 'Rechazado';
 /** El detalle del reintegro necesita bastante más que la tarjeta del historial:
  *  el seguimiento, el comprobante y los datos de acreditación. */
 export type Reint = {
@@ -1779,7 +1779,7 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const total = items.filter((i) => i.status === 'Acreditado').reduce((a, i) => a + i.refund, 0);
+  const total = items.filter((i) => i.status === 'Aprobado').reduce((a, i) => a + i.refund, 0);
 
   const sel = items.find((i) => i.id === selId);
   if (sel) return <ReintegroDetalle r={sel} planName={planName} onVolver={() => setSelId(null)} />;
@@ -4333,7 +4333,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
    *  abre a pedido, porque el socio ya está adentro del club. */
   const [planAbierto, setPlanAbierto] = useState(false);
   const go = (s: Screen) => { setScreen(s); setNavOpen(false); };
-  const reintegradoTotal = reintegros.filter((r) => r.status === 'Acreditado').reduce((a, r) => a + r.refund, 0);
+  const reintegradoTotal = reintegros.filter((r) => r.status === 'Aprobado').reduce((a, r) => a + r.refund, 0);
 
   /** ¿Tiene la cuota paga? Es la misma verdad que mira la RLS en la base. */
   const pago = tieneFeaturesPagas(cuota.debePagar);

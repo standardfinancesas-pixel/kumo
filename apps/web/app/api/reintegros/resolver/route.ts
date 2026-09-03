@@ -58,9 +58,11 @@ export async function POST(req: Request) {
   if (tokens?.length) {
     const r = await mandarPush(
       tokens.map((t) => t.token as string),
-      status === 'acreditado' ? 'Tu reintegro está acreditado' : 'No pudimos aprobar tu reintegro',
+      /* "Aprobado" y no "acreditado": la transferencia tarda hasta 30 días y el
+         push decía que la plata ya estaba. El mail siempre avisó el plazo. */
+      status === 'acreditado' ? 'Aprobamos tu reintegro' : 'No pudimos aprobar tu reintegro',
       status === 'acreditado'
-        ? `$${fila.refund.toLocaleString('es-AR')} por ${fila.concept.toLowerCase()} en ${fila.provider_name}.`
+        ? `$${fila.refund.toLocaleString('es-AR')} por ${fila.concept.toLowerCase()} en ${fila.provider_name}. Se acredita en tu CBU dentro de los 30 días.`
         : `Mirá el detalle de ${fila.concept.toLowerCase()} en ${fila.provider_name} en la app.`,
       { pantalla: 'reintegros' },
     );

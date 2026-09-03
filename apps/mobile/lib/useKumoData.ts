@@ -171,7 +171,8 @@ function benefitIcon(category: string): BenefitVM['icon'] {
 }
 
 const ESTADO_REINT: Record<string, string> = {
-  en_revision: 'En revisión', acreditado: 'Acreditado', rechazado: 'Rechazado', pendiente: 'Pendiente',
+  // `acreditado` se muestra como "Aprobado": la plata tarda hasta 30 días en llegar.
+  en_revision: 'En revisión', acreditado: 'Aprobado', aprobado: 'Aprobado', rechazado: 'Rechazado', pendiente: 'Pendiente',
 };
 
 type VacRow = { id: string; name: string; kind: VaccineKind; applied_on: string | null; due_on: string | null; status: string };

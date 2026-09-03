@@ -3533,7 +3533,7 @@ function ReintegroDetalle({ r, planName, onVolver }: { r: ReintVM; planName: str
       <View style={{ backgroundColor: BRAND, borderRadius: 18, paddingHorizontal: 20, paddingVertical: 18, marginBottom: 16 }}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', gap: 12, marginBottom: 12, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.14)' }}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: colors.violet[300], fontSize: 12 }}>{r.estadoRaw === 'acreditado' ? 'Reintegro acreditado' : r.estadoRaw === 'rechazado' ? 'Reintegro solicitado' : 'Reintegro estimado'}</Text>
+            <Text style={{ color: colors.violet[300], fontSize: 12 }}>{r.estadoRaw === 'acreditado' || r.estadoRaw === 'aprobado' ? 'Reintegro aprobado' : r.estadoRaw === 'rechazado' ? 'Reintegro solicitado' : 'Reintegro estimado'}</Text>
             <Text style={{ fontSize: 11, color: '#a79fce' }}>{r.refundPct}% del gasto · plan {planName}</Text>
           </View>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 30, color: LIME }}>{money(r.refund)}</Text>

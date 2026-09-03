@@ -142,9 +142,11 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
   for (const r of input.reintegros) {
     // El hecho que se avisa es la resolución, no el pedido.
     const cuando = r.resolvedAt ?? r.createdAt;
-    if (r.status === 'acreditado') {
-      items.push({ id: `re-${r.id}`, kind: 'reintegro-ok', title: 'Reintegro acreditado', body: `Se acreditaron ${money(r.refund)} por tu gasto en ${r.providerName}.`, date: cuando, to: 'reintegros' });
-    } else if (r.status === 'aprobado') {
+    /* Los dos estados quieren decir lo mismo —el club aprobó y transfirió— y el
+       aviso NO dice "se acreditaron": la transferencia tarda hasta 30 días y así
+       el socio iba al banco el mismo día y no encontraba nada. El mail siempre
+       dijo lo correcto; esto lo dejaba en offside. */
+    if (r.status === 'acreditado' || r.status === 'aprobado') {
       items.push({ id: `re-${r.id}`, kind: 'reintegro-ok', title: 'Reintegro aprobado', body: `Aprobamos ${money(r.refund)} por tu gasto en ${r.providerName}. Se acredita en tu CBU dentro de los 30 días corridos.`, date: cuando, to: 'reintegros' });
     } else if (r.status === 'rechazado') {
       items.push({ id: `re-${r.id}`, kind: 'reintegro-no', title: 'Reintegro no aprobado', body: `No pudimos aprobar el pedido de ${r.providerName}. Respondé el mail que te enviamos y lo revisamos.`, date: cuando, to: 'reintegros' });
