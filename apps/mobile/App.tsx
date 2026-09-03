@@ -2100,11 +2100,16 @@ function Perfil({ profile, pagos, go, reload, pago, onPlan }: { profile: Profile
  * el bundle viejo? Los OTA se bajan en una apertura y recién se aplican en la
  * siguiente, así que "ya actualicé" no alcanza como respuesta.
  *
- * `1.0.0` es la app instalada (la del build nativo) y los ocho caracteres de al lado
- * son el OTA que está aplicado. Si dice "de fábrica" es que nunca bajó ninguno.
+ * A la vista queda sólo "Kumo 1.0.0", que es la app instalada. El código del OTA
+ * aplicado —y el canal, si no es producción— aparecen AL TOCARLO: a un socio no le
+ * dicen nada y ensucian el pie de la pantalla, pero cuando alguien reporta que algo
+ * sigue fallando son la única forma de saber si está viendo el arreglo o todavía
+ * tiene el bundle viejo. Un OTA se baja en una apertura y se aplica en la
+ * siguiente, así que "ya actualicé" no alcanza como respuesta.
  *
- * En desarrollo `updateId` es null y no hay nada que mostrar; ahí la versión sale
- * sola. Chiquito y apagado a propósito: es un dato de soporte, no de producto.
+ * Si dice "de fábrica" es que nunca bajó ninguno. El canal importa por el caso más
+ * confuso de todos: un teléfono con un build de otro canal no recibe jamás un OTA
+ * publicado en producción, y desde afuera se ve igual que un arreglo que no anda.
  */
 function Version() {
   /* La versión sale de `runtimeVersion` y no de expo-constants: la política del
@@ -2119,10 +2124,18 @@ function Version() {
      OTA publicado en `production`, y desde afuera se ve igual que un arreglo que
      no funciona. */
   const canal = Updates.channel && Updates.channel !== 'production' ? Updates.channel : null;
+  const [detalle, setDetalle] = useState(false);
   return (
-    <Text style={{ textAlign: 'center', fontSize: 11, color: '#b8b3c8', paddingBottom: 24 }}>
-      Kumo {nativa}{ota ? ` · ${ota}` : ' · de fábrica'}{canal ? ` · ${canal}` : ''}
-    </Text>
+    <TouchableOpacity
+      onPress={() => setDetalle((v) => !v)}
+      activeOpacity={0.6}
+      accessibilityRole="button"
+      accessibilityLabel="Ver el detalle de la versión"
+    >
+      <Text style={{ textAlign: 'center', fontSize: 11, color: '#b8b3c8', paddingBottom: 24 }}>
+        Kumo {nativa}{detalle ? `${ota ? ` · ${ota}` : ' · de fábrica'}${canal ? ` · ${canal}` : ''}` : ''}
+      </Text>
+    </TouchableOpacity>
   );
 }
 
