@@ -1998,7 +1998,7 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
           {dato('DNI', profile.dni)}{dato('Domicilio', profile.address)}{dato('Localidad', profile.city)}{dato('Provincia', profile.province)}{dato('Teléfono', profile.phone)}{dato('Email', profile.email)}
           {/* "Sin cargar" sonaba a que le faltaba hacer algo. No le falta: la
               cuenta se pide cuando carga el primer reintegro. */}
-          {dato('Cuenta para reintegros', profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Te la pedimos cuando cargues tu primer reintegro')}
+          {dato('Cuenta para reintegros', profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Todavía no hace falta')}
           {dato('Medio de pago', profile.tarjeta ?? 'Sin configurar')}
         </View>
       )}
@@ -2297,14 +2297,16 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
           <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ver carnet digital</Text>
         </TouchableOpacity>
 
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-          <TouchableOpacity onPress={() => setEditId(sel.id)} style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: '#fff' }}>
-            <Text style={{ fontWeight: '700', fontSize: 14, color: BRAND }}>Editar datos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => borrarMascota(sel)} disabled={borrando} style={{ flex: 1, borderWidth: 1.5, borderColor: '#e8cbc7', borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: '#fff', opacity: borrando ? 0.6 : 1 }}>
-            <Text style={{ fontWeight: '700', fontSize: 14, color: '#b0483f' }}>{borrando ? 'Borrando…' : 'Borrar'}</Text>
-          </TouchableOpacity>
-        </View>
+        {/* "Editar datos" solo. Borrar ESTABA ACÁ AL LADO, del mismo tamaño y la
+            misma forma, separado por 8 px: dos botones gemelos donde uno abre un
+            formulario y el otro se lleva la mascota con todo su carnet. Se le erró
+            alguien probando la app y perdió una mascota con cuatro registros. Y
+            contradecía la convención del propio proyecto: en Mi perfil, "Darme de
+            baja" y "Eliminar mi cuenta" van al final, sueltos y apagados. Ahora
+            este hace lo mismo (abajo de todo, ver el final de la hoja). */}
+        <TouchableOpacity onPress={() => setEditId(sel.id)} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center', backgroundColor: '#fff', marginBottom: 20 }}>
+          <Text style={{ fontWeight: '700', fontSize: 14, color: BRAND }}>Editar datos</Text>
+        </TouchableOpacity>
 
         <Text style={{ fontWeight: '700', fontSize: 15, color: INK, marginBottom: 10 }}>Historial</Text>
         {historial.length === 0 ? (
@@ -2336,6 +2338,15 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
             })}
           </View>
         )}
+
+        {/* Borrar, al final y apagado: mismo lugar y mismo peso que "Eliminar mi
+            cuenta" en Mi perfil. El que llega hasta acá es porque lo está
+            buscando, no porque se le fue el dedo. */}
+        <TouchableOpacity onPress={() => borrarMascota(sel)} disabled={borrando} style={{ paddingTop: 24, paddingBottom: 8, alignItems: 'center' }}>
+          <Text style={{ fontWeight: '600', fontSize: 12.5, color: '#963c34', textDecorationLine: 'underline' }}>
+            {borrando ? 'Borrando…' : `Borrar a ${sel.name} del club`}
+          </Text>
+        </TouchableOpacity>
       </ScrollView>
     );
   }

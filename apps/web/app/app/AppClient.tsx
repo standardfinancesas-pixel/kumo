@@ -3531,8 +3531,14 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
         {/* La cuenta bancaria solo tiene sentido si puede pedir reintegros: para el
             socio gratuito es ruido sobre algo que no puede hacer. */}
         {pago ? row(ic(wallet, false, 19), 'Cuenta para reintegros',
-          profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Te la pedimos cuando cargues tu primer reintegro',
-          <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>{profile.banco.cbu || profile.banco.alias ? 'Cargada' : 'Todavía no hace falta'}</span>) : null}
+          /* "Todavía no hace falta" y no "Te la pedimos cuando cargues tu primer
+             reintegro": esos 46 caracteres se cortaban en el celular, donde la
+             fila pone la etiqueta a la izquierda y el valor a la derecha. Acá
+             además repetía palabra por palabra la nota de la derecha, así que se
+             decía dos veces lo mismo en la misma fila. El "cuándo" no se pierde:
+             el formulario del reintegro la pide en el momento en que hace falta. */
+          profile.banco.cbu ? `${profile.banco.holder ?? 'A tu nombre'} · ····${profile.banco.cbu.slice(-4)}` : profile.banco.alias ? `Alias ${profile.banco.alias}` : 'Todavía no hace falta',
+          profile.banco.cbu || profile.banco.alias ? <span style={{ color: 'rgb(162,157,186)', fontSize: 12 }}>Cargada</span> : null) : null}
       </div>
 
       {/* Datos personales */}
@@ -3813,12 +3819,13 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
         </div>
 
         <button onClick={() => { if (idx >= 0) setPetIdx(idx); go('carnet'); }} style={{ ...sheetBtn(true), width: '100%', marginBottom: 10 }}>Ver carnet digital</button>
-        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-          <button onClick={() => setEditId(sel.id)} style={{ ...sheetBtn(false), flex: 1 }}>Editar datos</button>
-          <button onClick={() => borrarMascota(sel)} disabled={borrando} style={{ ...sheetBtn(false), flex: 1, color: 'rgb(176,72,63)', borderColor: 'rgb(232,203,199)', cursor: borrando ? 'default' : 'pointer' }}>
-            {borrando ? 'Borrando…' : 'Borrar mascota'}
-          </button>
-        </div>
+        {/* "Editar datos" solo. Borrar ESTABA ACÁ AL LADO, del mismo tamaño y la
+            misma forma: dos botones gemelos donde uno abre un formulario y el otro
+            se lleva la mascota con todo su carnet. Se le erró alguien probando la
+            app y perdió una mascota con cuatro registros. Además contradecía la
+            convención del proyecto: en Mi perfil las acciones destructivas van al
+            final, sueltas y apagadas. Ahora esta hace lo mismo (más abajo). */}
+        <button onClick={() => setEditId(sel.id)} style={{ ...sheetBtn(false), width: '100%', marginBottom: 20 }}>Editar datos</button>
 
         <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Historial</div>
         {historial.length === 0 ? (
@@ -3851,6 +3858,12 @@ function MisMascotas({ go, ownerId, pets, reintegros, setPetIdx }: { go: (s: Scr
             return sale antes que el de la lista. Estaba solo abajo, así que el
             botón seteaba el id y no aparecía nada. */}
         {editId && <AgregarMascotaSheet ownerId={ownerId} petId={editId} onClose={() => setEditId(null)} onListo={() => { setEditId(null); router.refresh(); }} />}
+
+        {/* Borrar, al final y apagado: mismo lugar y mismo peso que "Eliminar mi
+            cuenta" en Mi perfil. El que llega hasta acá lo está buscando. */}
+        <button onClick={() => borrarMascota(sel)} disabled={borrando} style={{ display: 'block', width: '100%', background: 'none', border: 'none', color: 'rgb(150,60,52)', fontWeight: 600, fontSize: 12.5, textDecoration: 'underline', padding: '24px 0 8px', cursor: borrando ? 'default' : 'pointer', fontFamily: '"DM Sans"' }}>
+          {borrando ? 'Borrando…' : `Borrar a ${sel.name} del club`}
+        </button>
       </div>
     );
   }
