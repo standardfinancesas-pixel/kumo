@@ -38,6 +38,13 @@ la sesión de Supabase sin configurar nada:
   proyecto para pantalla completa es **página**: se devuelve EN LUGAR de la
   pantalla, como `CalendarioPagina` y `MapaPagina` en `apps/mobile/App.tsx`.
   El `Modal` sigue bien para hojas y diálogos, que no se arrastran.
+- **Las consultas de Supabase NO son promesas**: `from().update().eq()` es un
+  thenable perezoso y la petición HTTP se manda ADENTRO de `then()`. Un
+  `void supabase.from(...).update(...)` sin `then` ni `await` **no viaja**: no
+  falla, no avisa, no escribe (medido: 0 peticiones sin `then`, 1 con). Y en los
+  UPDATE agregar `.select('id')` y mirar las filas: sin eso, un update que la RLS
+  no deja pasar devuelve 200 con cero filas, o sea que "no escribió" se ve igual
+  que "salió bien". Fue el bug de la campanita del 09/09.
 - **Clientes de Supabase** (`apps/web/lib/`), cada uno con su propósito:
   `supabase-browser` (navegador, sesión en cookies), `supabase-server`
   (Server Components, lee la sesión), `supabase-public` (anon sin cookies, para

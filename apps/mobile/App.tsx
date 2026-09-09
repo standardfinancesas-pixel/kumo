@@ -4709,12 +4709,34 @@ export default function App() {
   const vistoGuardado = data?.profile?.notifsVisto ?? null;
   const visto = vistoLocal && (!vistoGuardado || vistoLocal > vistoGuardado) ? vistoLocal : vistoGuardado;
   const noLeidas = contarNoLeidas(notifGroups, visto);
-  /* La pantalla no espera a la base: se apaga el contador y la escritura va atrás.
-     Si fallara, el peor caso es que el contador vuelva en la próxima apertura. */
+  /*
+   * La pantalla no espera a la base: se apaga el contador y la escritura va atrás.
+   * Pero si la escritura NO entra, el contador vuelve — es la verdad, y es lo que
+   * hace visible el problema en lugar de esconderlo.
+   *
+   * OJO con el cliente de Supabase: `from().update().eq()` NO es una promesa, es
+   * un thenable perezoso — la petición HTTP se arma y se manda ADENTRO de
+   * `then()` (`PostgrestBuilder.then`, postgrest-js). Un `void supabase...` sin
+   * `then` ni `await` no manda nada: no falla, no avisa, simplemente no viaja.
+   * Así salió la primera versión de esto, y desde afuera se veía idéntico al bug
+   * que veníamos a arreglar — la campanita volvía a encenderse porque en la base
+   * nunca se guardó nada. Medido: 0 peticiones sin `then`, 1 con `then`.
+   *
+   * Y el `.select('id')` tampoco es decorativo: sin él, un UPDATE que la RLS no
+   * deja pasar no devuelve error, devuelve cero filas y un 200. Pidiendo las
+   * filas afectadas, "no actualizó nada" se distingue de "salió bien".
+   */
   const marcarLeidas = () => {
     const ahora = new Date().toISOString();
     setVistoLocal(ahora);
-    if (userId) void supabase.from('profiles').update({ notifs_seen_at: ahora }).eq('id', userId);
+    if (!userId) return;
+    void supabase.from('profiles').update({ notifs_seen_at: ahora }).eq('id', userId).select('id')
+      .then(({ data, error }) => {
+        if (error || !data?.length) {
+          console.error('[campanita] no se pudo guardar el visto:', error ?? 'la base no actualizó ninguna fila');
+          setVistoLocal(null);
+        }
+      });
   };
 
   // Optimista: el corazón responde al toque y la base va atrás; si falla, se
