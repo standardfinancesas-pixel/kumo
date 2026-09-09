@@ -7,10 +7,9 @@ import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
-  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
+  buildNotifs, contarNoLeidas, esNoLeida, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
@@ -3042,7 +3041,6 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }
   const marcar = useRef(marcarLeidas);
   marcar.current = marcarLeidas;
   useEffect(() => { marcar.current(); }, []);
-  const vistoMs = vistoAlAbrir ? new Date(vistoAlAbrir).getTime() : 0;
 
   /*
    * El switch de push, que era de adorno: estaba pintado prendido y no había
@@ -3101,7 +3099,7 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }
           <View style={{ gap: 10 }}>
             {g.items.map((n) => {
               const st = NOTIF_STYLE[n.kind];
-              const unread = new Date(n.date).getTime() > vistoMs;
+              const unread = esNoLeida(n, vistoAlAbrir);
               return (
                 <TouchableOpacity key={n.id} onPress={() => { onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
                   <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: st.chip }}>
@@ -4463,9 +4461,6 @@ const TABS_TODO: { k: Tab; label: string; icon: IconName }[] = [
 const tabsDe = (pago: boolean) =>
   pago ? TABS_TODO : TABS_TODO.filter((t) => !FEATURES_PAGAS.includes(t.k as FeaturePaga));
 
-/** Última vez que el socio miró las notificaciones. No hace falta tabla: alcanza con el dispositivo. */
-const VISTO_KEY = 'kumo:notif-visto';
-
 export default function App() {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
@@ -4502,7 +4497,8 @@ export default function App() {
    *  viva debajo del gate se desmontaría en el acto. */
   const [recuperando, setRecuperando] = useState(false);
   const [linkFallado, setLinkFallado] = useState<string | null>(null);
-  const [visto, setVisto] = useState<string | null>(null);
+  /** Lo que se marcó leído en esta sesión, antes de que la base conteste. */
+  const [vistoLocal, setVistoLocal] = useState<string | null>(null);
   /** null = todavía no se tocó nada, vale lo que trajo la base. */
   const [optimistaGuardados, setOptimistaGuardados] = useState<string[] | null>(null);
   const [fontsLoaded] = useFonts({ Baloo2_700Bold, Baloo2_800ExtraBold, DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold });
@@ -4527,8 +4523,6 @@ export default function App() {
     });
     return () => sub.subscription.unsubscribe();
   }, []);
-
-  useEffect(() => { AsyncStorage.getItem(VISTO_KEY).then(setVisto); }, []);
 
   /*
    * Los links que abren la app: la vuelta de Google y el mail de contraseña nueva.
@@ -4702,8 +4696,26 @@ export default function App() {
   // Las notificaciones salen de los mismos datos que la webapp, con la misma
   // función compartida: si acá se armaran aparte, las dos apps se separarían.
   const notifGroups = data ? buildNotifs(data.notifInput) : [];
+  /*
+   * El "visto" es del socio y vive en su perfil, no en el teléfono: antes estaba en
+   * AsyncStorage y marcarlas leídas acá no las marcaba en la web ni en la otra
+   * computadora, así que con más de un aparato el contador no se apagaba nunca.
+   *
+   * Gana el más nuevo entre lo que trajo la base y lo que se marcó en esta sesión
+   * —son fechas ISO en UTC, así que comparar los strings alcanza—. Sin esto, el
+   * `reload()` que corre al volver a la app traía el perfil de la base y volvía a
+   * encender el contador recién apagado, si la escritura estaba todavía viajando.
+   */
+  const vistoGuardado = data?.profile?.notifsVisto ?? null;
+  const visto = vistoLocal && (!vistoGuardado || vistoLocal > vistoGuardado) ? vistoLocal : vistoGuardado;
   const noLeidas = contarNoLeidas(notifGroups, visto);
-  const marcarLeidas = () => { const ahora = new Date().toISOString(); AsyncStorage.setItem(VISTO_KEY, ahora); setVisto(ahora); };
+  /* La pantalla no espera a la base: se apaga el contador y la escritura va atrás.
+     Si fallara, el peor caso es que el contador vuelva en la próxima apertura. */
+  const marcarLeidas = () => {
+    const ahora = new Date().toISOString();
+    setVistoLocal(ahora);
+    if (userId) void supabase.from('profiles').update({ notifs_seen_at: ahora }).eq('id', userId);
+  };
 
   // Optimista: el corazón responde al toque y la base va atrás; si falla, se
   // deshace para no mostrar un guardado que no existe.

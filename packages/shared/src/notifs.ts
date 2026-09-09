@@ -23,6 +23,17 @@ export type Notif = {
   body: string;
   /** Fecha del hecho, en ISO. Ordena la lista y decide el grupo. */
   date: string;
+  /**
+   * Con qué fecha se decide si está LEÍDO, cuando `date` no sirve para eso.
+   *
+   * El recordatorio del carnet se fecha con el instante en que se arma la lista
+   * —así queda arriba de todo, que es donde tiene que estar algo que vence
+   * mañana—, y eso lo volvía imposible de marcar leído: cada vez que la lista se
+   * rearmaba el aviso pasaba a ser más nuevo que la última vez que el socio abrió
+   * la campanita, así que el contador se volvía a encender un segundo después de
+   * haberse apagado. Acá va el día, que no se mueve durante la jornada.
+   */
+  readDate?: string;
   /** Texto del pie. Si no está, se muestra el tiempo relativo a `date`. */
   timeLabel?: string;
   /** A qué pantalla lleva al tocarla. */
@@ -148,6 +159,7 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
           ? `${el} ${v.name.toLowerCase()} de ${pet.name} vence hoy. Reservá turno en tu veterinaria.`
           : `${el} ${v.name.toLowerCase()} de ${pet.name} vence ${dias === 1 ? 'mañana' : `en ${dias} días`} (${fmtDia(v.dueOn)}). Reservá turno en tu veterinaria.`,
         date: hoyIso,
+        readDate: diaISO(hoyIso),
         timeLabel: dias === 0 ? 'Vence hoy' : `Vence el ${fmtDia(v.dueOn)}`,
         to: 'carnet',
       });
@@ -298,9 +310,21 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
   ].filter((g) => g.items.length > 0);
 }
 
+/**
+ * ¿El aviso es posterior a la última vez que el socio abrió la campanita?
+ *
+ * Lo usan el contador Y el resaltado de cada fila. Antes cada superficie lo
+ * calculaba por su cuenta y con distinto criterio —el contador con `asDate`
+ * (medianoche argentina) y la fila con `new Date` (medianoche UTC), que para una
+ * fecha sin hora son tres horas de diferencia—, así que un mismo aviso podía
+ * contar como no leído y dibujarse como leído.
+ */
+export function esNoLeida(n: Notif, vistoIso: string | null): boolean {
+  if (!vistoIso) return true;
+  return asDate(n.readDate ?? n.date).getTime() > new Date(vistoIso).getTime();
+}
+
 /** Cuántas son posteriores a la última vez que el socio abrió el panel. */
 export function contarNoLeidas(groups: NotifGroup[], vistoIso: string | null): number {
-  if (!vistoIso) return groups.reduce((a, g) => a + g.items.length, 0);
-  const visto = new Date(vistoIso).getTime();
-  return groups.reduce((a, g) => a + g.items.filter((n) => asDate(n.date).getTime() > visto).length, 0);
+  return groups.reduce((a, g) => a + g.items.filter((n) => esNoLeida(n, vistoIso)).length, 0);
 }

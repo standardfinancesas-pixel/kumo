@@ -33,6 +33,9 @@ export type Profile = {
   /** El tipo cerrado y no : la hoja del plan decide qué mostrar según el
    *  estado, y con un string suelto un valor inesperado pasaba sin que nadie avise. */
   suscripcion: EstadoSuscripcion;
+  /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del
+   *  teléfono: marcarlas leídas acá tiene que valer también en la web. */
+  notifsVisto: string | null;
 };
 export type ProviderVM = {
   id: string; name: string; category: string; zone: string; badge?: string;
@@ -221,7 +224,7 @@ export function useKumoData(userId: string | null) {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, plans(name, base_price)').eq('id', userId).single(),
+      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
@@ -346,6 +349,7 @@ export function useKumoData(userId: string | null) {
       banco: { holder: p.bank_holder, holderDni: p.bank_holder_dni, cuit: p.bank_cuit, banco: p.bank_name, cbu: p.bank_cbu, alias: p.bank_alias },
       tarjeta: tarjetaLabel(p.card_brand, p.card_last4),
       cuotaHasta: p.paid_until ?? null,
+      notifsVisto: p.notifs_seen_at ?? null,
       debePagar: !p.paid_until || p.paid_until < hoyISO(),
       suscripcion: (p.mp_subscription_status ?? null) as EstadoSuscripcion,
     } : null;

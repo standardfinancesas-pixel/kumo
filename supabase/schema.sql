@@ -103,6 +103,11 @@ create table if not exists profiles (
   card_last4  text check (card_last4 is null or card_last4 ~ '^[0-9]{4}$'),
   card_exp    text,
   card_holder text,
+  -- Última vez que abrió la campanita: un aviso se muestra sin leer si su fecha
+  -- es posterior. Vive acá y no en el aparato porque el socio entra desde el
+  -- teléfono y desde el navegador, y marcarlas leídas en uno tiene que valer en
+  -- los dos (ver la migración 20260909130000).
+  notifs_seen_at timestamptz,
   status       member_status not null default 'activo',
   joined_on    date        not null default (now() at time zone 'America/Argentina/Buenos_Aires')::date,
   created_at   timestamptz not null default now()

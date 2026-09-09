@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
-  buildNotifs, contarNoLeidas, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
+  buildNotifs, contarNoLeidas, esNoLeida, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
@@ -161,7 +161,7 @@ export type ProfileBanco = { holder: string | null; holderDni: string | null; cu
 
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
-export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null };
+export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null };
 
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
 export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; odonto: boolean; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
@@ -4389,7 +4389,6 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
   const marcar = useRef(marcarLeidas);
   marcar.current = marcarLeidas;
   useEffect(() => { marcar.current(); }, []);
-  const vistoMs = vistoAlAbrir ? new Date(vistoAlAbrir).getTime() : 0;
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -4408,7 +4407,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {g.items.map((n) => {
               const st = NOTIF_STYLE[n.kind];
-              const unread = new Date(n.date).getTime() > vistoMs;
+              const unread = esNoLeida(n, vistoAlAbrir);
               return (
                 <button key={n.id} onClick={() => { onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: '13px 14px', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: '"DM Sans"', background: unread ? '#faf9fd' : '#fff', border: unread ? '1px solid #e6e1f2' : '1px solid #eeecf5' }}>
                   <div style={{ width: 40, height: 40, borderRadius: 12, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: st.chip, color: st.color }}>{ic(NOTIF_IC[st.ic], false, 20)}</div>
@@ -4438,8 +4437,6 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
 }
 
 /* ── Shell ─────────────────────────────────────────────────────── */
-/** Última vez que el socio miró las notificaciones. No hay tabla: alcanza con el navegador. */
-const VISTO_KEY = 'kumo:notif-visto';
 
 export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, bloqueados, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; /** A quién bloqueó el socio, para poder deshacerlo desde Mi perfil. */ bloqueados: Bloqueado[]; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
@@ -4476,13 +4473,29 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
   const [hiloDesdeAviso, setHiloDesdeAviso] = useState<string | null>(null);
 
   const notifGroups = useMemo(() => buildNotifs(notifInput), [notifInput]);
-  // El "visto" vive en localStorage, así que solo se conoce después de montar:
-  // hasta entonces no se pinta el punto, si no el HTML del server no coincide.
-  const [visto, setVisto] = useState<string | null>(null);
-  const [vistoListo, setVistoListo] = useState(false);
-  useEffect(() => { setVisto(localStorage.getItem(VISTO_KEY)); setVistoListo(true); }, []);
-  const noLeidas = vistoListo ? contarNoLeidas(notifGroups, visto) : 0;
-  const marcarLeidas = () => { const ahora = new Date().toISOString(); localStorage.setItem(VISTO_KEY, ahora); setVisto(ahora); };
+  /*
+   * El "visto" sale del perfil, así que ya viene en el HTML del servidor: no hay
+   * más el parpadeo de antes, cuando salía de localStorage y el punto no se podía
+   * pintar hasta después de montar para no romper la hidratación.
+   *
+   * Gana el más nuevo entre lo guardado y lo que se marcó en esta pantalla. Las
+   * dos son fechas ISO en UTC, así que comparar los strings alcanza. Sin esto, un
+   * `router.refresh()` —el alta de una mascota, un reintegro, cualquier recarga—
+   * traía el perfil de la base y podía volver a encender el contador que la
+   * persona acababa de apagar, si la escritura todavía estaba viajando.
+   */
+  const [vistoLocal, setVistoLocal] = useState<string | null>(null);
+  const visto = vistoLocal && (!profile.notifsVisto || vistoLocal > profile.notifsVisto) ? vistoLocal : profile.notifsVisto;
+  const noLeidas = contarNoLeidas(notifGroups, visto);
+  /* La pantalla no espera a la base: se apaga el contador y la escritura va
+     atrás. Si fallara, el peor caso es que el contador vuelva en la próxima
+     recarga —molesto y no grave—, y el aviso de error taparía la lista que la
+     persona vino a leer. */
+  const marcarLeidas = () => {
+    const ahora = new Date().toISOString();
+    setVistoLocal(ahora);
+    void supabase.from('profiles').update({ notifs_seen_at: ahora }).eq('id', profile.id);
+  };
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#fff' }}>
