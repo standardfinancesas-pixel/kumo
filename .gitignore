@@ -24,3 +24,7 @@ WhatsApp Image*.jpeg
 # apps/mobile/scripts/generar-graficos-play.mjs y se suben a mano al Console.
 # No los usa ningún build, así que no van al repo.
 apps/mobile/scripts/salida-play
+
+# La respuesta al equipo de revisión de Apple: se pega a mano en App Store
+# Connect, igual que los gráficos de Play. No la usa ningún build.
+apps/mobile/scripts/salida-apple
