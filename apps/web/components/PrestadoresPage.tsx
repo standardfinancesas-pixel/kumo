@@ -70,7 +70,9 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 10, background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div style={{ width: 12, height: 12, borderRadius: '50% 50% 50% 3px', background: LIME, transform: 'rotate(45deg)' }} /></div>
+              {/* La K de la marca, igual que en el modal de ingreso: acá había la
+                  misma gotita dibujada a mano, que no es el logo de nada. */}
+              <div style={{ width: 32, height: 32, borderRadius: 10, background: BRAND, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1, color: LIME }}>K</span></div>
               <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: BRAND }}>Kumo</span>
             </div>
             <h2 style={{ ...baloo(24), margin: '6px 0 4px' }}>Sumate como prestador</h2>

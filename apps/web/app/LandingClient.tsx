@@ -143,8 +143,14 @@ function AuthModal({ mode, onClose, aviso }: { mode: AuthMode | null; onClose: (
       <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, background: '#fff', borderRadius: 24, padding: 32, boxShadow: '0 30px 70px rgba(33,30,51,0.4)', animation: 'kpop 0.18s ease-out', position: 'relative' }}>
         <button onClick={onClose} className="scpq" aria-label="Cerrar" style={{ position: 'absolute', top: 18, right: 18, width: 34, height: 34, border: 'none', background: '#f0edf9', borderRadius: 10, cursor: 'pointer', color: '#5D5491', fontSize: 18, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}>✕</button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 6 }}>
+          {/* La K de la marca, la misma del ícono de la app. Acá había una gotita
+              dibujada a mano que no era el logo de nada: el modal de ingreso es
+              donde más se mira el logo —es lo primero que ve alguien que todavía
+              no es socio— y era el único lugar del sitio que mostraba otra cosa.
+              Va con la tipografía, que la página ya carga, en vez de una imagen:
+              el ícono es esta misma letra sobre el mismo violeta. */}
           <div style={{ width: 32, height: 32, borderRadius: 10, background: '#5D5491', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ width: 12, height: 12, borderRadius: '50% 50% 50% 3px', background: '#E1FB62', transform: 'rotate(45deg)' }} />
+            <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1, color: '#E1FB62' }}>K</span>
           </div>
           <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: '#5D5491' }}>Kumo</span>
         </div>
