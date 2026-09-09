@@ -2,7 +2,7 @@
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { data, urls, waLink, INSTAGRAM, EMPRESA } from '@kumo/shared';
+import { data, urls, waLink, INSTAGRAM, EMPRESA, APP_STORE } from '@kumo/shared';
 import type { Faq, Plan } from '@kumo/shared';
 import { Onboarding } from '@/components/Onboarding';
 import { PrestadoresPage } from '@/components/PrestadoresPage';
@@ -476,7 +476,9 @@ function AppAndClub() {
           <h3 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 30, lineHeight: 1.12, letterSpacing: '-0.01em', color: '#fff', margin: '0 0 12px', position: 'relative' }}>Llevá Kumo en tu bolsillo</h3>
           <p style={{ margin: '0 0 22px', color: 'rgb(216,211,238)', fontSize: 16.5, lineHeight: 1.6, position: 'relative' }}>Carnet digital, reintegros y beneficios, siempre a mano. Descargá la app y gestioná todo desde tu celular.</p>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', position: 'relative' }}>
-            <a href={WEBAPP} className="scph" style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'rgb(33,30,51)', color: '#fff', borderRadius: 14, padding: '10px 18px', textDecoration: 'none', transition: 'background 0.15s' }}>
+            {/* A la tienda de verdad. El de Google Play, dos líneas más abajo, sigue
+                yendo a la webapp: el Android está en prueba cerrada (ver APP_STORE). */}
+            <a href={APP_STORE} target="_blank" rel="noopener noreferrer" className="scph" style={{ display: 'flex', alignItems: 'center', gap: 11, background: 'rgb(33,30,51)', color: '#fff', borderRadius: 14, padding: '10px 18px', textDecoration: 'none', transition: 'background 0.15s' }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="#fff"><path d="M16 2c.1 1-.3 2-1 2.7-.7.8-1.8 1.4-2.8 1.3-.1-1 .4-2 1-2.7C13.9 2.5 15 2 16 2z" /><path d="M19.5 17c-.4 1-.6 1.4-1.1 2.3-.7 1.2-1.7 2.7-3 2.7-1.1 0-1.4-.7-2.9-.7s-1.9.7-3 .7c-1.3 0-2.2-1.3-3-2.5-2-3-2.2-6.5-1-8.4.9-1.4 2.3-2.2 3.6-2.2 1.3 0 2.2.8 3.3.8 1 0 1.7-.8 3.3-.8 1.1 0 2.3.6 3.2 1.7-2.8 1.5-2.4 5.4.6 6.4z" /></svg>
               <span style={{ lineHeight: 1.1 }}>
                 <span style={{ display: 'block', fontSize: 10, color: 'rgb(201,195,227)' }}>Descargalo en</span>

@@ -36,6 +36,20 @@ export const SITIO = 'https://www.kumo.pet';
 export const INSTAGRAM = 'https://www.instagram.com/kumo_app/';
 
 /**
+ * La ficha de Kumo en el App Store.
+ *
+ * El botón "Descargalo en App Store" de la landing llevaba a la webapp, porque
+ * cuando se armó no había nada publicado en ninguna tienda. Desde que iOS quedó
+ * aprobada (09/09/2026) la ficha existe, y un botón que dice "descargar" y
+ * termina en una página web se lee como que la app no salió nunca.
+ *
+ * El de Google Play sigue yendo a la webapp A PROPÓSITO: el Android está en
+ * prueba cerrada y su ficha pública devuelve 404, así que mandarlo a la tienda
+ * sería peor que no mandarlo. Cuando pase a producción, cambiarlo también.
+ */
+export const APP_STORE = 'https://apps.apple.com/ar/app/id6805949148';
+
+/**
  * Quién administra Kumo, para el pie de página.
  *
  * El CUIT va aparte del resto de la frase porque en el pie se renderiza sin corte:
