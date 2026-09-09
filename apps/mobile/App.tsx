@@ -4467,8 +4467,19 @@ function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAb
                   {p.trend ? <View style={{ backgroundColor: LIME, borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 }}><Text style={{ fontSize: 10, fontWeight: '800', color: INK }}>EN TENDENCIA</Text></View> : null}
                   <Text style={{ fontSize: 11.5, color: '#a29dba' }}>{p.author} · {p.meta}</Text>
                 </View>
-                <Text style={{ fontFamily: FH, fontWeight: '700', fontSize: 16, lineHeight: 20, color: INK, marginBottom: 5 }}>{p.title}</Text>
-                <Text numberOfLines={2} style={{ fontSize: 13, color: '#8781a0', lineHeight: 19, marginBottom: 12 }}>{p.body}</Text>
+                {/* Con foto, el texto y la miniatura van en fila. Es una miniatura
+                    y no un contador porque una publicación lleva UNA foto como
+                    máximo: un número diría siempre 1, y ver la foto vale más que
+                    saber que existe. */}
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontFamily: FH, fontWeight: '700', fontSize: 16, lineHeight: 20, color: INK, marginBottom: 5 }}>{p.title}</Text>
+                    <Text numberOfLines={2} style={{ fontSize: 13, color: '#8781a0', lineHeight: 19 }}>{p.body}</Text>
+                  </View>
+                  {p.photo ? (
+                    <Image source={{ uri: p.photo }} style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" />
+                  ) : null}
+                </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.violet[100], borderRadius: 100, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="chat" size={14} color={BRAND} /><Text style={{ fontSize: 12, fontWeight: '700', color: BRAND }}>{p.replies}</Text></View>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fbe9ee', borderRadius: 100, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="heart" size={14} color="#c04863" fill /><Text style={{ fontSize: 12, fontWeight: '700', color: '#c04863' }}>{p.likes}</Text></View>

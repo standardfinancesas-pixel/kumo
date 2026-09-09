@@ -2801,6 +2801,13 @@ function Foros({ initialPosts, profile, misLikes, abrirHilo, onHiloAbierto }: { 
                     <span style={{ marginLeft: 'auto', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12.5 }}>Ver hilo ›</span>
                   </div>
                 </div>
+                {/* La foto de la publicación, si tiene. Una miniatura y no un
+                    contador: una publicación lleva UNA foto como máximo, así que
+                    un número diría siempre 1 — y ver la foto vale más que saber
+                    que existe. */}
+                {p.photo && (
+                  <img src={p.photo} alt="" style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flex: '0 0 auto', background: 'rgb(240,238,247)', display: 'block' }} />
+                )}
               </button>
             );
           })}
