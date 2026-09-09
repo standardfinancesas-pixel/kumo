@@ -36,6 +36,8 @@ export type Profile = {
   /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del
    *  teléfono: marcarlas leídas acá tiene que valer también en la web. */
   notifsVisto: string | null;
+  /** Su foto de perfil, o null si no subió ninguna. */
+  foto: string | null;
 };
 export type ProviderVM = {
   id: string; name: string; category: string; zone: string; badge?: string;
@@ -79,10 +81,12 @@ export type ReintVM = {
   resueltoEl: string;
   bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
 };
-export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean };
+export type ForumAnswer = { id: string; author: string; foto: string | null; when: string; text: string; likes: number; best: boolean; propia: boolean };
 /** El hilo necesita cuerpo, zona y respuestas: antes solo se leía título y contadores. */
 export type ForumPost = {
   id: string; cat: string; author: string; meta: string; title: string; body: string;
+  /** La foto de perfil del autor, o null si no subió ninguna. */
+  foto: string | null;
   replies: number; likes: number; trend: boolean; answers: ForumAnswer[];
   /** Foto de la publicación, si el autor adjuntó una. */
   photo: string | null;
@@ -223,8 +227,8 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async (esReintento = false) => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, plans(name, base_price)').eq('id', userId).single(),
+    const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes, fotosRes] = await Promise.all([
+      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
@@ -252,6 +256,11 @@ export function useKumoData(userId: string | null) {
          no por consultas sueltas: son tres cruces contra "lo mío" que necesitan
          también la webapp y el cron del push (ver `avisos_del_foro`). */
       supabase.rpc('avisos_del_foro', { p_member: userId }),
+      /* Las fotos de los demás socios, para el foro. Por la vista y no por un join
+         a `profiles`: la RLS de perfiles es por fila y el join devolvería null para
+         todos menos uno mismo — la misma razón por la que el nombre del autor viaja
+         copiado en cada publicación. La vista expone SOLO id y foto. */
+      supabase.from('fotos_de_socios').select('id, photo_url'),
     ]);
 
     /**
@@ -350,6 +359,7 @@ export function useKumoData(userId: string | null) {
       tarjeta: tarjetaLabel(p.card_brand, p.card_last4),
       cuotaHasta: p.paid_until ?? null,
       notifsVisto: p.notifs_seen_at ?? null,
+      foto: p.photo_url ?? null,
       debePagar: !p.paid_until || p.paid_until < hoyISO(),
       suscripcion: (p.mp_subscription_status ?? null) as EstadoSuscripcion,
     } : null;
@@ -441,9 +451,17 @@ export function useKumoData(userId: string | null) {
       zone: string | null; replies: number; likes: number; created_at: string; author_name: string;
       author_id: string | null; community_answers?: AnsRow[] | null;
     };
+    /** Id de socio → su foto. Solo los que subieron una, así que es corto. */
+    const fotos = new Map(
+      ((fotosRes.data ?? []) as { id: string; photo_url: string | null }[])
+        .filter((f): f is { id: string; photo_url: string } => !!f.photo_url)
+        .map((f) => [f.id, f.photo_url] as const),
+    );
+    const fotoDe = (id: string | null | undefined) => (id ? fotos.get(id) ?? null : null);
     const posts: ForumPost[] = sinBloqueados((postsRes.data ?? []) as unknown as PostRow[], bloqueados.map((b) => b.id)).map((row) => ({
       id: row.id, cat: row.category, title: row.title, body: row.body ?? '', photo: row.photo_url ?? null,
       author: row.author_name?.trim().split(' ')[0] || 'Socio',
+      foto: fotoDe(row.author_id),
       meta: `${row.zone || 'General'} · ${relTime(row.created_at)}`,
       replies: row.replies, likes: row.likes, trend: row.likes >= 20,
       propia: row.author_id === userId,
@@ -452,7 +470,7 @@ export function useKumoData(userId: string | null) {
         .slice()
         .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
         .map((a) => ({
-          id: a.id, author: a.author_name?.trim().split(' ')[0] || 'Socio', when: relTime(a.created_at),
+          id: a.id, author: a.author_name?.trim().split(' ')[0] || 'Socio', foto: fotoDe(a.author_id), when: relTime(a.created_at),
           text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId,
         })),
     }));

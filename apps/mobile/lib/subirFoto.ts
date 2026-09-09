@@ -138,7 +138,11 @@ export async function elegirFoto(): Promise<ResultadoElegir> {
   return { foto: { uri: asset.uri, name: nombre, type, bytes, base64: chica?.base64 ?? asset.base64 ?? undefined } };
 }
 
-export async function elegirYSubirFoto(ownerId: string, prefijo = ''): Promise<ResultadoFoto> {
+/** El bucket destino. Son dos y no uno porque una cara y un perro no son el mismo
+ *  dato: separados se pueden tratar distinto el día que haga falta. */
+export type BucketFoto = 'pet-photos' | 'member-photos';
+
+export async function elegirYSubirFoto(ownerId: string, prefijo = '', bucket: BucketFoto = 'pet-photos'): Promise<ResultadoFoto> {
   const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permiso.granted) {
     return { error: 'Necesitamos permiso para ver tus fotos. Podés dárselo desde los ajustes del teléfono.' };
@@ -166,8 +170,8 @@ export async function elegirYSubirFoto(ownerId: string, prefijo = ''): Promise<R
   if (invalida) return { error: invalida };
 
   const path = rutaFoto(ownerId, ext, prefijo);
-  const { error: subida } = await supabase.storage.from('pet-photos').upload(path, bytes, { contentType: tipo });
+  const { error: subida } = await supabase.storage.from(bucket).upload(path, bytes, { contentType: tipo });
   if (subida) return { error: 'No pudimos subir la foto. Probá de nuevo.' };
 
-  return { url: supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl };
+  return { url: supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl };
 }

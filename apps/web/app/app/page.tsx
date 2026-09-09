@@ -130,12 +130,14 @@ type PostRow = { id: string; category: string; title: string; body: string; phot
 function authorName(nombre: string | null): string {
   return nombre?.trim().split(' ')[0] || 'Socio';
 }
-function mapPost(row: PostRow, userId: string): ForumPost {
+function mapPost(row: PostRow, userId: string, fotos: Map<string, string>): ForumPost {
+  const fotoDe = (id: string | null) => (id ? fotos.get(id) ?? null : null);
   return {
     id: row.id,
     cat: row.category,
     trend: row.likes >= 20,
     author: authorName(row.author_name),
+    foto: fotoDe(row.author_id),
     meta: `${row.zone ?? 'General'} · ${relTime(row.created_at)}`,
     title: row.title,
     body: row.body,
@@ -147,7 +149,7 @@ function mapPost(row: PostRow, userId: string): ForumPost {
     answers: (row.community_answers ?? [])
       .slice()
       .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
-      .map((a) => ({ id: a.id, author: authorName(a.author_name), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId, autorId: a.author_id })),
+      .map((a) => ({ id: a.id, author: authorName(a.author_name), foto: fotoDe(a.author_id), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId, autorId: a.author_id })),
   };
 }
 
@@ -218,10 +220,11 @@ export default async function Page() {
     { data: planRows },
     { data: pagoRows },
     { data: foroRows },
+    { data: fotoRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, plans(name, base_price)')
+      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -284,7 +287,12 @@ export default async function Page() {
     /* Las reacciones del foro sobre lo que escribió el socio. Va por función y no
        por consulta suelta porque son tres cruces contra "lo mío" que necesitan
        también la app y el cron del push (ver la migración `avisos_del_foro`). */
-    supabase.rpc('avisos_del_foro', { p_member: auth.user.id })
+    supabase.rpc('avisos_del_foro', { p_member: auth.user.id }),
+    /* Las fotos de los demás socios, para el foro. Va por la vista y no por un join
+       a `profiles`: la RLS de perfiles es por fila y el join devolvería null para
+       todos menos uno mismo — que es la misma razón por la que el nombre del autor
+       viaja copiado en cada publicación. La vista expone SOLO id y foto. */
+    supabase.from('fotos_de_socios').select('id, photo_url'),
   ]);
   if (!profileRow) redirect(LANDING);
 
@@ -369,6 +377,7 @@ export default async function Page() {
     },
     tarjeta: tarjetaLabel(profileRow.card_brand, profileRow.card_last4),
     notifsVisto: profileRow.notifs_seen_at,
+    foto: profileRow.photo_url,
   };
 
   /*
@@ -448,8 +457,14 @@ export default async function Page() {
      filas crudas y no sobre el modelo, así la webapp y la app esconden lo mismo
      (ver `sinBloqueados` en @kumo/shared). */
   const bloqueados = (blockRows ?? []).map((b) => ({ id: b.blocked_id as string, nombre: (b.blocked_name as string) || 'Alguien' }));
+  /** Id de socio → su foto. Solo trae a los que subieron una, así que es corto. */
+  const fotosDeSocios = new Map(
+    ((fotoRows ?? []) as { id: string; photo_url: string | null }[])
+      .filter((f): f is { id: string; photo_url: string } => !!f.photo_url)
+      .map((f) => [f.id, f.photo_url] as const),
+  );
   const posts: ForumPost[] = sinBloqueados((postRows ?? []) as unknown as PostRow[], bloqueados.map((b) => b.id))
-    .map((r) => mapPost(r, auth.user.id));
+    .map((r) => mapPost(r, auth.user.id, fotosDeSocios));
   const misLikes = {
     posts: (postLikeRows ?? []).map((l) => l.post_id),
     answers: (ansLikeRows ?? []).map((l) => l.answer_id),

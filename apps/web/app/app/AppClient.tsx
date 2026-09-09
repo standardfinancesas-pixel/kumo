@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
-  buildNotifs, contarNoLeidas, esNoLeida, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
+  buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
@@ -142,8 +142,28 @@ export type PagoVM = {
 };
 /** El negocio propio del socio: puede estar pendiente de validación o rechazado, así que no sale del listado de prestadores verificados. */
 export type MiNegocio = { id: string; name: string; category: string; zone: string; /** La dirección del local, si atiende en uno: es lo que lo pone en el mapa. */ address: string | null; phone: string | null; about: string; status: string; rating: number; reviews: number; price: number | null; priceUnit: string | null; instagram: string | null; website: string | null; /** La portada de su ficha. Null = todavia no subio ninguna, y no se le inventa una. */ photoUrl: string | null; /** El logo cuadrado. Null = no subio, se usa la portada. */ logoUrl: string | null };
-export type ForumAnswer = { id: string; author: string; when: string; text: string; likes: number; best: boolean; propia: boolean; autorId: string | null };
-export type ForumPost = { id: string; cat: string; trend: boolean; author: string; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean; autorId: string | null };
+/**
+ * La cara de un socio: su foto si subió una, sus iniciales si no.
+ *
+ * Lo segundo NO es un respaldo feo por si falla algo: subir foto es opcional, así
+ * que en una lista de veinte respuestas puede haber una foto y diecinueve
+ * iniciales. El caso sin foto es el normal y tiene que verse terminado.
+ *
+ * El `alt` va vacío a propósito: el nombre está escrito al lado, y un lector de
+ * pantalla que diga "foto de Florencia, Florencia" lee todo dos veces.
+ */
+function Avatar({ foto, nombre, size = 38 }: { foto: string | null; nombre: string; size?: number }) {
+  const base: CSSProperties = { width: size, height: size, borderRadius: '50%', flex: 'none', display: 'block' };
+  if (foto) return <img src={foto} alt="" style={{ ...base, objectFit: 'cover', background: 'rgb(236,233,245)' }} />;
+  return (
+    <div style={{ ...base, background: 'rgb(236,233,245)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: Math.round(size * 0.4), color: '#5D5491' }}>
+      {iniciales(nombre)}
+    </div>
+  );
+}
+
+export type ForumAnswer = { id: string; author: string; foto: string | null; when: string; text: string; likes: number; best: boolean; propia: boolean; autorId: string | null };
+export type ForumPost = { id: string; cat: string; trend: boolean; author: string; foto: string | null; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean; autorId: string | null };
 
 /** A quién bloqueó el socio. El nombre viene copiado en la fila: la RLS de
  *  `profiles` no deja leer el perfil de otro socio (ver la migración 20260903120000). */
@@ -161,7 +181,7 @@ export type ProfileBanco = { holder: string | null; holderDni: string | null; cu
 
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
-export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null };
+export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null; /** Su foto de perfil, o null si no subió ninguna. */ foto: string | null };
 
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
 export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; odonto: boolean; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
@@ -2467,7 +2487,9 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
       )}
 
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ width: 38, height: 38, borderRadius: 11, background: cfg.tagBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: cfg.tagFg }}>{ic(person, false, 19)}</div>
+        {/* Antes acá había un ícono genérico de persona pintado del color de la
+            categoría: ocupaba el lugar del autor sin decir quién era. */}
+        <Avatar foto={p.foto} nombre={p.author} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{p.author}</div>
           <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.meta}</div>
@@ -2529,7 +2551,7 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
           const n = a.likes + (yo && !misLikes.answers.includes(a.id) ? 1 : 0) - (!yo && misLikes.answers.includes(a.id) ? 1 : 0);
           return (
             <div key={a.id} style={{ display: 'flex', gap: 10 }}>
-              <div style={{ width: 34, height: 34, borderRadius: '50%', background: 'rgb(236,233,245)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, color: '#5D5491', flex: 'none' }}>{a.author.slice(0, 1).toUpperCase()}</div>
+              <Avatar foto={a.foto} nombre={a.author} size={34} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, borderTopLeftRadius: 4, padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
@@ -3305,6 +3327,42 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
   const [palabra, setPalabra] = useState('');
   const [borrarError, setBorrarError] = useState('');
   const [cuentas, setCuentas] = useState<{ mascotas: number; reintegros: number; pagos: number; publicaciones: number; negocios: number } | null>(null);
+  const [fotoBusy, setFotoBusy] = useState(false);
+  const [fotoError, setFotoError] = useState('');
+
+  /**
+   * Cambiar la foto de perfil. Mismo camino que la foto de una mascota: se achica
+   * antes de subir, va a la carpeta del socio —que es lo que la RLS del bucket
+   * exige— y recién después se guarda la dirección en el perfil.
+   *
+   * Si el guardado falla se borra la imagen recién subida: dejarla sería basura
+   * que nadie va a poder encontrar ni borrar después.
+   */
+  const cambiarFotoPerfil = async (elegida?: File) => {
+    if (!elegida) return;
+    setFotoError('');
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setFotoError(listo.error); return; }
+    const f = listo.file;
+    setFotoBusy(true);
+    const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
+    const path = `${profile.id}/${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage.from('member-photos').upload(path, f, { contentType: f.type });
+    if (upErr) { setFotoError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    const url = supabase.storage.from('member-photos').getPublicUrl(path).data.publicUrl;
+    /* `.select('id')` y mirar las filas: un update que la RLS no deja pasar
+       devuelve 200 con cero filas, así que sin esto "no se guardó" se vería igual
+       que "salió bien" (ver la regla en CLAUDE.md). */
+    const { data, error: dbErr } = await supabase.from('profiles').update({ photo_url: url }).eq('id', profile.id).select('id');
+    if (dbErr || !data?.length) {
+      await supabase.storage.from('member-photos').remove([path]);
+      setFotoError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.');
+      setFotoBusy(false);
+      return;
+    }
+    router.refresh();
+    setFotoBusy(false);
+  };
 
   /** Ahora sí guarda. El nombre también: antes no se podía editar desde ningún lado. */
   const guardarDatos = async () => {
@@ -3455,7 +3513,20 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
     <div style={{ padding: '8px 20px 24px' }}>
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, rgb(93,84,145), rgb(70,63,112))', borderRadius: 22, padding: 22, color: '#fff', display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-        <div style={{ width: 60, height: 60, borderRadius: '50%', flex: 'none', border: '2px solid rgba(255,255,255,0.25)', background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: '#5D5491' }}>{profile.firstName.slice(0, 1).toUpperCase()}</div>
+        {/* La foto se cambia desde acá y no desde "Editar": es lo que la gente
+            intenta primero —tocar su propia cara— y esconderlo adentro del
+            formulario obliga a descubrirlo. El input va tapado por el label. */}
+        <label style={{ position: 'relative', width: 60, height: 60, flex: 'none', borderRadius: '50%', cursor: fotoBusy ? 'default' : 'pointer', display: 'block' }}>
+          <div style={{ width: 60, height: 60, borderRadius: '50%', overflow: 'hidden', border: '2px solid rgba(255,255,255,0.25)', background: 'rgb(240,237,249)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 24, color: '#5D5491' }}>
+            {profile.foto
+              ? <img src={profile.foto} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              : iniciales(profile.fullName)}
+          </div>
+          <span style={{ position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: '50%', background: '#E1FB62', color: '#211E33', fontSize: 12, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid rgb(80,72,127)' }} aria-hidden>
+            {fotoBusy ? '·' : '+'}
+          </span>
+          <input type="file" accept="image/*" disabled={fotoBusy} onChange={(e) => { void cambiarFotoPerfil(e.target.files?.[0]); e.target.value = ''; }} style={{ position: 'absolute', inset: 0, opacity: 0, width: '100%', height: '100%', cursor: 'inherit' }} aria-label="Cambiar mi foto de perfil" />
+        </label>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21 }}>{profile.fullName}</div>
           {/* Sin número no se escribe "Socio #": una cuenta que no es de socio
@@ -3466,6 +3537,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
         </div>
         <button onClick={() => setEditando((s) => !s)} style={{ background: 'rgba(255,255,255,0.14)', border: 'none', color: '#fff', fontWeight: 600, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', flex: 'none', fontFamily: '"DM Sans"' }}>{editando ? 'Cancelar' : 'Editar'}</button>
       </div>
+      {fotoError && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13, borderRadius: 12, padding: '10px 12px', marginBottom: 12 }}>{fotoError}</div>}
 
       {/* Mis mascotas */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>

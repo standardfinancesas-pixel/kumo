@@ -108,6 +108,9 @@ create table if not exists profiles (
   -- teléfono y desde el navegador, y marcarlas leídas en uno tiene que valer en
   -- los dos (ver la migración 20260909130000).
   notifs_seen_at timestamptz,
+  -- Foto de perfil, en el bucket `member-photos`. Null = no subió ninguna y la
+  -- pantalla dibuja sus iniciales (ver la migración 20260909170000).
+  photo_url    text,
   status       member_status not null default 'activo',
   joined_on    date        not null default (now() at time zone 'America/Argentina/Buenos_Aires')::date,
   created_at   timestamptz not null default now()
@@ -779,6 +782,18 @@ create policy "perfil propio - select" on profiles for select using (id = auth.u
 create policy "perfil propio - update" on profiles for update
   using ((id = auth.uid() and tiene_acceso()) or is_admin());
 create policy "perfil propio - insert" on profiles for insert with check (id = auth.uid());
+
+-- La foto del autor de una publicación del foro.
+--
+-- La RLS de arriba es por fila: nadie puede leer el perfil de otro. Por eso el foro
+-- copia `author_name` en cada publicación, y por eso la foto necesita esta puerta
+-- angosta — sin `security_invoker`, así que saltea la RLS, con la superficie
+-- recortada a dos columnas: id y foto, nada más. Cualquier columna que se agregue
+-- acá la puede leer cualquier socio.
+create or replace view fotos_de_socios as
+  select id, photo_url from profiles where photo_url is not null;
+revoke all on fotos_de_socios from anon;
+grant select on fotos_de_socios to authenticated;
 
 -- Los tokens de push: cada quien registra y borra los suyos; el club los lee para
 -- poder enviar. `vaccine_reminders` no lleva políticas a propósito: solo la

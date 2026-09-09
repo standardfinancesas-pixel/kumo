@@ -9,7 +9,7 @@ import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-font
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import {
   colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
-  buildNotifs, contarNoLeidas, esNoLeida, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
+  buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
@@ -1656,6 +1656,28 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
   const [pagosOpen, setPagosOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [fotoBusy, setFotoBusy] = useState(false);
+
+  /**
+   * Cambiar la foto de perfil. Mismo camino que la foto de una mascota, con el
+   * bucket propio de los socios.
+   *
+   * El `.select('id')` y el chequeo de filas no son de más: un update que la RLS
+   * no deja pasar devuelve 200 con cero filas, así que sin eso "no se guardó" se
+   * ve igual que "salió bien" (ver la regla en CLAUDE.md).
+   */
+  const cambiarFotoPerfil = async () => {
+    if (!profile || fotoBusy) return;
+    setFotoBusy(true);
+    setError('');
+    const r = await elegirYSubirFoto(profile.id, 'perfil', 'member-photos');
+    if ('cancelado' in r) { setFotoBusy(false); return; }
+    if ('error' in r) { setError(r.error); setFotoBusy(false); return; }
+    const { data, error: e } = await supabase.from('profiles').update({ photo_url: r.url }).eq('id', profile.id).select('id');
+    if (e || !data?.length) { setError('Subimos la foto pero no pudimos guardarla. Probá de nuevo.'); setFotoBusy(false); return; }
+    reload();
+    setFotoBusy(false);
+  };
   const [datos, setDatos] = useState({
     nombre: '', dni: '', dom: '', localidad: '', provincia: '', tel: '',
     bancoTitular: '', bancoTitularDni: '', bancoCuit: '', bancoNombre: '', bancoCbu: '',
@@ -1843,7 +1865,16 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
       <H1>Mi perfil</H1>
       <View style={{ height: 12 }} />
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontFamily: FH, fontWeight: '800', fontSize: 24 }}>{profile.firstName.charAt(0).toUpperCase()}</Text></View>
+        {/* Se toca la propia cara para cambiarla: es lo primero que intenta
+            cualquiera, y esconderlo adentro de "Editar" obliga a descubrirlo. */}
+        <TouchableOpacity onPress={cambiarFotoPerfil} disabled={fotoBusy} accessibilityRole="button" accessibilityLabel="Cambiar mi foto de perfil" style={{ width: 58, height: 58 }}>
+          {profile.foto
+            ? <Image source={{ uri: profile.foto }} style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: '#ece9f5' }} resizeMode="cover" />
+            : <View style={{ width: 58, height: 58, borderRadius: 29, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: '#fff', fontFamily: FH, fontWeight: '800', fontSize: 24 }}>{iniciales(profile.fullName)}</Text></View>}
+          <View style={{ position: 'absolute', right: -2, bottom: -2, width: 22, height: 22, borderRadius: 11, backgroundColor: LIME, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: INK }}>{fotoBusy ? '·' : '+'}</Text>
+          </View>
+        </TouchableOpacity>
         <View style={{ flex: 1 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 20, color: INK }}>{profile.fullName}</Text>
           {/* `memberNo` ya viene con el "#" o con un guion si la cuenta no es de
@@ -3917,6 +3948,22 @@ const CAT_TONE: Record<string, { bg: string; fg: string }> = {
  * ancho real de la tarjeta. Hasta que llegan, 210 —un alto intermedio— para que
  * el salto al acomodarse sea chico.
  */
+/**
+ * La cara de un socio: su foto si subió una, sus iniciales si no.
+ *
+ * Subir foto es opcional, así que lo segundo es el caso NORMAL, no el borde: en
+ * una lista de veinte respuestas puede haber una foto y diecinueve iniciales.
+ */
+function Avatar({ foto, nombre, size = 38 }: { foto: string | null; nombre: string; size?: number }) {
+  const base = { width: size, height: size, borderRadius: size / 2, backgroundColor: '#ece9f5' } as const;
+  if (foto) return <Image source={{ uri: foto }} style={base} resizeMode="cover" />;
+  return (
+    <View style={[base, { alignItems: 'center', justifyContent: 'center' }]}>
+      <Text style={{ fontWeight: '700', fontSize: Math.round(size * 0.4), color: BRAND }}>{iniciales(nombre)}</Text>
+    </View>
+  );
+}
+
 function FotoDePost({ uri, onPress }: { uri: string; onPress: () => void }) {
   const [proporcion, setProporcion] = useState(0);
   const [ancho, setAncho] = useState(0);
@@ -4168,9 +4215,9 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
       </View>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-        <View style={{ width: 38, height: 38, borderRadius: 11, overflow: 'hidden', backgroundColor: tone.bg, alignItems: 'center', justifyContent: 'center' }}>
-          <Ic d="person" size={19} color={tone.fg} />
-        </View>
+        {/* Antes acá había un ícono genérico de persona: ocupaba el lugar del
+            autor sin decir quién era. */}
+        <Avatar foto={p.foto} nombre={p.author} size={38} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.author}</Text>
           <Text style={{ fontSize: 12, color: '#a29dba' }}>{p.meta}</Text>
@@ -4203,9 +4250,7 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
           const n = a.likes + (yo && !misLikes.answers.includes(a.id) ? 1 : 0) - (!yo && misLikes.answers.includes(a.id) ? 1 : 0);
           return (
             <View key={a.id} style={{ flexDirection: 'row', gap: 10 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: '#ece9f5', alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ fontWeight: '700', fontSize: 14, color: BRAND }}>{a.author.slice(0, 1).toUpperCase()}</Text>
-              </View>
+              <Avatar foto={a.foto} nombre={a.author} size={34} />
               <View style={{ flex: 1 }}>
                 <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
