@@ -90,9 +90,14 @@ export async function POST(req: Request) {
       .single();
     const post = Array.isArray(resp?.community_posts) ? resp?.community_posts[0] : resp?.community_posts;
     if (!resp || !post) return NextResponse.json({ error: 'Esa respuesta no existe.' }, { status: 404 });
-    if (resp.author_id !== quien) return NextResponse.json({ error: 'Esa respuesta no es tuya.' }, { status: 403 });
+    /* `quien.id` y no `quien`: `quienPide` devuelve el usuario, no su id. Comparado
+       contra el uuid daba SIEMPRE distinto, así que esta ruta contestaba 403 a toda
+       respuesta del foro y el push de "Respondieron tu publicación" no salió nunca
+       —desde el commit que lo agregó, 371502e del 31/08—. El resto del archivo ya
+       comparaba bien contra `quien.id`; eran estas dos líneas. */
+    if (resp.author_id !== quien.id) return NextResponse.json({ error: 'Esa respuesta no es tuya.' }, { status: 403 });
     // Responderse a uno mismo no se avisa.
-    if (post.author_id === quien || !post.author_id) return NextResponse.json({ ok: true, avisado: false });
+    if (post.author_id === quien.id || !post.author_id) return NextResponse.json({ ok: true, avisado: false });
 
     const { data: tokens } = await svc.from('push_tokens').select('token').eq('member_id', post.author_id);
     if (tokens?.length) {
