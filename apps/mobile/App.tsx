@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, AppState, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { Alert, AppState, Keyboard, Modal, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
@@ -4240,10 +4240,32 @@ function Hilo({ p, userId, firstName, miFoto, misLikes, reload, onVolver }: { p:
     );
   };
 
-  /* El alto de la franja de gestos. Sin compensarlo, el teclado tapa la caja: el
-     contenedor termina ARRIBA del borde de la pantalla y `KeyboardAvoidingView`
-     calcula como si terminara abajo. */
+  /*
+   * El teclado, medido a mano.
+   *
+   * Acá vivía un `KeyboardAvoidingView`, y en el emulador funcionaba. En un
+   * teléfono real no: la caja quedaba entera detrás del teclado, como si no
+   * hubiera nada compensando. Y era exactamente eso.
+   *
+   * La diferencia está en quién achica la ventana. En el emulador el sistema la
+   * achica solo (`adjustResize`), así que la caja sube por su cuenta y el
+   * componente ni hace falta — por eso "funcionaba". En un Android real con
+   * edge-to-edge, que desde el SDK 53 es obligatorio, la ventana NO se achica, y
+   * ahí `KeyboardAvoidingView` en Android no reacciona: el resultado es cero
+   * compensación y la caja abajo de todo, tapada.
+   *
+   * Escuchar el teclado sí funciona en las dos: el evento trae su altura real.
+   * Se le resta la franja de gestos porque el contenedor ya termina arriba de
+   * ella, así que ese pedazo no hay que compensarlo dos veces.
+   */
   const insets = useSafeAreaInsets();
+  const [altoTeclado, setAltoTeclado] = useState(0);
+  useEffect(() => {
+    const subir = Keyboard.addListener('keyboardDidShow', (e) => setAltoTeclado(e.endCoordinates.height));
+    const bajar = Keyboard.addListener('keyboardDidHide', () => setAltoTeclado(0));
+    return () => { subir.remove(); bajar.remove(); };
+  }, []);
+  const espacioTeclado = Math.max(altoTeclado - insets.bottom, 0);
   const nPost = p.likes + (likePost && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likePost && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
@@ -4252,13 +4274,10 @@ function Hilo({ p, userId, firstName, miFoto, misLikes, reload, onVolver }: { p:
      * primero que se busca al abrir un hilo, y al final del contenido aparecía
      * recién después de scrollear todas las respuestas.
      *
-     * `behavior="padding"` en LAS DOS plataformas, y no solo en iOS. Desde el SDK
-     * 53 Android dibuja edge-to-edge de forma obligatoria: la ventana ya NO se
-     * achica sola cuando sube el teclado, así que sin `behavior` la caja queda
-     * debajo del teclado y no se ve lo que se escribe. Verificado en el emulador:
-     * con `undefined` la caja desaparecía de la pantalla.
+     * El hueco del teclado va como padding de este contenedor: al achicarse, la
+     * caja de abajo sube con él. Ver el comentario de `altoTeclado`.
      */
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={insets.bottom}>
+    <View style={{ flex: 1, paddingBottom: espacioTeclado }}>
     <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <BackLink label="Comunidad" onPress={onVolver} />
@@ -4389,7 +4408,7 @@ function Hilo({ p, userId, firstName, miFoto, misLikes, reload, onVolver }: { p:
           </TouchableOpacity>
         </View>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
