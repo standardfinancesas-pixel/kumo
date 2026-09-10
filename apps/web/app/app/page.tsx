@@ -138,7 +138,11 @@ function mapPost(row: PostRow, userId: string, fotos: Map<string, string>): Foru
     trend: row.likes >= 20,
     author: authorName(row.author_name),
     foto: fotoDe(row.author_id),
-    meta: `${row.zone ?? 'General'} · ${relTime(row.created_at)}`,
+    /* Zona y tiempo separados, no una sola cadena para mostrar: el filtro por
+       zona del foro parseaba ese texto con un split(' · '), así que cualquier
+       cambio de formato en la pantalla rompía el filtro en silencio. */
+    zona: row.zone ?? 'General',
+    cuando: relTime(row.created_at),
     title: row.title,
     body: row.body,
     photo: row.photo_url,
@@ -149,7 +153,7 @@ function mapPost(row: PostRow, userId: string, fotos: Map<string, string>): Foru
     answers: (row.community_answers ?? [])
       .slice()
       .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
-      .map((a) => ({ id: a.id, author: authorName(a.author_name), foto: fotoDe(a.author_id), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId, autorId: a.author_id })),
+      .map((a) => ({ id: a.id, author: authorName(a.author_name), foto: fotoDe(a.author_id), when: relTime(a.created_at), text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId, autorId: a.author_id, esAutor: !!a.author_id && a.author_id === row.author_id })),
   };
 }
 
@@ -479,6 +483,8 @@ export default async function Page() {
   const foro = (foroRows ?? []) as ForoRow[];
 
   const notifInput: NotifInput = {
+    /** Sin foto, la campanita se lo recuerda una vez (ver DESDE_FOTO_PERFIL). */
+    tieneFoto: !!profileRow.photo_url,
     pets: (petsRows ?? []).map((p) => ({
       name: p.name,
       vaccines: ((p.vaccinations ?? []) as VaccinationRow[]).map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, dueOn: v.due_on })),

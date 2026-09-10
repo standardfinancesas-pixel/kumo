@@ -81,10 +81,15 @@ export type ReintVM = {
   resueltoEl: string;
   bank: { holder: string | null; dni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
 };
-export type ForumAnswer = { id: string; author: string; foto: string | null; when: string; text: string; likes: number; best: boolean; propia: boolean };
+export type ForumAnswer = {
+  id: string; author: string; foto: string | null; when: string; text: string; likes: number; best: boolean; propia: boolean;
+  /** ¿La escribió el dueño del hilo? Lleva el badge "Autor": en una conversación
+   *  larga es lo que distingue la respuesta de quien preguntó de las demás. */
+  esAutor: boolean;
+};
 /** El hilo necesita cuerpo, zona y respuestas: antes solo se leía título y contadores. */
 export type ForumPost = {
-  id: string; cat: string; author: string; meta: string; title: string; body: string;
+  id: string; cat: string; author: string; zona: string; cuando: string; title: string; body: string;
   /** La foto de perfil del autor, o null si no subió ninguna. */
   foto: string | null;
   replies: number; likes: number; trend: boolean; answers: ForumAnswer[];
@@ -462,7 +467,10 @@ export function useKumoData(userId: string | null) {
       id: row.id, cat: row.category, title: row.title, body: row.body ?? '', photo: row.photo_url ?? null,
       author: row.author_name?.trim().split(' ')[0] || 'Socio',
       foto: fotoDe(row.author_id),
-      meta: `${row.zone || 'General'} · ${relTime(row.created_at)}`,
+      /* Separados y no una sola cadena: lo que se muestra lo decide la pantalla,
+         que ahora pone "categoría · tiempo" y antes ponía "zona · tiempo". */
+      zona: row.zone || 'General',
+      cuando: relTime(row.created_at),
       replies: row.replies, likes: row.likes, trend: row.likes >= 20,
       propia: row.author_id === userId,
       autorId: row.author_id ?? null,
@@ -471,6 +479,7 @@ export function useKumoData(userId: string | null) {
         .sort((a, b) => (b.best ? 1 : 0) - (a.best ? 1 : 0) || Date.parse(a.created_at) - Date.parse(b.created_at))
         .map((a) => ({
           id: a.id, author: a.author_name?.trim().split(' ')[0] || 'Socio', foto: fotoDe(a.author_id), when: relTime(a.created_at),
+          esAutor: !!a.author_id && a.author_id === row.author_id,
           text: a.text, likes: a.likes, best: a.best, propia: a.author_id === userId,
         })),
     }));
@@ -486,6 +495,8 @@ export function useKumoData(userId: string | null) {
     const foro = (foroRes.data ?? []) as ForoRow[];
 
     const notifInput: NotifInput = {
+      /** Sin foto, la campanita se lo recuerda una vez (ver DESDE_FOTO_PERFIL). */
+      tieneFoto: !!profile?.foto,
       pets: (petsRes.data ?? []).map((row) => ({
         name: row.name,
         vaccines: ((row.vaccinations ?? []) as VacRow[]).map((v) => ({ id: v.id, name: v.name, kind: v.kind, status: v.status, dueOn: v.due_on })),

@@ -4220,10 +4220,14 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
         <Avatar foto={p.foto} nombre={p.author} size={38} />
         <View style={{ flex: 1 }}>
           <Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>{p.author}</Text>
-          <Text style={{ fontSize: 12, color: '#a29dba' }}>{p.meta}</Text>
-        </View>
-        <View style={{ backgroundColor: tone.bg, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 3 }}>
-          <Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{p.cat}</Text>
+          {/* La categoría al lado del tiempo y no suelta a la derecha: así se lee
+              "de qué es y cuándo fue" de un saque, que es como lo pidió el cliente. */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <View style={{ backgroundColor: tone.bg, borderRadius: 100, paddingHorizontal: 9, paddingVertical: 2 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{p.cat}</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: '#a29dba' }}>· {p.cuando}</Text>
+          </View>
         </View>
       </View>
 
@@ -4255,6 +4259,12 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
                 <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 14, borderTopLeftRadius: 4, paddingHorizontal: 14, paddingVertical: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 5 }}>
                     <Text style={{ fontWeight: '700', fontSize: 13.5, color: INK }}>{a.propia ? 'Vos' : a.author}</Text>
+                    {/* Quien preguntó, respondiendo en su propio hilo. */}
+                    {a.esAutor ? (
+                      <View style={{ backgroundColor: colors.violet[100], borderRadius: 100, paddingHorizontal: 8, paddingVertical: 2 }}>
+                        <Text style={{ fontSize: 10.5, fontWeight: '700', color: BRAND }}>Autor</Text>
+                      </View>
+                    ) : null}
                     {a.best ? (
                       <View style={{ backgroundColor: '#e2f5ea', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}>
                         <Text style={{ fontSize: 10, fontWeight: '700', color: '#2f8f5b' }}>★ Mejor respuesta</Text>
@@ -4459,13 +4469,21 @@ function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAb
       ) : (
         <View style={{ gap: 12 }}>
           {list.map((p) => {
-            const tone = CAT_TONE[p.cat] ?? { bg: colors.violet[100], fg: BRAND };
             return (
+              /*
+               * Cara del autor, nombre en negrita y debajo la sección y el tiempo.
+               * Antes arriba iba el chip de la categoría y el nombre suelto al
+               * final de la línea: se leía de qué se hablaba antes que quién
+               * hablaba, y en un foro es al revés.
+               */
               <TouchableOpacity key={p.id} onPress={() => setHiloId(p.id)} style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#f0eef7', borderRadius: 20, padding: 16 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 7, flexWrap: 'wrap' }}>
-                  <View style={{ backgroundColor: tone.bg, borderRadius: 100, paddingHorizontal: 10, paddingVertical: 3 }}><Text style={{ fontSize: 11, fontWeight: '700', color: tone.fg }}>{p.cat}</Text></View>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 10 }}>
+                  <Avatar foto={p.foto} nombre={p.author} size={44} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.author}</Text>
+                    <Text style={{ fontSize: 12.5, color: '#a29dba' }}>{p.cat} · {p.cuando}</Text>
+                  </View>
                   {p.trend ? <View style={{ backgroundColor: LIME, borderRadius: 100, paddingHorizontal: 9, paddingVertical: 3 }}><Text style={{ fontSize: 10, fontWeight: '800', color: INK }}>EN TENDENCIA</Text></View> : null}
-                  <Text style={{ fontSize: 11.5, color: '#a29dba' }}>{p.author} · {p.meta}</Text>
                 </View>
                 {/* Con foto, el texto y la miniatura van en fila. Es una miniatura
                     y no un contador porque una publicación lleva UNA foto como
@@ -4480,10 +4498,11 @@ function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAb
                     <Image source={{ uri: p.photo }} style={{ width: 56, height: 56, borderRadius: 14, backgroundColor: colors.violet[100] }} resizeMode="cover" />
                   ) : null}
                 </View>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.violet[100], borderRadius: 100, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="chat" size={14} color={BRAND} /><Text style={{ fontSize: 12, fontWeight: '700', color: BRAND }}>{p.replies}</Text></View>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#fbe9ee', borderRadius: 100, overflow: 'hidden', paddingHorizontal: 12, paddingVertical: 6 }}><Ic d="heart" size={14} color="#c04863" fill /><Text style={{ fontSize: 12, fontWeight: '700', color: '#c04863' }}>{p.likes}</Text></View>
-                  <Text style={{ marginLeft: 'auto', color: BRAND, fontWeight: '700', fontSize: 12.5 }}>Ver hilo ›</Text>
+                {/* Sin pastillas de color: en una lista de veinte filas, cuarenta
+                    pastillas compiten con lo que la gente vino a leer. */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 18 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ic d="chat" size={16} color="#8781a0" /><Text style={{ fontSize: 13, fontWeight: '600', color: '#8781a0' }}>{p.replies}</Text></View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><Ic d="heart" size={16} color="#8781a0" /><Text style={{ fontSize: 13, fontWeight: '600', color: '#8781a0' }}>{p.likes}</Text></View>
                 </View>
               </TouchableOpacity>
             );

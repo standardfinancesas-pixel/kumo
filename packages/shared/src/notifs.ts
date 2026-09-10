@@ -15,7 +15,7 @@ import { nombreDePila } from './avatar';
  *  de mails y push, así que el aviso de la app y el del teléfono coinciden. */
 export const DIAS_AVISO_CARNET = 2;
 
-export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like' | 'cuota-ok' | 'cuota-no';
+export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like' | 'cuota-ok' | 'cuota-no' | 'perfil-foto';
 
 export type Notif = {
   id: string;
@@ -62,6 +62,9 @@ export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield' |
   /* Billetera como los reintegros: es la misma plata, entrando o saliendo. */
   'cuota-ok': { ic: 'wallet', chip: '#e2f5ea', color: '#2f8f5b' },
   'cuota-no': { ic: 'wallet', chip: '#fbe8ef', color: '#b0483f' },
+  /* La invitación a poner la cara: chip de marca, no de alerta. No es un problema
+     a resolver, es algo que suma. */
+  'perfil-foto': { ic: 'chat', chip: '#e8e5f5', color: '#5d5491' },
 };
 
 /**
@@ -134,7 +137,23 @@ export type NotifInput = {
   };
   /** Los cobros de la cuota. Las dos superficies ya los traen para el historial. */
   pagos: { id: string; amount: number; status: string; coversUntil: string | null; createdAt: string; paidAt: string | null }[];
+  /** ¿El socio subió su foto de perfil? Si no, se le recuerda una vez. */
+  tieneFoto: boolean;
 };
+
+/**
+ * Desde cuándo se puede recordar la foto de perfil.
+ *
+ * Es una fecha fija y no "hoy", y ese es todo el truco: fechado hoy, el aviso se
+ * vuelve a encender cada mañana y termina siendo una cantaleta que la persona
+ * aprende a ignorar —y de paso enseña a ignorar TODOS los avisos—. Con una fecha
+ * fija aparece una vez, se puede marcar leído, y desaparece solo el día que la
+ * persona sube su foto, porque se deriva de que no la tenga.
+ *
+ * Es el día que la foto de perfil existió por primera vez: antes de eso el aviso
+ * no tenía sentido, y ponerlo más atrás lo hundiría abajo de todo.
+ */
+const DESDE_FOTO_PERFIL = '2026-09-10';
 
 /**
  * Cuánto tiempo se muestra un cobro en la campanita.
@@ -316,6 +335,25 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
         to: 'perfil',
       });
     }
+  }
+
+  /*
+   * La cara del socio, que el foro ahora muestra en cada publicación y en cada
+   * respuesta. Sin foto se dibujan sus iniciales, que está bien, pero el pedido
+   * del cliente fue explícito: recordarle a la gente que la suba.
+   *
+   * Se deriva de no tenerla, así que se va solo cuando la sube. No hay nada que
+   * apagar ni ningún estado que guardar.
+   */
+  if (!input.tieneFoto) {
+    items.push({
+      id: 'perfil-foto',
+      kind: 'perfil-foto',
+      title: 'Sumá tu foto de perfil',
+      body: 'En el foro se te ve la cara cuando publicás o respondés. Mientras tanto van tus iniciales.',
+      date: DESDE_FOTO_PERFIL,
+      to: 'perfil',
+    });
   }
 
   items.sort((a, b) => asDate(b.date).getTime() - asDate(a.date).getTime());

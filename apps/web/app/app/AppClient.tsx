@@ -162,8 +162,12 @@ function Avatar({ foto, nombre, size = 38 }: { foto: string | null; nombre: stri
   );
 }
 
-export type ForumAnswer = { id: string; author: string; foto: string | null; when: string; text: string; likes: number; best: boolean; propia: boolean; autorId: string | null };
-export type ForumPost = { id: string; cat: string; trend: boolean; author: string; foto: string | null; meta: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean; autorId: string | null };
+export type ForumAnswer = {
+  id: string; author: string; foto: string | null; when: string; text: string; likes: number; best: boolean; propia: boolean; autorId: string | null;
+  /** ¿La escribió el dueño del hilo? Lleva el badge "Autor". */
+  esAutor: boolean;
+};
+export type ForumPost = { id: string; cat: string; trend: boolean; author: string; foto: string | null; zona: string; cuando: string; title: string; body: string; photo: string | null; replies: number; likes: number; answers: ForumAnswer[]; propia: boolean; autorId: string | null };
 
 /** A quién bloqueó el socio. El nombre viene copiado en la fila: la RLS de
  *  `profiles` no deja leer el perfil de otro socio (ver la migración 20260903120000). */
@@ -2492,9 +2496,13 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
         <Avatar foto={p.foto} nombre={p.author} size={38} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 14 }}>{p.author}</div>
-          <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.meta}</div>
+          {/* La categoría al lado del tiempo y no suelta a la derecha: así se lee
+              "de qué es y cuándo fue" de un saque, que es como lo pidió el cliente. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: cfg.tagFg, background: cfg.tagBg, padding: '2px 9px', borderRadius: 100 }}>{p.cat}</span>
+            <span style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>· {p.cuando}</span>
+          </div>
         </div>
-        <span style={{ fontSize: 11, fontWeight: 700, color: cfg.tagFg, background: cfg.tagBg, padding: '3px 9px', borderRadius: 6 }}>{p.cat}</span>
       </div>
 
       <h1 style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, lineHeight: 1.2, margin: '0 0 10px' }}>{p.title}</h1>
@@ -2556,6 +2564,10 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
                 <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 14, borderTopLeftRadius: 4, padding: '12px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                     <span style={{ fontWeight: 700, fontSize: 13.5 }}>{a.propia ? 'Vos' : a.author}</span>
+                    {/* Quien preguntó, respondiendo en su propio hilo. En una
+                        conversación larga es lo que separa la respuesta del que
+                        abrió el tema de las de todos los demás. */}
+                    {a.esAutor && <span style={{ fontSize: 10.5, fontWeight: 700, color: 'rgb(93,84,145)', background: 'rgb(240,237,249)', padding: '2px 8px', borderRadius: 100 }}>Autor</span>}
                     {a.best && <span style={{ fontSize: 10, fontWeight: 700, color: 'rgb(47,143,91)', background: 'rgb(226,245,234)', padding: '2px 7px', borderRadius: 6 }}>★ Mejor respuesta</span>}
                     <span style={{ fontSize: 11, color: 'rgb(162,157,186)', marginLeft: 'auto' }}>{a.when}</span>
                   </div>
@@ -2724,12 +2736,12 @@ function Foros({ initialPosts, profile, misLikes, abrirHilo, onHiloAbierto }: { 
   const [zona, setZona] = useState('Todas');
 
   // Las zonas salen de lo que publicaron los socios, no de una lista fija.
-  const zonas = ['Todas', ...Array.from(new Set(posts.map((p) => p.meta.split(' · ')[0]!).filter((z) => z && z !== 'General')))];
+  const zonas = ['Todas', ...Array.from(new Set(posts.map((p) => p.zona).filter((z) => z && z !== 'General')))];
 
   const ql = q.trim().toLowerCase();
   const list = posts.filter((p) => {
     if (cat !== 'Todos' && p.cat !== cat) return false;
-    if (zona !== 'Todas' && !p.meta.startsWith(zona)) return false;
+    if (zona !== 'Todas' && p.zona !== zona) return false;
     if (ql && !`${p.title} ${p.body} ${p.author}`.toLowerCase().includes(ql)) return false;
     return true;
   });
@@ -2776,38 +2788,46 @@ function Foros({ initialPosts, profile, misLikes, abrirHilo, onHiloAbierto }: { 
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           {list.map((p) => {
-            const cfg = catCfg[p.cat] ?? catCfg.Salud!;
-            const relleno = p.cat === 'Paseadores' || p.cat === 'Cruzas';
             return (
-              <button key={p.id} className="wa-card" onClick={() => setHiloId(p.id)} style={{ display: 'flex', gap: 13, alignItems: 'flex-start', background: '#fff', border: '1px solid rgb(240,238,247)', borderRadius: 20, padding: 16, cursor: 'pointer', boxShadow: '0 6px 20px rgba(93,84,145,0.07)', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
-                <div style={{ width: 52, height: 52, borderRadius: 15, background: cfg.iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '0 0 auto' }}>
-                  <svg width="22" height="22" viewBox="0 0 24 24" fill={relleno ? '#fff' : 'none'} stroke={relleno ? 'none' : '#fff'} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'block' }}>{cfg.icon}</svg>
-                </div>
-                <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', marginBottom: 7 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: cfg.tagFg, background: cfg.tagBg, padding: '3px 10px', borderRadius: 100 }}>{p.cat}</span>
-                    {p.trend && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.03em', whiteSpace: 'nowrap', color: 'rgb(33,30,51)', background: 'rgb(225,251,98)', padding: '3px 9px', borderRadius: 100 }}>EN TENDENCIA</span>}
-                    <span style={{ fontSize: 11.5, color: 'rgb(162,157,186)' }}>{p.author} · {p.meta}</span>
+              /*
+               * La fila, con la forma que pidió el cliente: cara del autor, nombre
+               * en negrita y debajo la sección y el tiempo. Antes el lugar de la
+               * izquierda lo ocupaba un ícono de la categoría, que decía de qué se
+               * hablaba pero no quién hablaba — y en un foro lo segundo es lo que
+               * hace que alguien se detenga a leer.
+               *
+               * La categoría no se pierde: pasa a la línea de abajo, junto al
+               * tiempo, que es donde el diseño la pone.
+               */
+              <button key={p.id} className="wa-card" onClick={() => setHiloId(p.id)} style={{ display: 'block', background: '#fff', border: '1px solid rgb(240,238,247)', borderRadius: 20, padding: 16, cursor: 'pointer', boxShadow: '0 6px 20px rgba(93,84,145,0.07)', width: '100%', textAlign: 'left', fontFamily: '"DM Sans"' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, marginBottom: 10 }}>
+                  <Avatar foto={p.foto} nombre={p.author} size={44} />
+                  <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 15, color: 'rgb(33,30,51)' }}>{p.author}</div>
+                    <div style={{ fontSize: 12.5, color: 'rgb(162,157,186)' }}>{p.cat} · {p.cuando}</div>
                   </div>
-                  <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 16, lineHeight: 1.25, color: 'rgb(33,30,51)', marginBottom: 5 }}>{p.title}</div>
-                  <div style={{ fontSize: 13, color: 'rgb(135,129,160)', lineHeight: 1.5, marginBottom: 12, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as CSSProperties}>{p.body}</div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 100 }}>
-                      {ic(chat, false, 14)}{p.replies}
-                    </span>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgb(251,233,238)', color: 'rgb(192,72,99)', fontWeight: 700, fontSize: 12, padding: '6px 12px', borderRadius: 100 }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#c04863">{heartFill}</svg>{p.likes}
-                    </span>
-                    <span style={{ marginLeft: 'auto', color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12.5 }}>Ver hilo ›</span>
-                  </div>
+                  {p.trend && <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.03em', whiteSpace: 'nowrap', color: 'rgb(33,30,51)', background: 'rgb(225,251,98)', padding: '3px 9px', borderRadius: 100, flex: 'none' }}>EN TENDENCIA</span>}
                 </div>
-                {/* La foto de la publicación, si tiene. Una miniatura y no un
-                    contador: una publicación lleva UNA foto como máximo, así que
-                    un número diría siempre 1 — y ver la foto vale más que saber
-                    que existe. */}
-                {p.photo && (
-                  <img src={p.photo} alt="" style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flex: '0 0 auto', background: 'rgb(240,238,247)', display: 'block' }} />
-                )}
+                <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
+                  <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+                    <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 16, lineHeight: 1.25, color: 'rgb(33,30,51)', marginBottom: 4 }}>{p.title}</div>
+                    <div style={{ fontSize: 13, color: 'rgb(135,129,160)', lineHeight: 1.5, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } as CSSProperties}>{p.body}</div>
+                  </div>
+                  {/* La foto de la publicación, si tiene. Una miniatura y no un
+                      contador: una publicación lleva UNA foto como máximo. */}
+                  {p.photo && (
+                    <img src={p.photo} alt="" style={{ width: 56, height: 56, borderRadius: 14, objectFit: 'cover', flex: '0 0 auto', background: 'rgb(240,238,247)', display: 'block' }} />
+                  )}
+                </div>
+                {/* Sin pastillas de color: en una lista de veinte filas, cuarenta
+                    pastillas compiten con lo que la gente vino a leer. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 18, color: 'rgb(135,129,160)', fontSize: 13, fontWeight: 600 }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{ic(chat, false, 16)}{p.replies}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {/* El mismo trazo del corazón lleno, dibujado como contorno. */}
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgb(135,129,160)" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{heartFill}</svg>{p.likes}
+                  </span>
+                </div>
               </button>
             );
           })}
