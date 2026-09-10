@@ -2751,11 +2751,31 @@ function Foros({ initialPosts, profile, misLikes, abrirHilo, onHiloAbierto }: { 
   if (vista === 'componer') return <Componer profile={profile} onVolver={() => setVista('lista')} />;
 
   return (
-    <div style={{ padding: '8px 20px 24px' }}>
+    /*
+     * El colchón de abajo (96px) es por el botón flotante: un botón que flota
+     * SIEMPRE tapa algo, y sin colchón la última publicación queda con el corazón
+     * debajo del botón para siempre. Con el colchón, se scrollea y sube.
+     */
+    <div style={{ padding: '8px 20px 96px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22 }}>Comunidad</div>
-        <button onClick={() => setVista('componer')} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, padding: '8px 14px', borderRadius: 100, cursor: 'pointer', fontFamily: '"DM Sans"' }}>+ Publicar</button>
       </div>
+      {/*
+       * Publicar, flotando. Antes estaba arriba al lado del título, y arriba se va
+       * de pantalla apenas bajás: justo cuando leíste algo y te dieron ganas de
+       * escribir, el botón no está.
+       *
+       * `fixed` y no `absolute`: el contenido vive en un contenedor con su propio
+       * scroll, así que anclado al contenedor se iría con la lista. Y queda a la
+       * derecha del menú lateral, que ocupa la izquierda.
+       */}
+      <button
+        onClick={() => setVista('componer')}
+        aria-label="Escribir una publicación"
+        style={{ position: 'fixed', right: 24, bottom: 24, width: 56, height: 56, borderRadius: 28, background: 'rgb(93,84,145)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 24px rgba(93,84,145,0.4)', zIndex: 40 }}
+      >
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z" /><line x1="14.5" y1="5.5" x2="18.5" y2="9.5" /></svg>
+      </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: '#fff', border: '1.5px solid rgb(230,227,240)', borderRadius: 14, padding: '11px 14px', marginBottom: 12 }}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#a29dba" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: '0 0 auto' }}><circle cx="11" cy="11" r="7" /><line x1="16.5" y1="16.5" x2="21" y2="21" /></svg>

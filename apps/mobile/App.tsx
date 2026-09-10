@@ -112,7 +112,7 @@ const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
 const WA_CLUB = '5491125168802';
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
-type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone' | 'image';
+type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone' | 'image' | 'lapiz';
 function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?: number; color?: string; fill?: boolean }) {
   const stroke = fill ? 'none' : color;
   const fillC = fill ? color : 'none';
@@ -131,6 +131,8 @@ function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?:
       {d === 'chat' && <Path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" {...common} />}
       {d === 'wallet' && <><Path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2" {...common} /><Rect x="2" y="7" width="20" height="12" rx="2" {...common} /><Path d="M22 11h-4a2 2 0 0 0 0 4h4" {...common} /></>}
       {d === 'tag' && <><Path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z" {...common} /><Circle cx="7.5" cy="7.5" r="1.2" {...common} /></>}
+      {/* El lápiz del botón de publicar. */}
+      {d === 'lapiz' && <><Path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z" {...common} /><Line x1="14.5" y1="5.5" x2="18.5" y2="9.5" {...common} /></>}
       {d === 'menu' && <><Line x1="4" y1="7" x2="20" y2="7" {...common} /><Line x1="4" y1="12" x2="20" y2="12" {...common} /><Line x1="4" y1="17" x2="20" y2="17" {...common} /></>}
       {d === 'bell' && <><Path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" {...common} /><Path d="M13.7 21a2 2 0 0 1-3.4 0" {...common} /></>}
       {d === 'shield' && <Path d="M12 3 5 6v5c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6z" {...common} />}
@@ -4436,12 +4438,20 @@ function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAb
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
+    /*
+     * El botón de publicar, flotando. Antes vivía arriba al lado del título, y
+     * arriba se va de pantalla apenas bajás: justo cuando leíste algo y te dieron
+     * ganas de escribir, el botón no está.
+     *
+     * El `paddingBottom` de la lista no es decoración: un botón flotante SIEMPRE
+     * tapa algo, así que el contenido necesita colchón para que la última fila
+     * pueda subir por encima. Sin eso, la última publicación queda con el corazón
+     * tapado y no hay manera de destaparla.
+     */
+    <View style={{ flex: 1 }}>
+    <ScrollView contentContainerStyle={[styles.screen, { paddingBottom: 96 }]}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <H1>Comunidad</H1>
-        <TouchableOpacity onPress={() => setVista('componer')} style={{ backgroundColor: BRAND, borderRadius: 100, paddingVertical: 9, paddingHorizontal: 14, marginTop: 4 }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 12.5 }}>+ Publicar</Text>
-        </TouchableOpacity>
       </View>
       <Sub>Preguntá, opiná y encontrá recomendaciones reales.</Sub>
 
@@ -4510,6 +4520,15 @@ function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAb
         </View>
       )}
     </ScrollView>
+    <TouchableOpacity
+      onPress={() => setVista('componer')}
+      accessibilityRole="button"
+      accessibilityLabel="Escribir una publicación"
+      style={{ position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: BRAND, alignItems: 'center', justifyContent: 'center', shadowColor: '#5D5491', shadowOpacity: 0.35, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 6 }}
+    >
+      <Ic d="lapiz" size={24} color="#fff" />
+    </TouchableOpacity>
+    </View>
   );
 }
 
