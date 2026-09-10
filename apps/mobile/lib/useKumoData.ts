@@ -4,7 +4,7 @@ import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
 /** `appliedOn`/`dueOn` van crudas además de formateadas en `sub`: el calendario las necesita para ubicar el día. */
-export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; mark: boolean; remind: boolean };
+export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; mark: boolean; remind: boolean; /** Camino del PDF o la foto en el bucket privado `carnet`. */ archivo: string | null };
 export type Pet = {
   id: string; name: string; species: string; plan: string; socio: string; photo: string;
   breed: string; age: string; microchip: string; castrado: string; odonto: string; next: string; vaccines: Vac[];
@@ -195,10 +195,10 @@ const ESTADO_REINT: Record<string, string> = {
   en_revision: 'En revisión', acreditado: 'Aprobado', aprobado: 'Aprobado', rechazado: 'Rechazado', pendiente: 'Pendiente',
 };
 
-type VacRow = { id: string; name: string; kind: VaccineKind; applied_on: string | null; due_on: string | null; status: string };
+type VacRow = { id: string; name: string; kind: VaccineKind; applied_on: string | null; due_on: string | null; status: string; file_path: string | null };
 function mapVac(v: VacRow): Vac {
   const d = daysUntil(v.due_on);
-  const base = { id: v.id, name: v.name, kind: v.kind ?? 'Vacuna', appliedOn: v.applied_on, dueOn: v.due_on };
+  const base = { id: v.id, name: v.name, kind: v.kind ?? 'Vacuna', appliedOn: v.applied_on, dueOn: v.due_on, archivo: v.file_path };
   if (v.status === 'aplicada' || v.due_on == null) {
     return { ...base, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green', mark: false, remind: false };
   }
@@ -234,7 +234,7 @@ export function useKumoData(userId: string | null) {
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes, fotosRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price)').eq('id', userId).single(),
-      supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)').eq('owner_id', userId),
+      supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),

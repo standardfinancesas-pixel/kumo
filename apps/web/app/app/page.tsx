@@ -18,9 +18,9 @@ function daysUntil(iso: string | null): number | null {
   return iso ? diasHasta(iso) : null;
 }
 
-type VaccinationRow = { id: string; name: string; kind: VaccineKind; status: string; applied_on: string | null; due_on: string | null };
+type VaccinationRow = { id: string; name: string; kind: VaccineKind; status: string; applied_on: string | null; due_on: string | null; file_path: string | null };
 function mapVac(v: VaccinationRow): Vac {
-  const base = { id: v.id, name: v.name, kind: v.kind ?? 'Vacuna', appliedOn: v.applied_on, dueOn: v.due_on };
+  const base = { id: v.id, name: v.name, kind: v.kind ?? 'Vacuna', appliedOn: v.applied_on, dueOn: v.due_on, archivo: v.file_path };
   if (v.status === 'aplicada') {
     return { ...base, sub: `Aplicada ${fmtDate(v.applied_on)}`, status: 'Al día ✓', tone: 'green' };
   }
@@ -233,7 +233,7 @@ export default async function Page() {
       .single(),
     supabase
       .from('pets')
-      .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on)')
+      .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)')
       .eq('owner_id', auth.user.id),
     supabase
       .from('reimbursements')

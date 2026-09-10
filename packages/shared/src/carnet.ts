@@ -23,12 +23,21 @@ export const VACUNA_KINDS: VaccineKind[] = ['Vacuna', 'Estudio', 'Antiparasitari
  * app y la conservaba en la web, así que la misma acción dejaba la fila distinta
  * según desde dónde la hicieras.
  */
-export type FormVacuna = { kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null };
+export type FormVacuna = {
+  kind: VaccineKind; name: string; aplicada: boolean; fecha: string | null;
+  /**
+   * El camino del PDF o la foto dentro del bucket `carnet`, o null si no adjuntó.
+   *
+   * Es el CAMINO y no una URL: el bucket es privado y las URLs firmadas vencen a
+   * los minutos, así que guardar una sería guardar un link muerto.
+   */
+  archivo: string | null;
+};
 
 /** Del formulario a una fila nueva. Acá sí se escriben las dos fechas: una es la
  *  que se cargó y la otra queda explícitamente vacía. */
 export function filaDeVacuna(v: FormVacuna): {
-  name: string; kind: VaccineKind; status: 'aplicada' | 'pendiente'; applied_on: string | null; due_on: string | null;
+  name: string; kind: VaccineKind; status: 'aplicada' | 'pendiente'; applied_on: string | null; due_on: string | null; file_path: string | null;
 } {
   return {
     name: v.name.trim(),
@@ -36,6 +45,7 @@ export function filaDeVacuna(v: FormVacuna): {
     status: v.aplicada ? 'aplicada' : 'pendiente',
     applied_on: v.aplicada ? v.fecha : null,
     due_on: v.aplicada ? null : v.fecha,
+    file_path: v.archivo,
   };
 }
 
@@ -48,7 +58,10 @@ export function filaDeVacuna(v: FormVacuna): {
  * tirar. Es el mismo criterio que "marcar aplicada", que conserva la próxima.
  */
 export function parcheDeVacuna(v: FormVacuna): Record<string, string | null> {
-  const base = { name: v.name.trim(), kind: v.kind, status: v.aplicada ? 'aplicada' : 'pendiente' };
+  /* `file_path` entra siempre, también cuando es null: quitar el adjunto es una
+     corrección tan válida como cambiarle el nombre, y si no viajara no habría
+     forma de sacar un archivo subido por error. */
+  const base = { name: v.name.trim(), kind: v.kind, status: v.aplicada ? 'aplicada' : 'pendiente', file_path: v.archivo };
   return v.aplicada ? { ...base, applied_on: v.fecha } : { ...base, due_on: v.fecha };
 }
 
@@ -59,13 +72,14 @@ export function parcheDeVacuna(v: FormVacuna): Record<string, string | null> {
  * que llega a la pantalla ya viene traducido a algo que se lee ("Al día ✓", "En 5
  * días") y no sirve para decidir.
  */
-export function formDeVacuna(v: { kind?: string | null; name: string; appliedOn: string | null; dueOn: string | null }): FormVacuna {
+export function formDeVacuna(v: { kind?: string | null; name: string; appliedOn: string | null; dueOn: string | null; archivo?: string | null }): FormVacuna {
   const aplicada = v.appliedOn != null;
   return {
     kind: (VACUNA_KINDS.includes(v.kind as VaccineKind) ? v.kind : 'Vacuna') as VaccineKind,
     name: v.name,
     aplicada,
     fecha: aplicada ? v.appliedOn : v.dueOn,
+    archivo: v.archivo ?? null,
   };
 }
 
@@ -82,7 +96,7 @@ export const KIND_ICON: Record<VaccineKind, 'shield' | 'pill' | 'plus'> = {
  * `kind` viaja para que el calendario diga qué es cada cosa: el carnet mezcla
  * vacunas, estudios y antiparasitarios, y llamarlos todos "vacuna" era mentira.
  */
-export type CalVac = { id: string; name: string; kind?: string; status: string; appliedOn: string | null; dueOn: string | null };
+export type CalVac = { id: string; name: string; kind?: string; status: string; appliedOn: string | null; dueOn: string | null; archivo?: string | null };
 
 /** Qué marca un día: ya aplicada, próxima dentro de 3 días, o próxima más lejana. */
 export type CalMark = 'aplicada' | 'pronto' | 'pendiente';

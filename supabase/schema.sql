@@ -188,7 +188,10 @@ create table if not exists vaccinations (
   status      vaccine_status not null default 'pendiente',
   applied_on  date,
   due_on      date,
-  next_on     date
+  next_on     date,
+  -- El PDF o la foto del estudio, en el bucket privado `carnet`. Se guarda el
+  -- camino y no una URL: las firmadas vencen (ver la migración 20260910160000).
+  file_path   text
 );
 
 -- Bloquear a una persona en el foro: esconde de TU foro lo que escribió, sin

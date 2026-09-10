@@ -653,8 +653,11 @@ function CalendarioPagina({ vacs, onVolver }: { vacs: Vac[]; onVolver: () => voi
  * que se olvida de un campo cuando el otro cambia; y para el socio, corregir es la
  * misma tarea que cargar, con los datos ya puestos.
  */
-function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
+function CarnetSheet({ petName, ownerId, vac, onClose, onSave, onBorrar }: {
   petName: string;
+  /** El dueño, para la carpeta del adjunto: la RLS del bucket exige que la
+   *  primera carpeta sea su id. */
+  ownerId: string;
   /** La fila que se está corrigiendo. Sin esto, es un alta. */
   vac?: Vac | null;
   onClose: () => void;
@@ -673,7 +676,24 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
   const mesInicial = inicial?.fecha ? new Date(`${inicial.fecha}T12:00:00`) : hoy;
   const [pMes, setPMes] = useState({ y: mesInicial.getFullYear(), m: mesInicial.getMonth() });
   const [busy, setBusy] = useState(false);
-  const puedeGuardar = name.trim().length > 0 && !busy;
+  /** El estudio escaneado. En la app son fotos: elegir un PDF necesita un módulo
+   *  nativo que no viaja por OTA, así que eso llega con el próximo build. */
+  const [archivo, setArchivo] = useState<string | null>(inicial?.archivo ?? null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [errorArchivo, setErrorArchivo] = useState('');
+  const puedeGuardar = name.trim().length > 0 && !busy && !subiendo;
+
+  const adjuntar = async () => {
+    setSubiendo(true);
+    setErrorArchivo('');
+    /* Al bucket `carnet`, que es PRIVADO: un análisis es un dato de salud y no
+       puede quedar detrás de una URL pública. Se guarda el camino, no la URL. */
+    const r = await elegirYSubirFoto(ownerId, 'estudio-', 'carnet');
+    if ('cancelado' in r) { setSubiendo(false); return; }
+    if ('error' in r) { setErrorArchivo(r.error); setSubiendo(false); return; }
+    setArchivo(r.path);
+    setSubiendo(false);
+  };
   const moverP = (delta: number) => setPMes(({ y, m }) => {
     const d = new Date(y, m + delta, 1);
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -682,7 +702,7 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
   const guardar = async () => {
     if (!puedeGuardar) return;
     setBusy(true);
-    await onSave({ kind, name: name.trim(), aplicada, fecha });
+    await onSave({ kind, name: name.trim(), aplicada, fecha, archivo });
   };
 
   return (
@@ -737,6 +757,23 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
         </View>
       )}
 
+      {/* El papel del estudio. Opcional: el carnet sirve igual sin él, y obligarlo
+          convertiría "anotar la vacuna" en "buscar el certificado". */}
+      <SheetLabel>Estudio o certificado · opcional</SheetLabel>
+      <TouchableOpacity onPress={archivo ? () => setArchivo(null) : adjuntar} disabled={subiendo} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, padding: 12, marginBottom: 6 }}>
+        <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center' }}>
+          <Ic d="image" size={19} color={BRAND} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 13, fontWeight: '600', color: INK }}>
+            {subiendo ? 'Subiendo…' : archivo ? 'Archivo adjunto' : 'Adjuntar una foto'}
+          </Text>
+          <Text style={{ fontSize: 11, color: '#a29dba' }}>{archivo ? 'Tocá para quitarlo' : 'Queda guardado en el historial'}</Text>
+        </View>
+        <Text style={{ color: archivo ? '#963c34' : BRAND, fontSize: 20, fontWeight: '700' }}>{archivo ? '×' : '+'}</Text>
+      </TouchableOpacity>
+      {!!errorArchivo && <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 10 }}>{errorArchivo}</Text>}
+
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
         <TouchableOpacity onPress={onClose} style={{ backgroundColor: colors.violet[100], borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, alignItems: 'center' }}>
           <Text style={{ color: BRAND, fontWeight: '700', fontSize: 15 }}>Cancelar</Text>
@@ -759,6 +796,13 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
 
 function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pets: Pet[]; petIdx: number; setPetIdx: (i: number) => void; contacts: EmergencyContact[]; userId: string; reload: () => void; go: (t: Screen) => void }) {
   const pet = pets[petIdx];
+
+  /* El bucket es privado: la dirección se firma en el momento y vence a los 5
+     minutos, igual que el comprobante del reintegro. */
+  const abrirEstudio = async (path: string) => {
+    const { data } = await supabase.storage.from('carnet').createSignedUrl(path, 300);
+    if (data?.signedUrl) void Linking.openURL(data.signedUrl);
+  };
   const [fotoCarnet, setFotoCarnet] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -881,6 +925,12 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
                 <Text style={{ fontWeight: '600', fontSize: 14, color: INK }}>{v.name}</Text>
                 <Text style={{ fontSize: 12, color: colors.violet[400] }}>{v.sub}</Text>
                 {v.remind && <Text style={{ fontSize: 11, color: '#c0392b', fontWeight: '600', marginTop: 3 }}>⏰ Recordatorio: aplicala pronto</Text>}
+                {/* El estudio adjunto. Tocarlo NO abre la hoja de edición. */}
+                {v.archivo ? (
+                  <TouchableOpacity onPress={() => abrirEstudio(v.archivo!)} style={{ paddingTop: 3 }}>
+                    <Text style={{ fontSize: 11.5, fontWeight: '600', color: BRAND }}>Ver estudio adjunto ›</Text>
+                  </TouchableOpacity>
+                ) : null}
               </View>
               <View style={{ alignItems: 'flex-end', gap: 6 }}>
                 <Text style={{ color: tone.fg, fontWeight: '700', fontSize: 12 }}>{v.status}</Text>
@@ -970,6 +1020,7 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
     {(adding || editando) && (
       <CarnetSheet
         petName={pet.name}
+        ownerId={userId}
         vac={editando}
         onClose={() => { setAdding(false); setEditando(null); }}
         onSave={guardarVac}

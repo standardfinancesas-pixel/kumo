@@ -37,7 +37,9 @@ function bytesDeBase64(b64: string): Uint8Array {
 
 const MIME: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif' };
 
-export type ResultadoFoto = { url: string } | { error: string } | { cancelado: true };
+/** `path` además de `url`: en un bucket PRIVADO la URL pública no sirve —hay que
+ *  firmarla en el momento de abrirla— y lo que se guarda en la base es el camino. */
+export type ResultadoFoto = { url: string; path: string } | { error: string } | { cancelado: true };
 
 /**
  * Una foto elegida. Lleva el base64 ADEMÁS de la uri, y no es redundancia:
@@ -140,7 +142,7 @@ export async function elegirFoto(): Promise<ResultadoElegir> {
 
 /** El bucket destino. Son dos y no uno porque una cara y un perro no son el mismo
  *  dato: separados se pueden tratar distinto el día que haga falta. */
-export type BucketFoto = 'pet-photos' | 'member-photos';
+export type BucketFoto = 'pet-photos' | 'member-photos' | 'carnet';
 
 export async function elegirYSubirFoto(ownerId: string, prefijo = '', bucket: BucketFoto = 'pet-photos'): Promise<ResultadoFoto> {
   const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -173,5 +175,5 @@ export async function elegirYSubirFoto(ownerId: string, prefijo = '', bucket: Bu
   const { error: subida } = await supabase.storage.from(bucket).upload(path, bytes, { contentType: tipo });
   if (subida) return { error: 'No pudimos subir la foto. Probá de nuevo.' };
 
-  return { url: supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl };
+  return { url: supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl, path };
 }

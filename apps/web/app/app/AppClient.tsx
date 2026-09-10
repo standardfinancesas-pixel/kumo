@@ -99,7 +99,7 @@ const navDe = (pago: boolean) =>
 
 /* ── Datos (mock del prototipo) ────────────────────────────────── */
 /** `appliedOn`/`dueOn` van crudas además de formateadas en `sub`: el calendario las necesita para ubicar el día. */
-export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; reminder?: string; mark?: boolean };
+export type Vac = { id: string; name: string; kind: VaccineKind; sub: string; status: string; tone: 'green' | 'lime' | 'amber'; appliedOn: string | null; dueOn: string | null; reminder?: string; mark?: boolean; /** Camino del PDF o la foto en el bucket privado `carnet`. */ archivo: string | null };
 /** El sello del carnet: lo decide `selloCarnet` de shared, no la pantalla. */
 export type SelloVM = { texto: string; tono: 'ok' | 'neutro' | 'alerta' };
 /** `plan`, `odonto` y `sello` son datos del SOCIO, no de la mascota: el carnet los
@@ -703,6 +703,13 @@ const toneCfg = {
 
 function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number; setPetIdx: (i: number) => void; pets: Pet[]; profile: Profile; contacts: EmergencyContact[] }) {
   const router = useRouter();
+
+  /* El bucket es privado, así que la dirección se firma en el momento y vence a
+     los 5 minutos. Guardar una URL firmada sería guardar un link muerto. */
+  const abrirEstudio = async (path: string) => {
+    const { data } = await supabase.storage.from('carnet').createSignedUrl(path, 300);
+    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener');
+  };
   const pet = pets[petIdx] ?? pets[0];
   const [showCal, setShowCal] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -913,6 +920,13 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
                 <div style={{ fontWeight: 600, fontSize: 14 }}>{v.name}</div>
                 <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{v.sub}</div>
                 {!done && v.reminder && <div style={{ fontSize: 11, color: 'rgb(111,154,31)', fontWeight: 700, marginTop: 2 }}>{v.reminder}</div>}
+                {/* El estudio adjunto. El clic no puede subir a la fila: la fila
+                    abre la hoja de edición, y abrir el PDF no es editar. */}
+                {v.archivo && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); void abrirEstudio(v.archivo!); }} style={{ background: 'none', border: 'none', padding: '3px 0 0', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 11.5, cursor: 'pointer', fontFamily: '"DM Sans"' }}>
+                    Ver estudio adjunto ›
+                  </button>
+                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
                 <span style={{ color: tone.status, fontWeight: 700, fontSize: 12 }}>{v.status}</span>
@@ -940,6 +954,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
       {(showAdd || editando) && (
         <CarnetSheet
           petName={pet.name}
+          ownerId={profile.id}
           vac={editando}
           onClose={() => { setShowAdd(false); setEditando(null); }}
           onSave={guardarVac}
@@ -4401,8 +4416,11 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
  * que se olvida de un campo cuando el otro cambia; y para el socio, corregir es la
  * misma tarea que cargar, con los datos ya puestos.
  */
-function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
+function CarnetSheet({ petName, ownerId, vac, onClose, onSave, onBorrar }: {
   petName: string;
+  /** El dueño, para la carpeta del adjunto: la RLS del bucket exige que la
+   *  primera carpeta sea su id. */
+  ownerId: string;
   /** La fila que se está corrigiendo. Sin esto, es un alta. */
   vac?: Vac | null;
   onClose: () => void;
@@ -4421,7 +4439,33 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
   const mesInicial = inicial?.fecha ? new Date(`${inicial.fecha}T12:00:00`) : hoy;
   const [pMes, setPMes] = useState({ y: mesInicial.getFullYear(), m: mesInicial.getMonth() });
   const [busy, setBusy] = useState(false);
-  const puedeGuardar = name.trim().length > 0 && !busy;
+  /** El estudio escaneado, foto o PDF. Es el camino dentro del bucket, no una URL:
+   *  el bucket es privado y las URLs firmadas vencen. */
+  const [archivo, setArchivo] = useState<string | null>(inicial?.archivo ?? null);
+  const [subiendo, setSubiendo] = useState(false);
+  const [errorArchivo, setErrorArchivo] = useState('');
+  const puedeGuardar = name.trim().length > 0 && !busy && !subiendo;
+
+  /*
+   * El PDF NO pasa por `prepararFoto`: esa función dibuja la imagen en un canvas
+   * para achicarla, y un PDF no se puede dibujar. Se sube tal cual, con el techo
+   * de 10 MB del bucket como límite.
+   */
+  const adjuntar = async (elegido?: File) => {
+    if (!elegido) return;
+    setErrorArchivo('');
+    const esPdf = elegido.type === 'application/pdf';
+    const listo = esPdf ? { file: elegido } : await prepararFoto(elegido);
+    if ('error' in listo) { setErrorArchivo(listo.error); return; }
+    const f = listo.file;
+    setSubiendo(true);
+    const path = rutaFoto(ownerId, f.name.split('.').pop() ?? (esPdf ? 'pdf' : 'jpg'), 'estudio-');
+    const { error: subida } = await supabase.storage.from('carnet').upload(path, f, { contentType: f.type });
+    if (subida) { setErrorArchivo('No pudimos subir el archivo. Probá de nuevo.'); setSubiendo(false); return; }
+    setArchivo(path);
+    setSubiendo(false);
+  };
+
   const moverP = (delta: number) => setPMes(({ y, m }) => {
     const d = new Date(y, m + delta, 1);
     return { y: d.getFullYear(), m: d.getMonth() };
@@ -4430,7 +4474,7 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
   const guardar = async () => {
     if (!puedeGuardar) return;
     setBusy(true);
-    await onSave({ kind, name: name.trim(), aplicada, fecha });
+    await onSave({ kind, name: name.trim(), aplicada, fecha, archivo });
   };
 
   return (
@@ -4475,6 +4519,26 @@ function CarnetSheet({ petName, vac, onClose, onSave, onBorrar }: {
           </div>
         </div>
       )}
+
+      {/* El papel del estudio. Opcional: el carnet sirve igual sin él, y obligarlo
+          convertiría "anotar la vacuna" en "buscar el certificado". */}
+      <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'rgb(91,86,112)', marginBottom: 6 }}>Estudio o certificado · opcional</label>
+      {archivo ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px solid rgb(230,227,240)', borderRadius: 14, padding: 12, marginBottom: 6 }}>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>Archivo adjunto</div>
+          <button type="button" onClick={() => setArchivo(null)} style={{ background: 'none', border: 'none', color: 'rgb(150,60,52)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>Quitar</button>
+        </div>
+      ) : (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 12, border: '1.5px solid rgb(230,227,240)', borderRadius: 14, padding: 12, marginBottom: 6, cursor: subiendo ? 'default' : 'pointer' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>{subiendo ? 'Subiendo…' : 'Adjuntar foto o PDF'}</div>
+            <div style={{ fontSize: 11.5, color: 'rgb(162,157,186)' }}>Queda guardado en el historial</div>
+          </div>
+          <span style={{ color: 'rgb(93,84,145)', fontSize: 20, fontWeight: 700 }}>+</span>
+          <input type="file" accept="image/*,.pdf" disabled={subiendo} onChange={(e) => { void adjuntar(e.target.files?.[0]); e.target.value = ''; }} style={{ display: 'none' }} />
+        </label>
+      )}
+      {errorArchivo && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13, borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>{errorArchivo}</div>}
 
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         <button onClick={onClose} style={{ ...sheetBtn(false), flex: 'none', padding: '14px 20px' }}>Cancelar</button>
