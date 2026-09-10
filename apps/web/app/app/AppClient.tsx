@@ -2774,7 +2774,8 @@ function Foros({ initialPosts, profile, misLikes, abrirHilo, onHiloAbierto }: { 
         aria-label="Escribir una publicación"
         style={{ position: 'fixed', right: 24, bottom: 24, width: 56, height: 56, borderRadius: 28, background: 'rgb(93,84,145)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 24px rgba(93,84,145,0.4)', zIndex: 40 }}
       >
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z" /><line x1="14.5" y1="5.5" x2="18.5" y2="9.5" /></svg>
+        {/* Un solo trazo cerrado: a 24 px, cada línea fina de más se empasta. */}
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" /></svg>
       </button>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 9, background: '#fff', border: '1.5px solid rgb(230,227,240)', borderRadius: 14, padding: '11px 14px', marginBottom: 12 }}>

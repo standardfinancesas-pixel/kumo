@@ -131,8 +131,10 @@ function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?:
       {d === 'chat' && <Path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" {...common} />}
       {d === 'wallet' && <><Path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2" {...common} /><Rect x="2" y="7" width="20" height="12" rx="2" {...common} /><Path d="M22 11h-4a2 2 0 0 0 0 4h4" {...common} /></>}
       {d === 'tag' && <><Path d="M12.6 2.6A2 2 0 0 0 11.2 2H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.7 8.7a2.4 2.4 0 0 0 3.4 0l6.6-6.6a2.4 2.4 0 0 0 0-3.4z" {...common} /><Circle cx="7.5" cy="7.5" r="1.2" {...common} /></>}
-      {/* El lápiz del botón de publicar. */}
-      {d === 'lapiz' && <><Path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z" {...common} /><Line x1="14.5" y1="5.5" x2="18.5" y2="9.5" {...common} /></>}
+      {/* El lápiz del botón de publicar. Un solo trazo cerrado y sin la línea del
+          extremo: a 24 px, cada trazo fino de más se empasta y el dibujo se lee
+          como un borrón. La primera versión tenía dos y se veía mal. */}
+      {d === 'lapiz' && <Path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5z" {...common} />}
       {d === 'menu' && <><Line x1="4" y1="7" x2="20" y2="7" {...common} /><Line x1="4" y1="12" x2="20" y2="12" {...common} /><Line x1="4" y1="17" x2="20" y2="17" {...common} /></>}
       {d === 'bell' && <><Path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" {...common} /><Path d="M13.7 21a2 2 0 0 1-3.4 0" {...common} /></>}
       {d === 'shield' && <Path d="M12 3 5 6v5c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6z" {...common} />}
