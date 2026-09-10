@@ -8,6 +8,7 @@
  */
 
 import { diasHasta, diaISO } from './fechas';
+import { nombreDePila } from './avatar';
 
 /** Cuántos días antes se avisa un vencimiento del carnet. Dos: alcanza para
  *  conseguir turno y no tan temprano como para olvidarse. Lo usa también el cron
@@ -62,6 +63,33 @@ export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield' |
   'cuota-ok': { ic: 'wallet', chip: '#e2f5ea', color: '#2f8f5b' },
   'cuota-no': { ic: 'wallet', chip: '#fbe8ef', color: '#b0483f' },
 };
+
+/**
+ * Cómo se nombra a un grupo de personas en un aviso del foro.
+ *
+ * Una sola función para los "me gusta" y para las respuestas, porque antes cada
+ * uno armaba la frase a su manera y para la MISMA situación —dos personas— una
+ * decía "A 2 personas" y la otra "María del Carmen Lozano y 1 persona más". Dos
+ * formas distintas de contar lo mismo, una arriba de la otra en la lista, es lo
+ * que hace que la campanita se vea desprolija.
+ *
+ * Siempre empieza por un nombre y no por un número: "A María" dice más que "A 2
+ * personas", y es lo que permite reconocer de qué hilo se trata sin abrirlo. Y va
+ * el nombre de pila, igual que en el foro.
+ *
+ * Con dos personas dice "y alguien más" y no "y 1 persona más": es el caso más
+ * común y contar de a uno ahí suena a formulario.
+ *
+ * Se exporta porque el push de los "me gusta" lo manda un cron del servidor, que
+ * arma su propio mensaje: si no compartieran esta función, el mismo hecho se
+ * contaría distinto según lo leas en el teléfono o adentro de la app.
+ */
+export function quienes(autor: string, personas: number): string {
+  const nombre = nombreDePila(autor);
+  if (personas <= 1) return nombre;
+  if (personas === 2) return `${nombre} y alguien más`;
+  return `${nombre} y ${personas - 1} personas más`;
+}
 
 const money = (n: number) => '$' + n.toLocaleString('es-AR');
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
@@ -230,9 +258,7 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
       id: `foro-resp-${ultimo.postId}`,
       kind: 'foro-respuesta',
       title: 'Respondieron tu publicación',
-      body: personas === 1
-        ? `${ultimo.autor} respondió "${ultimo.postTitle}".`
-        : `${ultimo.autor} y ${personas - 1} ${personas === 2 ? 'persona más' : 'personas más'} respondieron "${ultimo.postTitle}".`,
+      body: `${quienes(ultimo.autor, personas)} ${personas === 1 ? 'respondió' : 'respondieron'} "${ultimo.postTitle}".`,
       date: ultimo.createdAt,
       to: 'foros',
       targetId: ultimo.postId,
@@ -250,9 +276,7 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
          gustó" abajo se contradicen dentro del mismo aviso. El de respuestas no
          tiene el problema porque "Respondieron" sirve para uno o para veinte. */
       title: personas === 1 ? 'Le gustó lo que escribiste' : 'Les gustó lo que escribiste',
-      body: personas === 1
-        ? `A ${ultimo.autor} le gustó ${donde} "${ultimo.postTitle}".`
-        : `A ${personas} personas les gustó ${donde} "${ultimo.postTitle}".`,
+      body: `A ${quienes(ultimo.autor, personas)} ${personas === 1 ? 'le' : 'les'} gustó ${donde} "${ultimo.postTitle}".`,
       date: ultimo.createdAt,
       to: 'foros',
       targetId: ultimo.postId,

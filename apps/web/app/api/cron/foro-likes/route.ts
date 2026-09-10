@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
+import { quienes } from '@kumo/shared';
 import { mandarPush, CON_ACCESO } from '@/lib/push';
 
 /**
@@ -75,12 +76,17 @@ export async function GET(req: Request) {
       .from('post_likes')
       .select('member_id, created_at, community_posts!inner(id, title, author_id)')
       .gte('created_at', desde)
-      .lt('created_at', hasta),
+      .lt('created_at', hasta)
+      /* Ordenados por fecha: el aviso nombra a UNO del grupo y tiene que ser el
+         más reciente, igual que hace `buildNotifs`. Sin orden, el nombre que
+         aparecía dependía de cómo viniera la consulta. */
+      .order('created_at', { ascending: false }),
     svc
       .from('answer_likes')
       .select('member_id, created_at, community_answers!inner(author_id, community_posts!inner(id, title))')
       .gte('created_at', desde)
-      .lt('created_at', hasta),
+      .lt('created_at', hasta)
+      .order('created_at', { ascending: false }),
   ]);
 
   /**
@@ -143,15 +149,19 @@ export async function GET(req: Request) {
    * adentro de la app ya venía nombrando (`avisos_del_foro` devuelve el autor), así
    * que hasta ahora el mismo me gusta se contaba distinto según dónde lo vieras.
    */
-  const solos = new Set<string>();
+  /* Uno por GRUPO y no sólo cuando hay una persona sola: desde que el aviso dice
+     "A María y alguien más", todos los grupos necesitan un nombre adelante. Sigue
+     siendo una consulta y acotada por la cantidad de grupos, no por la de socios. */
+  const caras = new Set<string>();
   for (const { id } of conAcceso ?? []) {
     for (const g of porDueno.get(id as string)?.values() ?? []) {
-      if (g.personas.size === 1) solos.add([...g.personas][0]!);
+      const primero = [...g.personas][0];
+      if (primero) caras.add(primero);
     }
   }
   const nombres = new Map<string, string>();
-  if (solos.size > 0) {
-    const { data: perfiles } = await svc.from('profiles').select('id, full_name').in('id', [...solos]);
+  if (caras.size > 0) {
+    const { data: perfiles } = await svc.from('profiles').select('id, full_name').in('id', [...caras]);
     for (const pr of perfiles ?? []) {
       if (pr.full_name) nombres.set(pr.id as string, pr.full_name as string);
     }
@@ -170,13 +180,16 @@ export async function GET(req: Request) {
          me gusta fue a una respuesta: es lo que ubica el hilo. Por eso el texto
          cambia la preposición —"tu respuesta EN «Aura»"— y no sólo el sustantivo. */
       const donde = sobre === 'respuesta' ? 'tu respuesta en' : 'tu publicación';
-      const quien = n === 1 ? nombres.get([...personas][0]!) ?? 'alguien' : '';
+      /* La MISMA frase que la lista de adentro de la app (`quienes`, en
+         @kumo/shared). Antes el push decía "A 2 personas" y la campanita "María y
+         alguien más" para el mismo me gusta. */
+      const quien = nombres.get([...personas][0]!) ?? 'Alguien';
       await mandarPush(
         tokens.map((t) => t.token as string),
         /* El título concuerda con el cuerpo: "Le gustó" arriba y "a 3 personas les
            gustó" abajo se contradicen dentro del mismo aviso. */
         n === 1 ? 'Le gustó lo que escribiste' : 'Les gustó lo que escribiste',
-        n === 1 ? `A ${quien} le gustó ${donde} "${titulo}".` : `A ${n} personas les gustó ${donde} "${titulo}".`,
+        `A ${quienes(quien, n)} ${n === 1 ? 'le' : 'les'} gustó ${donde} "${titulo}".`,
         { pantalla: 'foros' },
       );
       avisados++;

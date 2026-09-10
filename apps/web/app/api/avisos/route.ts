@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { hoyISO } from '@kumo/shared';
+import { hoyISO, nombreDePila } from '@kumo/shared';
 import { getServiceClient } from '@/lib/supabase-service';
 import { mandarPush } from '@/lib/push';
 import { quienPide } from '@/lib/quien-pide';
@@ -28,7 +28,6 @@ function fechaLegible(iso: string): string {
   return `${d} ${MESES[(m ?? 1) - 1]} ${a}`;
 }
 
-const nombreDePila = (nombre: string | null) => nombre?.trim().split(' ')[0] || 'Hola';
 
 type Pedido = { tipo?: string; id?: string };
 
@@ -46,7 +45,9 @@ export async function POST(req: Request) {
     .eq('id', quien.id)
     .single();
   if (!perfil?.email) return NextResponse.json({ error: 'Sin perfil.' }, { status: 404 });
-  const firstName = nombreDePila(perfil.full_name);
+  /* 'Hola' de respaldo porque esto encabeza un mail: "Hola," sin nombre se lee
+     bien, "Alguien," no. */
+  const firstName = nombreDePila(perfil.full_name, 'Hola');
 
   if (tipo === 'reintegro-recibido') {
     if (!id) return NextResponse.json({ error: 'Falta el id.' }, { status: 400 });
@@ -104,7 +105,10 @@ export async function POST(req: Request) {
       await mandarPush(
         tokens.map((t) => t.token as string),
         'Respondieron tu publicación',
-        `${resp.author_name || 'Alguien'} respondió "${post.title}".`,
+        /* Nombre de pila, igual que el foro y que la campanita: el aviso decía
+           "María del Carmen Lozano respondió" sobre alguien que en pantalla se
+           llama "María". */
+        `${nombreDePila(resp.author_name as string | null)} respondió "${post.title}".`,
         { pantalla: 'foros' },
       );
     }
