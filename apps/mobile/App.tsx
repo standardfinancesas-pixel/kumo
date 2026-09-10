@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, createElement, type ReactNode } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { Alert, AppState, Modal, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Alert, AppState, KeyboardAvoidingView, Modal, PanResponder, ScrollView, StyleSheet, Text as RNText, View, TouchableOpacity, TextInput, Pressable, Image, ImageBackground, ImageSourcePropType, Platform, TextProps, Linking, ActivityIndicator } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Updates from 'expo-updates';
 import Svg, { Path, Circle, Line, Rect } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
@@ -4015,7 +4015,7 @@ function FotoGrande({ uri, alt = 'Foto', onCerrar }: { uri: string; alt?: string
   );
 }
 
-function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPost; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void; onVolver: () => void }) {
+function Hilo({ p, userId, firstName, miFoto, misLikes, reload, onVolver }: { p: ForumPost; userId: string; firstName: string; miFoto: string | null; misLikes: { posts: string[]; answers: string[] }; reload: () => void; onVolver: () => void }) {
   const tone = CAT_TONE[p.cat] ?? { bg: colors.violet[100], fg: BRAND };
   const [fotoAbierta, setFotoAbierta] = useState<string | null>(null);
   const [texto, setTexto] = useState('');
@@ -4189,10 +4189,26 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
     );
   };
 
+  /* El alto de la franja de gestos. Sin compensarlo, el teclado tapa la caja: el
+     contenedor termina ARRIBA del borde de la pantalla y `KeyboardAvoidingView`
+     calcula como si terminara abajo. */
+  const insets = useSafeAreaInsets();
   const nPost = p.likes + (likePost && !misLikes.posts.includes(p.id) ? 1 : 0) - (!likePost && misLikes.posts.includes(p.id) ? 1 : 0);
 
   return (
-    <ScrollView contentContainerStyle={styles.screen}>
+    /*
+     * La caja de comentario queda FIJA abajo, como en el diseño del cliente: es lo
+     * primero que se busca al abrir un hilo, y al final del contenido aparecía
+     * recién después de scrollear todas las respuestas.
+     *
+     * `behavior="padding"` en LAS DOS plataformas, y no solo en iOS. Desde el SDK
+     * 53 Android dibuja edge-to-edge de forma obligatoria: la ventana ya NO se
+     * achica sola cuando sube el teclado, así que sin `behavior` la caja queda
+     * debajo del teclado y no se ve lo que se escribe. Verificado en el emulador:
+     * con `undefined` la caja desaparecía de la pantalla.
+     */
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={insets.bottom}>
+    <ScrollView contentContainerStyle={styles.screen} keyboardShouldPersistTaps="handled">
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <BackLink label="Comunidad" onPress={onVolver} />
         {p.propia ? (
@@ -4306,21 +4322,28 @@ function Hilo({ p, userId, firstName, misLikes, reload, onVolver }: { p: ForumPo
         ) : null}
       </View>
 
-      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginTop: 18, backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 100, paddingLeft: 16, padding: 5 }}>
-        <TextInput value={texto} onChangeText={setTexto} placeholder="Escribí una respuesta…" placeholderTextColor={colors.violet[400]} style={{ flex: 1, fontSize: 14, color: INK, paddingVertical: 6 }} />
-        <TouchableOpacity disabled={busy || !texto.trim()} onPress={responder} style={{ width: 38, height: 38, borderRadius: 19, overflow: 'hidden', backgroundColor: texto.trim() ? BRAND : '#c7c1de', alignItems: 'center', justifyContent: 'center' }}>
-          <Svg width={18} height={18} viewBox="0 0 24 24">
-            <Line x1="12" y1="19" x2="12" y2="5" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
-            <Path d="M5 12l7-7 7 7" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </TouchableOpacity>
-      </View>
     </ScrollView>
+      {/* Fuera del ScrollView: acá abajo se queda, con la cara de quien escribe
+          al lado, como en el diseño. El borde de arriba la despega del contenido
+          que pasa por detrás al scrollear. */}
+      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: colors.violet[200] }}>
+        <Avatar foto={miFoto} nombre={firstName} size={34} />
+        <View style={{ flex: 1, flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#fff', borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 100, paddingLeft: 16, padding: 5 }}>
+          <TextInput value={texto} onChangeText={setTexto} placeholder="Escribí una respuesta…" placeholderTextColor={colors.violet[400]} style={{ flex: 1, fontSize: 14, color: INK, paddingVertical: 6 }} />
+          <TouchableOpacity disabled={busy || !texto.trim()} onPress={responder} style={{ width: 38, height: 38, borderRadius: 19, overflow: 'hidden', backgroundColor: texto.trim() ? BRAND : '#c7c1de', alignItems: 'center', justifyContent: 'center' }}>
+            <Svg width={18} height={18} viewBox="0 0 24 24">
+              <Line x1="12" y1="19" x2="12" y2="5" stroke="#fff" strokeWidth={2} strokeLinecap="round" />
+              <Path d="M5 12l7-7 7 7" fill="none" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   );
 }
 
 /* ── Sub-pantalla: Foros ───────────────────────────────────────── */
-function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAbierto }: { posts: ForumPost[]; userId: string; firstName: string; misLikes: { posts: string[]; answers: string[] }; reload: () => void; abrirHilo?: string | null; onHiloAbierto?: () => void }) {
+function Foros({ posts, userId, firstName, miFoto, misLikes, reload, abrirHilo, onHiloAbierto }: { posts: ForumPost[]; userId: string; firstName: string; /** La foto del socio, para la caja de comentario del hilo. */ miFoto: string | null; misLikes: { posts: string[]; answers: string[] }; reload: () => void; abrirHilo?: string | null; onHiloAbierto?: () => void }) {
   const [vista, setVista] = useState<'lista' | 'componer'>('lista');
   const [hiloId, setHiloId] = useState<string | null>(null);
   /* Llegó desde una notificación: se abre esa publicación y no la lista. Se avisa
@@ -4349,7 +4372,7 @@ function Foros({ posts, userId, firstName, misLikes, reload, abrirHilo, onHiloAb
   const list = posts.filter((p) => (filtro === 'Todos' || p.cat === filtro) && (!ql || `${p.title} ${p.body} ${p.author}`.toLowerCase().includes(ql)));
 
   const hilo = posts.find((p) => p.id === hiloId);
-  if (hilo) return <Hilo p={hilo} userId={userId} firstName={firstName} misLikes={misLikes} reload={reload} onVolver={() => setHiloId(null)} />;
+  if (hilo) return <Hilo p={hilo} userId={userId} firstName={firstName} miFoto={miFoto} misLikes={misLikes} reload={reload} onVolver={() => setHiloId(null)} />;
 
   const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
 
@@ -4968,7 +4991,7 @@ export default function App() {
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}
-          {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} misLikes={data.misLikes} reload={reload} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
+          {pantalla === 'foros' && <Foros posts={data.posts} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} miFoto={data.profile?.foto ?? null} misLikes={data.misLikes} reload={reload} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
           {pantalla === 'perfil' && <Perfil profile={data.profile} pagos={data.pagos} bloqueados={data.bloqueados} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}

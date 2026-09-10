@@ -2600,11 +2600,23 @@ function Hilo({ p, profile, misLikes, onVolver }: { p: ForumPost; profile: Profi
         )}
       </div>
 
-      <form onSubmit={responder} style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 18, background: '#fff', border: '1.5px solid rgb(230,227,240)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
+      {/*
+        * La caja queda pegada abajo mientras se lee el hilo: es lo primero que se
+        * busca al entrar, y al final del contenido aparecía recién después de
+        * scrollear todas las respuestas.
+        *
+        * `sticky` y no `fixed`: así se queda dentro de la columna de contenido y
+        * no se monta sobre el menú lateral. El fondo y el margen negativo son para
+        * que las respuestas pasen por detrás sin asomar por los costados.
+        */}
+      <form onSubmit={responder} style={{ display: 'flex', gap: 9, alignItems: 'center', position: 'sticky', bottom: 0, marginTop: 18, marginLeft: -20, marginRight: -20, padding: '12px 20px', background: '#fff', borderTop: '1px solid rgb(238,236,245)' }}>
+        <Avatar foto={profile.foto} nombre={profile.firstName} size={34} />
+        <div style={{ flex: 1, display: 'flex', gap: 8, alignItems: 'center', background: '#fff', border: '1.5px solid rgb(230,227,240)', borderRadius: 100, padding: '5px 5px 5px 16px' }}>
         <input value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Escribí una respuesta…" style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'none', color: 'rgb(33,30,51)', fontFamily: '"DM Sans"' }} />
         <button type="submit" disabled={busy || !texto.trim()} aria-label="Enviar respuesta" style={{ width: 38, height: 38, borderRadius: '50%', background: texto.trim() ? 'rgb(93,84,145)' : 'rgb(199,193,222)', border: 'none', cursor: texto.trim() ? 'pointer' : 'default', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 'none', color: '#fff' }}>
           {ic(sendIcon, false, 18)}
         </button>
+        </div>
       </form>
     </div>
   );
