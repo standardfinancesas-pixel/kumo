@@ -37,11 +37,13 @@ const listar = (xs: string[]) =>
 /**
  * El WhatsApp del club: es a dónde se manda a quien quiera contestar un mail.
  *
- * El remitente no recibe. Un dominio verificado en Resend sirve para mandar, no
- * para recibir: sin MX, `hola@kumo.pet` no es una casilla y toda respuesta
- * rebota. Así que "respondé este mail" era una promesa que el producto no podía
- * cumplir, y el único canal que sí existe es el WhatsApp que el admin carga en
- * `club_settings`.
+ * Se manda al WhatsApp y no a "respondé este mail" por una razón que hasta el
+ * 10/09/2026 era absoluta: el dominio no tenía MX, así que `hola@kumo.pet` no era
+ * una casilla y toda respuesta rebotaba. Desde ese día `kumo.pet` sí recibe
+ * (MX a `smtp.google.com`, casilla `info@kumo.pet` en Google Workspace), o sea
+ * que la puerta existe. El WhatsApp se mantiene porque es el canal que el club
+ * atiende de verdad; si algún día quieren pasar a "respondé este mail", ahora se
+ * puede, y es una decisión del club, no una limitación técnica.
  *
  * Se lee en cada envío y no se cachea: son mails puntuales, y si el club cambia
  * el número, mandar el viejo es peor que la consulta de más. La tabla es pública
@@ -66,10 +68,11 @@ async function whatsappDelClub(): Promise<string> {
  * Sale de `club_settings` y no de una constante por lo mismo que el WhatsApp: si
  * el club cambia de casilla, los avisos lo siguen sin tocar código ni variables.
  *
- * OJO con una limitación que hoy es real: `hola@kumo.pet` NO recibe mails —el
- * dominio no tiene MX—, así que mientras ese sea el valor cargado, estos avisos
- * salen y rebotan. El envío no se bloquea a propósito: el día que se configure el
- * MX o se cargue otra casilla, empiezan a llegar sin tocar nada.
+ * Durante meses esto rebotaba: el dominio no tenía MX y el valor cargado era
+ * `hola@kumo.pet`, que no era una casilla. Desde el 10/09/2026 `kumo.pet` recibe
+ * y el contacto es `info@kumo.pet`, así que estos avisos llegan. El envío nunca
+ * se bloqueó a propósito, justamente para que el día que la casilla existiera
+ * empezaran a llegar sin tocar nada — y así fue.
  */
 async function mailDelClub(): Promise<string | null> {
   /*
@@ -78,7 +81,9 @@ async function mailDelClub(): Promise<string | null> {
    * `club_settings.email` es la dirección PÚBLICA del club: la muestran la
    * landing, /legal y /eliminar-cuenta, y es a donde le escribe un socio. Los
    * avisos internos van a quien opera el club, que puede ser otra persona y otra
-   * casilla — hoy de hecho lo es, porque `hola@kumo.pet` todavía no recibe.
+   * casilla. Hasta el 10/09/2026 lo era por obligación, porque el contacto público
+   * no recibía; desde que `info@kumo.pet` funciona, la variable pasó a ser una
+   * elección y no un parche.
    *
    * Meter la casilla interna en `club_settings` sería publicarla en la web. Por
    * eso va en variable de entorno, solo servidor y sin NEXT_PUBLIC.

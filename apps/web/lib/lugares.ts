@@ -24,7 +24,7 @@ import { PROVINCIAS } from '@kumo/shared';
  */
 const GEOREF = 'https://apis.datos.gob.ar/georef/api/direcciones';
 /* Quién consulta, que es lo que exige la política de Nominatim (ver `barrioDe`). */
-const IDENTIDAD_NOMINATIM = 'Kumo/1.0 (https://www.kumo.pet; hola@kumo.pet)';
+const IDENTIDAD_NOMINATIM = 'Kumo/1.0 (https://www.kumo.pet; info@kumo.pet)';
 
 export type Sugerencia = {
   /** Para la key de la lista, no se guarda. */

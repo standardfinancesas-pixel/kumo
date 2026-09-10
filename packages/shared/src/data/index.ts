@@ -328,7 +328,7 @@ export const communityPosts: CommunityPost[] = [
 
 export const clubSettings: ClubSettings = {
   whatsapp: '+54 9 11 2516-8802',
-  email: 'hola@kumo.pet',
+  email: 'info@kumo.pet',
 };
 
 export const emergencyContacts: EmergencyContact[] = [

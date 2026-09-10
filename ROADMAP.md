@@ -166,12 +166,17 @@ de cada pantalla.
       personales y de arrepentimiento (Ley 24.240): es la dirección donde el socio
       ejerce sus derechos, y apuntaba a un dominio viejo. De paso el WhatsApp va
       como link tocable y sale de la misma tabla.
-- [ ] **`hola@kumo.pet` todavía no recibe.** `kumo.pet` no tiene MX (el único MX
-      es el de `send.kumo.pet`, que es el feedback de Resend), así que hoy todo lo
-      que le escriban rebota. Resend sirve para MANDAR, no para recibir. Hace falta
-      una casilla o un reenvío: lo más rápido es el forwarding gratis de GoDaddy
-      hacia flor@cambalache.studio; lo prolijo, Google Workspace. Hasta que esté,
-      el canal que el club atiende de verdad es el WhatsApp.
+- [x] **El club ya recibe mails (10/09/2026).** Se resolvió por el camino prolijo:
+      Google Workspace con la casilla `info@kumo.pet`, y el registro MX del dominio
+      —`smtp.google.com`, prioridad 1— cargado en GoDaddy, que es donde vive el DNS
+      de `kumo.pet` (el sitio está en Vercel, pero los nameservers apuntan a
+      GoDaddy: es el error donde se pierde este cambio). Verificado contra los dos
+      nameservers y contra Google y Cloudflare.
+      El contacto pasó de `hola@` a `info@` en todos lados: el dato del club, el
+      remitente de Resend —que no necesitó DNS nuevo, porque Resend verifica el
+      DOMINIO y `kumo.pet` ya lo estaba— y la identidad que se le declara a
+      Nominatim. Y se borró `MAIL_ADMIN`, que existía sólo para que los avisos
+      internos no cayeran en el vacío mientras el club no recibía.
 - [x] **Cobro de la cuota mensual, hecho.** Suscripción de Mercado Pago con débito
       automático: el socio no ve la app hasta que la cuota está paga (muro en la
       webapp y en la app, con los tres planes y la cobertura odontológica adentro),

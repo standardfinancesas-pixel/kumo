@@ -33,7 +33,7 @@ const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 /* Quién consulta y a dónde escribirle: lo exige la política de Nominatim. El sitio
    va escrito y no importado de `@kumo/shared` para que este archivo se pueda
    compilar y probar solo, que es como se verificaron los domicilios reales. */
-const IDENTIDAD = 'Kumo/1.0 (https://www.kumo.pet; hola@kumo.pet)';
+const IDENTIDAD = 'Kumo/1.0 (https://www.kumo.pet; info@kumo.pet)';
 
 export type Ubicacion = {
   lat: number;
