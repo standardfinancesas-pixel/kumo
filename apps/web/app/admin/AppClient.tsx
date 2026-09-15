@@ -1735,6 +1735,51 @@ async function resolverNegocio(id: string, status: 'verificado' | 'rechazado'): 
 }
 
 /**
+ * Borra un negocio para siempre.
+ *
+ * Rechazar y borrar no son lo mismo y conviene no confundirlos: un RECHAZADO es
+ * información —ya lo miramos y dijimos que no, y si vuelve a pedir lo sabemos—,
+ * mientras que borrar es para lo que no debería haber existido nunca: una
+ * prueba, un duplicado, una ficha cargada mal, spam del formulario público.
+ *
+ * Se va con las reseñas y los favoritos (cascada de la base) y con las fotos del
+ * bucket, que las borra el endpoint. No se puede deshacer, y por eso el que
+ * llama pregunta antes diciendo qué se lleva puesto.
+ */
+async function borrarNegocio(id: string): Promise<string> {
+  try {
+    const res = await fetch('/api/prestadores/borrar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id }),
+    });
+    const data = await res.json();
+    if (!res.ok) return data.error ?? 'No pudimos borrar el negocio.';
+    if (data.fotosHuerfanas) return `Borramos ${data.nombre}, pero sus fotos quedaron en el bucket. Avisá que hay que sacarlas a mano.`;
+    return `Borramos ${data.nombre}.`;
+  } catch {
+    return 'No pudimos borrar el negocio. Revisá la conexión.';
+  }
+}
+
+/**
+ * Lo que se pregunta antes de borrar, con las consecuencias que no se ven en la
+ * pantalla: las reseñas que se van con él y que si está publicado desaparece de
+ * Servicios. Sin esto, "Borrar" al lado de un negocio con veinte reseñas es un
+ * botón que miente sobre lo que hace.
+ */
+function textoDeBorrado(p: ProviderAdminRow): string {
+  const partes = [`¿Borrar ${p.nombre} para siempre?`, ''];
+  if (p.estado === 'Verificado') partes.push('Está publicado: deja de aparecer en Servicios para todos los socios.');
+  if (p.reseñas > 0) partes.push(`Se borran también sus ${p.reseñas} reseña${p.reseñas === 1 ? '' : 's'} y los favoritos de los socios.`);
+  if (p.dueño) partes.push(`La cuenta de ${p.dueño.nombre} NO se toca: se borra el negocio, no el socio.`);
+  partes.push('Sus fotos se borran del servidor. Esto no se puede deshacer.');
+  partes.push('');
+  partes.push('Si sólo querés sacarlo de Servicios, usá Rechazar: la ficha queda y se puede reconsiderar.');
+  return partes.join('\n');
+}
+
+/**
  * La ficha de un prestador, que es la misma para Prestadores y para Negocios: es
  * la misma tabla mirada con dos criterios distintos.
  *
@@ -1746,10 +1791,11 @@ async function resolverNegocio(id: string, status: 'verificado' | 'rechazado'): 
  * Lo que sigue faltando es la documentación (matrícula, habilitación): no hay
  * dónde guardarla todavía, y el aviso lo dice en vez de fingir que se validó.
  */
-function FichaPrestadorModal({ p, onClose, onResolver, busy }: {
+function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, busy }: {
   p: ProviderAdminRow;
   onClose: () => void;
   onResolver: (status: 'verificado' | 'rechazado') => void;
+  onBorrar: () => void;
   busy: boolean;
 }) {
   const contacto: [string, string | null][] = [
@@ -1831,6 +1877,20 @@ function FichaPrestadorModal({ p, onClose, onResolver, busy }: {
             {busy ? 'Guardando…' : 'Reconsiderar y publicar'}
           </button>
         )}
+
+        {/* Borrar vive ACÁ y no en la fila de la tabla, separado del resto y al
+            final: es lo único de esta pantalla que no se puede deshacer, y al
+            lado de "Verificar" en una lista es un accidente esperando pasar —el
+            mismo motivo por el que Verificar y Rechazar tampoco están en las
+            filas ya resueltas—. Llegar hasta acá es abrir la ficha y leerla. */}
+        <div style={{ borderTop: '1px solid #e6e3f0', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 12.5, color: '#8781a0', lineHeight: 1.45, flex: '1 1 220px' }}>
+            Rechazar deja la ficha y se puede reconsiderar. Borrar la saca para siempre.
+          </div>
+          <button disabled={busy} onClick={onBorrar} style={{ background: 'none', border: '1.5px solid rgb(240,205,215)', color: 'rgb(193,77,122)', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 13.5, padding: '10px 16px', borderRadius: 11, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>
+            Borrar para siempre
+          </button>
+        </div>
       </div>
     </Modal>
   );
@@ -1880,6 +1940,16 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
     router.refresh();
     setBusyId(null);
   };
+  /** Devuelve si borró, para que la ficha se cierre sola cuando ya no hay nada
+   *  que mirar — y siga abierta si el club canceló en el cartel. */
+  const borrar = async (fila: ProviderAdminRow): Promise<boolean> => {
+    if (!window.confirm(textoDeBorrado(fila))) return false;
+    setBusyId(fila.id);
+    setAviso(await borrarNegocio(fila.id));
+    router.refresh();
+    setBusyId(null);
+    return true;
+  };
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
 
   const propios = providers.filter((r) => r.dueño).length;
@@ -1893,6 +1963,7 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
           busy={busyId === ficha.id}
           onClose={() => setFicha(null)}
           onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
+          onBorrar={async () => { if (await borrar(ficha)) setFicha(null); }}
         />
       )}
       <h1 className="adm-h1" style={h1}>Servicios</h1>
@@ -1977,6 +2048,16 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
     router.refresh();
     setBusyId(null);
   };
+  /** Devuelve si borró, para que la ficha se cierre sola cuando ya no hay nada
+   *  que mirar — y siga abierta si el club canceló en el cartel. */
+  const borrar = async (fila: ProviderAdminRow): Promise<boolean> => {
+    if (!window.confirm(textoDeBorrado(fila))) return false;
+    setBusyId(fila.id);
+    setAviso(await borrarNegocio(fila.id));
+    router.refresh();
+    setBusyId(null);
+    return true;
+  };
 
   const propios = providers.filter((r) => r.dueño);
   const pendientes = propios.filter((r) => r.estado === 'Pendiente').length;
@@ -1990,6 +2071,7 @@ function Negocios({ providers }: { providers: ProviderAdminRow[] }) {
           busy={busyId === ficha.id}
           onClose={() => setFicha(null)}
           onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
+          onBorrar={async () => { if (await borrar(ficha)) setFicha(null); }}
         />
       )}
       <h1 className="adm-h1" style={h1}>Negocios</h1>
