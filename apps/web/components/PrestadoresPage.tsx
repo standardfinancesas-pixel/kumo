@@ -52,9 +52,54 @@ const RUBROS: { label: string; icon: keyof typeof IC }[] = [
   { label: 'Baño y estética', icon: 'droplet' }, { label: 'Cuidador', icon: 'person' }, { label: 'Otro', icon: 'paw' },
 ];
 
+/**
+ * "Sumate como prestador".
+ *
+ * Hasta el 15/09/2026 esto era una maqueta: los campos no estaban conectados a
+ * nada y el botón sólo mostraba "¡Solicitud enviada! Te contactamos en 48 hs".
+ * Quien lo completaba quedaba esperando una respuesta que nadie iba a mandar,
+ * porque el club nunca se enteraba. Se descubrió porque alguien preguntó por qué
+ * no aparecía.
+ *
+ * Ahora la solicitud se guarda de verdad: entra como ficha `pendiente` y el club
+ * la ve en el panel, igual que las que se cargan desde adentro de la app.
+ *
+ * Se fueron el mail y la contraseña. Prometían "crear tu cuenta de prestador", y
+ * crear cuentas desde un formulario público es otra cosa —verificación, mails
+ * repetidos, el alta de socio entera— que no hace falta para lo que el texto
+ * promete: que el club se ponga en contacto. El canal es el WhatsApp, que es el
+ * que el club usa en todo el producto, y por eso ahora es obligatorio.
+ */
 function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [rubro, setRubro] = useState('Paseador');
+  const [nombre, setNombre] = useState('');
+  const [zona, setZona] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [about, setAbout] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
+
+  const enviar = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const res = await fetch('/api/prestadores/solicitud', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rubro, nombre, zona, whatsapp, about }),
+      });
+      const datos = await res.json();
+      /* El cartel de éxito se muestra SÓLO si el servidor confirmó. Que esa
+         pantalla apareciera sin haber guardado nada era el bug. */
+      if (!res.ok) { setError(datos.error ?? 'No pudimos enviar tu solicitud.'); setBusy(false); return; }
+      setSent(true);
+    } catch {
+      setError('No pudimos enviar tu solicitud. Revisá la conexión.');
+    }
+    setBusy(false);
+  };
+
   if (!open) return null;
   return (
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 950, background: 'rgba(33,30,51,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', padding: 20, overflowY: 'auto' }}>
@@ -64,7 +109,10 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{ width: 64, height: 64, borderRadius: 18, background: '#eef7d6', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 18px' }}><S d={<path d="M4 12l5 5L20 6" />} size={30} color="#6f9a1f" /></div>
             <h2 style={baloo(24)}>¡Solicitud enviada!</h2>
-            <p style={{ color: '#5b5670', fontSize: 15, lineHeight: 1.55, margin: '10px auto 22px', maxWidth: 360 }}>Revisamos tus datos y activamos tu perfil de prestador en el club. Te contactamos en 48 hs.</p>
+            {/* Sin plazo. "48 hs" era una promesa que nadie del club se había
+                comprometido a cumplir, y encima sobre solicitudes que no
+                llegaban. */}
+            <p style={{ color: '#5b5670', fontSize: 15, lineHeight: 1.55, margin: '10px auto 22px', maxWidth: 360 }}>El club revisa tus datos y te escribe por WhatsApp para activar tu perfil de prestador.</p>
             <button onClick={onClose} style={{ background: BRAND, color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: '13px 26px', borderRadius: 13, cursor: 'pointer' }}>Volver</button>
           </div>
         ) : (
@@ -76,7 +124,7 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: BRAND }}>Kumo</span>
             </div>
             <h2 style={{ ...baloo(24), margin: '6px 0 4px' }}>Sumate como prestador</h2>
-            <p style={{ color: '#8781a0', fontSize: 14, margin: '0 0 20px' }}>Elegí tu rubro y contanos sobre tu servicio. Te contactamos en 48 hs.</p>
+            <p style={{ color: '#8781a0', fontSize: 14, margin: '0 0 20px' }}>Elegí tu rubro y contanos sobre tu servicio. El club te escribe por WhatsApp.</p>
 
             <label style={label}>¿Qué servicio ofrecés?</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
@@ -90,21 +138,19 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               })}
             </div>
 
-            <div style={{ marginBottom: 14 }}><label style={label}>Nombre o empresa</label><input placeholder="Ej: Paseos Palermo / Lucas M." style={input} /></div>
+            <div style={{ marginBottom: 14 }}><label style={label}>Nombre o empresa</label><input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Paseos Palermo / Lucas M." style={input} /></div>
             <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-              <div style={{ flex: 1 }}><label style={label}>Zona</label><input placeholder="Palermo, CABA" style={input} /></div>
-              <div style={{ flex: 1 }}><label style={label}>WhatsApp</label><input placeholder="+54 11 ..." style={input} /></div>
+              <div style={{ flex: 1 }}><label style={label}>Zona</label><input value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Palermo, CABA" style={input} /></div>
+              {/* El WhatsApp pasa a ser obligatorio: es el único modo que tiene el
+                  club de contestar, porque acá no se pide mail. */}
+              <div style={{ flex: 1 }}><label style={label}>WhatsApp</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+54 11 ..." style={input} /></div>
             </div>
-            <div style={{ marginBottom: 20 }}><label style={label}>Contanos sobre tu servicio</label><textarea placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...input, minHeight: 92, resize: 'vertical' }} /></div>
+            <div style={{ marginBottom: 20 }}><label style={label}>Contanos sobre tu servicio</label><textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...input, minHeight: 92, resize: 'vertical' }} /></div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0 14px' }}>
-              <S d={<><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>} size={17} color="#8781a0" />
-              <span style={{ fontWeight: 700, fontSize: 15, color: INK }}>Creá tu cuenta de prestador</span>
-            </div>
-            <div style={{ marginBottom: 14 }}><label style={label}>Email</label><input type="email" placeholder="tuempresa@email.com" style={input} /></div>
-            <div style={{ marginBottom: 22 }}><label style={label}>Contraseña</label><input type="password" placeholder="Mínimo 8 caracteres" style={input} /></div>
+            {error && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13.5, borderRadius: 12, padding: '11px 13px', marginBottom: 14 }}>{error}</div>}
 
-            <button onClick={() => setSent(true)} style={{ width: '100%', background: BRAND, color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: 15, borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: 'pointer' }}>Crear cuenta y enviar solicitud</button>
+            <button onClick={enviar} disabled={busy} style={{ width: '100%', background: busy ? '#c7c1de' : BRAND, color: '#fff', border: 'none', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 16, padding: 15, borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: busy ? 'default' : 'pointer' }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
+            <p style={{ color: '#8781a0', fontSize: 12.5, lineHeight: 1.5, margin: '12px 0 0', textAlign: 'center' }}>No hace falta crear una cuenta: el club te escribe por WhatsApp.</p>
           </>
         )}
       </div>
