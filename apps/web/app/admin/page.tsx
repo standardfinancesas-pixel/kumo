@@ -119,7 +119,7 @@ export default async function Page() {
     // desambiguar PostgREST responde 300 y la lista queda vacía.
     supabase
       .from('providers')
-      .select('id, name, category, zone, address, phone, instagram, website, about, price, price_unit, rating, reviews, status, created_at, owner_id, profiles!providers_owner_id_fkey(full_name, email)'),
+      .select('id, name, category, zone, address, phone, instagram, website, about, price, price_unit, rating, reviews, status, created_at, owner_id, logo_url, photo_url, profiles!providers_owner_id_fkey(full_name, email)'),
     // El autor sale de la fila, igual que en la webapp del socio.
     supabase.from('community_posts').select('id, category, title, author_name, report_reason').eq('reported', true),
     supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente'),
@@ -285,6 +285,7 @@ export default async function Page() {
       solicitado: relTime(p.created_at),
       about: p.about ?? '', direccion: p.address, telefono: p.phone, instagram: p.instagram, web: p.website,
       reseñas: p.reviews,
+      logo: p.logo_url, portada: p.photo_url,
       precio: p.price != null ? `${money(p.price)}${p.price_unit ? ` ${p.price_unit}` : ''}` : null,
       dueño: p.owner_id && dueño ? { nombre: dueño.full_name, email: dueño.email } : null,
     };

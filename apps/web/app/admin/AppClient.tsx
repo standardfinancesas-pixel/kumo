@@ -47,6 +47,10 @@ export type ProviderAdminRow = {
   id: string; nombre: string; rubro: string; zona: string; rating: string; estado: string; solicitado: string;
   about: string; direccion: string | null; telefono: string | null; instagram: string | null; web: string | null;
   reseñas: number; precio: string | null;
+  /** Las dos imágenes de la ficha. Importan acá porque desde el 15/09 una
+   *  solicitud puede traerlas desde la landing pública, y verificar sin mirarlas
+   *  es publicar en Servicios una foto que nadie del club vio. */
+  logo: string | null; portada: string | null;
   /** Quién está detrás. Null si el club lo cargó a mano y no tiene cuenta. */
   dueño: { nombre: string; email: string } | null;
 };
@@ -1763,6 +1767,22 @@ function FichaPrestadorModal({ p, onClose, onResolver, busy }: {
             {p.reseñas > 0 ? `★ ${p.rating} · ${p.reseñas} reseña${p.reseñas === 1 ? '' : 's'}` : 'Sin reseñas todavía'}
           </span>
           {p.precio && <span style={badge('rgb(240,237,249)', 'rgb(93,84,145)')}>{p.precio}</span>}
+        </div>
+
+        {/* Las imágenes, arriba de todo lo demás: son lo que el socio ve primero en
+            Servicios, y desde que una solicitud puede traerlas desde la landing
+            pública, "Verificar" es también decidir que esa foto se publica. Antes
+            la ficha no las mostraba y el club las aprobaba sin verlas. */}
+        <div>
+          <div style={fieldLabel}>IMÁGENES</div>
+          {p.portada || p.logo ? (
+            <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+              {p.portada && <img src={p.portada} alt="Portada" style={{ width: '100%', maxWidth: 330, height: 120, objectFit: 'cover', borderRadius: 12, border: '1px solid #e6e3f0', display: 'block' }} />}
+              {p.logo && <img src={p.logo} alt="Logo" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 14, border: '1px solid #e6e3f0', display: 'block' }} />}
+            </div>
+          ) : (
+            <div style={{ fontSize: 13.5, color: '#8781a0' }}>No subió imágenes. La ficha va a salir con la inicial del nombre.</div>
+          )}
         </div>
 
         <div>

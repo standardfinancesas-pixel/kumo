@@ -2,7 +2,9 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
-import { EMPRESA } from '@kumo/shared';
+import { EMPRESA, FOTO_TIPOS, RUBROS, partirZona, type ProviderCategory } from '@kumo/shared';
+import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
+import { prepararFoto } from '@/lib/foto';
 
 /*
  * Landing de PRESTADORES — se abre desde "Quiero ofrecer servicios →" de la landing
@@ -32,6 +34,8 @@ const IC = {
   house: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /></>,
   paw: <><circle cx="5.5" cy="10" r="1.5" fill={BRAND} stroke="none" /><circle cx="9.7" cy="6.6" r="1.6" fill={BRAND} stroke="none" /><circle cx="14.3" cy="6.6" r="1.6" fill={BRAND} stroke="none" /><circle cx="18.5" cy="10" r="1.5" fill={BRAND} stroke="none" /><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" fill={BRAND} stroke="none" /></>,
   droplet: <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />,
+  cruz: <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M12 8v8M8 12h8" /></>,
+  tienda: <><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>,
 };
 
 const FEATURES: { icon: keyof typeof IC; t: string; d: string }[] = [
@@ -47,10 +51,26 @@ const STEPS = [
   { n: 2, t: 'Validamos tu perfil', d: 'Revisamos tu información y activamos tu perfil de prestador en el club.' },
   { n: 3, t: 'Recibí clientes', d: 'Los socios te encuentran, reservan y te dejan reseñas. Vos gestionás todo desde la app.' },
 ];
-const RUBROS: { label: string; icon: keyof typeof IC }[] = [
-  { label: 'Paseador', icon: 'paw' }, { label: 'Guardería', icon: 'house' }, { label: 'Adiestrador', icon: 'idcard' },
-  { label: 'Baño y estética', icon: 'droplet' }, { label: 'Cuidador', icon: 'person' }, { label: 'Otro', icon: 'paw' },
-];
+/**
+ * El ícono de cada rubro. La LISTA sale de `@kumo/shared`, no de acá.
+ *
+ * Esta pantalla tenía la suya escrita a mano, con seis rubros y "Otro" en
+ * singular, y eso rompía dos cosas: Veterinaria no se podía elegir desde la
+ * landing —existía en el tipo y en el alta de adentro de la app— y el que
+ * elegía "Otro" quedaba con una categoría que no es ninguna de las siete, así
+ * que el filtro de Servicios, que compara el texto exacto, no lo mostraba nunca.
+ * Es el mismo error que ya se había arreglado juntando las listas de la webapp y
+ * la app: ver el comentario de RUBROS en types.ts.
+ */
+const ICONO_RUBRO: Record<ProviderCategory, keyof typeof IC> = {
+  Paseador: 'paw', Guardería: 'house', Adiestrador: 'idcard', 'Baño y estética': 'droplet',
+  Cuidador: 'person', Veterinaria: 'cruz', Otros: 'tienda',
+};
+
+/** La ayuda gris debajo de un campo: por qué conviene llenarlo, en una línea. */
+const ayuda: CSSProperties = { fontSize: 12, color: '#8781a0', margin: '6px 0 14px', lineHeight: 1.45 };
+const opcional = <span style={{ fontWeight: 500, color: '#a29dba' }}>(opcional)</span>;
+const subirIcono = <><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="M17 8l-5-5-5 5" /><path d="M12 3v12" /></>;
 
 /**
  * "Sumate como prestador".
@@ -64,6 +84,13 @@ const RUBROS: { label: string; icon: keyof typeof IC }[] = [
  * Ahora la solicitud se guarda de verdad: entra como ficha `pendiente` y el club
  * la ve en el panel, igual que las que se cargan desde adentro de la app.
  *
+ * Y pide LO MISMO que el alta de adentro (`Prestar`, en la webapp del socio):
+ * dirección, Instagram, sitio, tarifa, logo y portada. El que entra por acá no
+ * tiene cuenta para volver después a completar la ficha, así que lo que no se
+ * pregunte hoy no se pregunta nunca: sale publicado sin foto, sin precio y sin
+ * pin en el mapa. La dirección es la que lo ubica en el mapa, y por eso el campo
+ * explica para qué es en vez de pedirla a secas.
+ *
  * Se fueron el mail y la contraseña. Prometían "crear tu cuenta de prestador", y
  * crear cuentas desde un formulario público es otra cosa —verificación, mails
  * repetidos, el alta de socio entera— que no hace falta para lo que el texto
@@ -71,28 +98,58 @@ const RUBROS: { label: string; icon: keyof typeof IC }[] = [
  * que el club usa en todo el producto, y por eso ahora es obligatorio.
  */
 function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [rubro, setRubro] = useState('Paseador');
+  const [rubro, setRubro] = useState<string>(RUBROS[0]!);
   const [nombre, setNombre] = useState('');
   const [zona, setZona] = useState('');
+  /** Opcional, y es lo único que pone el pin en el mapa: ver el aviso debajo del
+   *  campo y `consultasDeComercio` en lib/geocodificar. */
+  const [direccion, setDireccion] = useState('');
   const [whatsapp, setWhatsapp] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [sitio, setSitio] = useState('');
+  const [precio, setPrecio] = useState('');
+  const [unidad, setUnidad] = useState('');
   const [about, setAbout] = useState('');
+  /* Las dos imágenes del negocio, con los mismos nombres y las mismas formas que
+     adentro de la app: el logo cuadrado porque va a ser el avatar, la portada
+     ancha porque es la banda de arriba de la ficha. */
+  const [logo, setLogo] = useState<File | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [portada, setPortada] = useState<File | null>(null);
+  const [portadaPreview, setPortadaPreview] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [sent, setSent] = useState(false);
+
+  /** Valida y previsualiza. `prepararFoto` achica la foto acá, en el navegador:
+   *  una sacada con el teléfono pesa varios MB y si no se achica el envío muere
+   *  en el último paso, con el formulario entero ya completo. */
+  const elegirImagen = (cual: 'logo' | 'portada') => async (elegida?: File) => {
+    if (!elegida) return;
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setError(listo.error); return; }
+    setError('');
+    if (cual === 'logo') { setLogo(listo.file); setLogoPreview(URL.createObjectURL(listo.file)); }
+    else { setPortada(listo.file); setPortadaPreview(URL.createObjectURL(listo.file)); }
+  };
 
   const enviar = async () => {
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/prestadores/solicitud', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rubro, nombre, zona, whatsapp, about }),
-      });
-      const datos = await res.json();
+      /* FormData y no JSON porque van las dos imágenes. Los campos vacíos viajan
+         igual y el servidor los guarda como null. */
+      const datos = new FormData();
+      Object.entries({ rubro, nombre, zona, direccion, whatsapp, instagram, sitio, precio, unidad, about })
+        .forEach(([k, v]) => datos.append(k, v));
+      if (logo) datos.append('logo', logo);
+      if (portada) datos.append('portada', portada);
+
+      const res = await fetch('/api/prestadores/solicitud', { method: 'POST', body: datos });
+      const respuesta = await res.json();
       /* El cartel de éxito se muestra SÓLO si el servidor confirmó. Que esa
          pantalla apareciera sin haber guardado nada era el bug. */
-      if (!res.ok) { setError(datos.error ?? 'No pudimos enviar tu solicitud.'); setBusy(false); return; }
+      if (!res.ok) { setError(respuesta.error ?? 'No pudimos enviar tu solicitud.'); setBusy(false); return; }
       setSent(true);
     } catch {
       setError('No pudimos enviar tu solicitud. Revisá la conexión.');
@@ -124,28 +181,75 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               <span style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, color: BRAND }}>Kumo</span>
             </div>
             <h2 style={{ ...baloo(24), margin: '6px 0 4px' }}>Sumate como prestador</h2>
-            <p style={{ color: '#8781a0', fontSize: 14, margin: '0 0 20px' }}>Elegí tu rubro y contanos sobre tu servicio. El club te escribe por WhatsApp.</p>
+            <p style={{ color: '#8781a0', fontSize: 14, margin: '0 0 20px' }}>Elegí tu rubro y contanos sobre tu servicio. El club valida los datos antes de publicarlo.</p>
 
             <label style={label}>¿Qué servicio ofrecés?</label>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
               {RUBROS.map((r) => {
-                const on = rubro === r.label;
+                const on = rubro === r;
                 return (
-                  <button key={r.label} type="button" onClick={() => setRubro(r.label)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', borderRadius: 13, border: '1.5px solid ' + (on ? BRAND : '#e6e3f0'), background: on ? '#faf9fd' : '#fff', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, color: INK }}>
-                    <S d={IC[r.icon]} size={19} /> {r.label}
+                  <button key={r} type="button" onClick={() => setRubro(r)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 14px', borderRadius: 13, border: '1.5px solid ' + (on ? BRAND : '#e6e3f0'), background: on ? '#faf9fd' : '#fff', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 14, color: INK, textAlign: 'left' }}>
+                    <S d={IC[ICONO_RUBRO[r]]} size={19} /> {r}
                   </button>
                 );
               })}
             </div>
 
             <div style={{ marginBottom: 14 }}><label style={label}>Nombre o empresa</label><input value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Paseos Palermo / Lucas M." style={input} /></div>
-            <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-              <div style={{ flex: 1 }}><label style={label}>Zona</label><input value={zona} onChange={(e) => setZona(e.target.value)} placeholder="Palermo, CABA" style={input} /></div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 160px' }}>
+                <label style={label}>Zona</label>
+                {/* De la lista y no a mano: el filtro por zona de Servicios compara
+                    texto, así que "Palermo" y "Palermo, CABA" eran dos zonas
+                    distintas y el socio veía media lista. */}
+                <CampoZona valor={zona} onCambio={setZona} onElegir={(z) => setZona(z.zona)} placeholder="Palermo, CABA" style={input} />
+              </div>
               {/* El WhatsApp pasa a ser obligatorio: es el único modo que tiene el
                   club de contestar, porque acá no se pide mail. */}
-              <div style={{ flex: 1 }}><label style={label}>WhatsApp</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+54 11 ..." style={input} /></div>
+              <div style={{ flex: '1 1 160px' }}><label style={label}>WhatsApp</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="+54 11 ..." style={input} /></div>
             </div>
-            <div style={{ marginBottom: 20 }}><label style={label}>Contanos sobre tu servicio</label><textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...input, minHeight: 92, resize: 'vertical' }} /></div>
+
+            <label style={label}>Dirección {opcional}</label>
+            <CampoDomicilio valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Av. Santa Fe 3200" style={input} />
+            <p style={ayuda}>Si atendés en un local, ponela: es lo que te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía y te encuentran por zona.</p>
+
+            <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' }}>
+              <div style={{ flex: '1 1 160px' }}><label style={label}>Instagram {opcional}</label><input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="@tunegocio" style={input} /></div>
+              <div style={{ flex: '1 1 160px' }}><label style={label}>Sitio web {opcional}</label><input value={sitio} onChange={(e) => setSitio(e.target.value)} placeholder="tunegocio.com.ar" style={input} /></div>
+            </div>
+
+            <label style={label}>Tarifa {opcional}</label>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="4500" style={{ ...input, flex: '1 1 110px', width: 'auto' }} />
+              <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ ...input, flex: '1 1 110px', width: 'auto' }} />
+            </div>
+            <p style={ayuda}>Si no la ponés, tu ficha no muestra precio (mejor eso que mostrar &quot;$0&quot;).</p>
+
+            <div style={{ marginBottom: 18 }}><label style={label}>Contanos sobre tu servicio</label><textarea value={about} onChange={(e) => setAbout(e.target.value)} placeholder="Experiencia, disponibilidad, precios de referencia…" style={{ ...input, minHeight: 92, resize: 'vertical' }} /></div>
+
+            {/* Las cajas tienen la forma del lugar donde se va a ver cada imagen —el
+                logo chico y cuadrado, la portada ancha—, así nadie sube un logo
+                apaisado. */}
+            <label style={label}>Logo de la marca {opcional}</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <label style={{ display: 'flex', width: 92, height: 92, flex: 'none', border: '2px dashed #e6e3f0', borderRadius: 16, alignItems: 'center', justifyContent: 'center', background: logoPreview ? `url(${logoPreview}) center/cover` : '#fafaf9', cursor: 'pointer', overflow: 'hidden' }}>
+                <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirImagen('logo')(e.target.files?.[0])} style={{ display: 'none' }} />
+                {!logoPreview && <S d={subirIcono} size={20} color="#a29dba" />}
+              </label>
+              <div style={{ fontSize: 12, color: '#8781a0', lineHeight: 1.45 }}>Cuadrado. Es el redondel de tu ficha y el cuadradito del listado de Servicios. Si no lo subís, se usa la portada.</div>
+            </div>
+
+            <label style={label}>Foto de portada {opcional}</label>
+            <label style={{ display: 'flex', width: '100%', height: 140, border: '2px dashed #e6e3f0', borderRadius: 12, alignItems: 'center', justifyContent: 'center', background: portadaPreview ? `url(${portadaPreview}) center/cover` : '#fafaf9', cursor: 'pointer', overflow: 'hidden', boxSizing: 'border-box' }}>
+              <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirImagen('portada')(e.target.files?.[0])} style={{ display: 'none' }} />
+              {!portadaPreview && (
+                <div style={{ textAlign: 'center', pointerEvents: 'none' }}>
+                  <div style={{ marginBottom: 6, display: 'flex', justifyContent: 'center' }}><S d={subirIcono} size={22} color="#a29dba" /></div>
+                  <div style={{ fontSize: 12, color: '#8781a0' }}>Subir portada</div>
+                </div>
+              )}
+            </label>
+            <p style={ayuda}>La banda de arriba de tu ficha.</p>
 
             {error && <div style={{ background: '#fbe8ef', color: '#c14d7a', fontSize: 13.5, borderRadius: 12, padding: '11px 13px', marginBottom: 14 }}>{error}</div>}
 
