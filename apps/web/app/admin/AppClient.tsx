@@ -38,7 +38,9 @@ export type ColaRow = {
 export type HistRow = { socio: string; prestador: string; concepto: string; gastado: number; reintegro: number; estado: string };
 export type BenefitAdminVM = {
   /** La dirección del comercio, opcional: es lo que le da distancia al beneficio. */
-  address: string | null; id: string; name: string; category: string; discount: string; planRequirement: string; status: string; description: string; zone: string; hours: string; validUntil: string | null; days: string[] };
+  address: string | null; id: string; name: string; category: string; discount: string; planRequirement: string; status: string; description: string; zone: string; hours: string; validUntil: string | null; days: string[];
+  /** Cómo contactar al comercio, para la ficha del socio. */
+  phone: string | null; instagram: string | null; website: string | null };
 export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perks: string[]; featured: boolean };
 export type FaqVM = { id: string; question: string; answer: string };
 export type SettingsVM = { whatsapp: string; email: string };
@@ -1234,6 +1236,12 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
    *  Opcional — ver el aviso debajo del campo. */
   const [address, setAddress] = useState(benefit?.address ?? '');
   const [hours, setHours] = useState(benefit?.hours ?? '');
+  /* Cómo contactarlo. Faltaba entero: el socio veía el descuento y la ficha
+     terminaba en "Mostrar carnet", sin manera de pedir un turno. Con el teléfono
+     la app le ofrece WhatsApp y llamar. */
+  const [phone, setPhone] = useState(benefit?.phone ?? '');
+  const [instagram, setInstagram] = useState(benefit?.instagram ?? '');
+  const [website, setWebsite] = useState(benefit?.website ?? '');
   const [validUntil, setValidUntil] = useState(benefit?.validUntil ?? '');
   const [days, setDays] = useState<string[]>(benefit?.days ?? []);
   const [busy, setBusy] = useState(false);
@@ -1248,6 +1256,7 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
     const fila = {
       name: name.trim(), category, discount: discount.trim(), plan_requirement: planRequirement,
       description: description.trim(), zone: zone.trim(), address: address.trim() || null, hours: hours.trim(),
+      phone: phone.trim() || null, instagram: instagram.trim() || null, website: website.trim() || null,
       // Los días se guardan en el orden de la semana y no en el que se tocaron.
       days: BENEFIT_DIAS.filter((d) => days.includes(d)),
       valid_until: validUntil || null,
@@ -1304,7 +1313,24 @@ function BeneficioModal({ benefit, onClose, onSaved }: { benefit: BenefitAdminVM
         <div>
           <label style={fieldLabel}>DIRECCIÓN (OPCIONAL)</label>
           <CampoDomicilio valor={address} {...partirZona(zone)} onCambio={setAddress} onElegir={(l) => setAddress(l.domicilio)} style={inp} placeholder="Av. Santa Fe 3200" />
-          <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Con la dirección, el socio ve a cuántos kilómetros le queda. Sin ella, el beneficio se ve igual pero sin distancia.</div>
+          <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Con la dirección, el socio ve a cuántos kilómetros le queda. Sin ella, el beneficio se ve igual pero sin distancia. Es la calle: si el comercio atiende a domicilio, dejala vacía y contalo en el detalle.</div>
+        </div>
+        {/* El contacto. Sin esto el socio veía el descuento y no tenía cómo pedir
+            un turno, que con un comercio a domicilio es todo lo que hay. */}
+        <div>
+          <label style={fieldLabel}>TELÉFONO / WHATSAPP</label>
+          <input value={phone} onChange={(e) => setPhone(e.target.value)} style={inp} placeholder="+54 261 ..." />
+          <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Con esto el socio puede escribirle por WhatsApp o llamarlo desde la ficha del beneficio.</div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={fieldLabel}>INSTAGRAM (OPCIONAL)</label>
+            <input value={instagram} onChange={(e) => setInstagram(e.target.value)} style={inp} placeholder="@elcomercio" />
+          </div>
+          <div>
+            <label style={fieldLabel}>SITIO WEB (OPCIONAL)</label>
+            <input value={website} onChange={(e) => setWebsite(e.target.value)} style={inp} placeholder="elcomercio.com.ar" />
+          </div>
         </div>
         {/* Los tres que faltaban. La ficha del socio los muestra, así que sin
             esto el beneficio salía a la app incompleto. */}

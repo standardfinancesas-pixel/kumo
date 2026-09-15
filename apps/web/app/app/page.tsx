@@ -109,7 +109,7 @@ function benefitIcon(category: string): BenefitVM['icon'] {
   if (/consulta|cirug/.test(c)) return 'cross';
   return 'tag';
 }
-type BenefitRow = { id: string; name: string; category: string; discount: string; description: string; zone: string; address: string | null; lat: number | null; lng: number | null; days: string[]; hours: string; valid_until: string | null; plan_requirement: string };
+type BenefitRow = { id: string; name: string; category: string; discount: string; description: string; zone: string; address: string | null; lat: number | null; lng: number | null; days: string[]; hours: string; valid_until: string | null; plan_requirement: string; phone: string | null; instagram: string | null; website: string | null };
 function mapBenefit(row: BenefitRow, desde: Punto & { origen: OrigenDistancia }): BenefitVM {
   return {
     id: row.id, name: row.name, category: row.category, discount: row.discount, icon: benefitIcon(row.category),
@@ -120,6 +120,7 @@ function mapBenefit(row: BenefitRow, desde: Punto & { origen: OrigenDistancia })
     km: row.lat != null && row.lng != null ? distanciaKm(desde, { lat: row.lat, lng: row.lng }) : null,
     kmDesde: textoDistancia(desde.origen),
     lat: row.lat, lng: row.lng,
+    phone: row.phone, instagram: row.instagram, website: row.website,
   };
 }
 
@@ -264,7 +265,7 @@ export default async function Page() {
       .select('id, name, category, zone, address, phone, about, status, rating, reviews, created_at, price, price_unit, instagram, website, photo_url, logo_url')
       .eq('owner_id', auth.user.id)
       .order('created_at', { ascending: true }),
-    supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
+    supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement, phone, instagram, website').eq('status', 'activo'),
     supabase
       .from('community_posts')
       .select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)')

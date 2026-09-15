@@ -8,7 +8,7 @@ import {
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
-  ratingLabel, urlSitio, urlInstagram, urlTel, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
+  ratingLabel, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -127,6 +127,10 @@ export type BenefitVM = {
   address: string | null; km: number | null; kmDesde: string;
   /** Para el pin en el mapa. Null cuando no hay dirección cargada. */
   lat: number | null; lng: number | null;
+  /** Cómo contactar al comercio. Los tres opcionales: el beneficio vale igual sin
+   *  ellos y la ficha no muestra la sección. Con los de un comercio que atiende a
+   *  domicilio o con turno, son el único camino que hay. */
+  phone: string | null; instagram: string | null; website: string | null;
 };
 /**
  * Una cuota cobrada, como la ve el socio.
@@ -2045,6 +2049,14 @@ const calIcon = <><rect x="3" y="5" width="18" height="16" rx="2.5" /><line x1="
  *  mostraban en ningún lado. */
 function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () => void; onCarnet: () => void }) {
   const activos = new Set(b.days);
+  /* Los mismos ayudantes que la ficha del prestador: la gente escribe el sitio sin
+     https y el Instagram con arroba, y de eso sale un link que funciona. */
+  const waBeneficio = urlWhatsapp(b.phone);
+  const contacto = [
+    b.phone ? { i: phonePath, t: b.phone, href: urlTel(b.phone) } : null,
+    b.instagram ? { i: igPath, t: b.instagram, href: urlInstagram(b.instagram) } : null,
+    b.website ? { i: globePath, t: b.website, href: urlSitio(b.website) } : null,
+  ].filter(Boolean) as { i: ReactNode; t: string; href: string | null }[];
   return (
     <Sheet onClose={onClose}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
@@ -2111,6 +2123,43 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/*
+        * Cómo contactarlo.
+        *
+        * Faltaba entero: la ficha mostraba el descuento, el lugar y el horario, y
+        * terminaba en "Mostrar carnet". El socio veía que la veterinaria le hace
+        * 30% y no tenía manera de pedir un turno. Con un comercio que atiende a
+        * domicilio —que fue el caso que lo destapó— no hay siquiera un local al
+        * que ir: el contacto es el único camino.
+        *
+        * El WhatsApp va como botón y no como una fila más porque es lo que la
+        * gente usa acá para pedir un turno, y porque después de leer el descuento
+        * esa es la acción que sigue.
+        */}
+      {(contacto.length > 0 || waBeneficio) && (
+        <div style={{ background: 'rgb(247,246,250)', borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginBottom: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.03em' }}>Cómo contactarlo</div>
+          {waBeneficio && (
+            <a href={waBeneficio} target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'rgb(93,84,145)', color: '#fff', fontWeight: 700, fontSize: 14.5, padding: '12px 14px', borderRadius: 12, textDecoration: 'none', marginBottom: contacto.length ? 12 : 0 }}>
+              {ic(chat, false, 16)}Escribir por WhatsApp
+            </a>
+          )}
+          {contacto.map(({ i, t, href }) => {
+            const fila = (
+              <>
+                <span style={{ color: '#5D5491', flex: 'none', display: 'flex' }}>{ic(i, false, 16)}</span>
+                <span style={{ fontSize: 13.5, fontWeight: 600, color: href ? 'rgb(93,84,145)' : 'rgb(74,69,96)', wordBreak: 'break-word' }}>{t}</span>
+              </>
+            );
+            const estilo: CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', textDecoration: 'none' };
+            // `tel:` no abre pestaña: la abriría en blanco y el teléfono nunca vuelve.
+            return href
+              ? <a key={t} href={href} target={href.startsWith('tel:') ? undefined : '_blank'} rel={href.startsWith('tel:') ? undefined : 'noopener noreferrer'} style={estilo}>{fila}</a>
+              : <div key={t} style={estilo}>{fila}</div>;
+          })}
         </div>
       )}
 

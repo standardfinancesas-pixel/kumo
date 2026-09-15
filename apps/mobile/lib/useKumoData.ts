@@ -69,6 +69,10 @@ export type BenefitVM = {
   address: string | null; km: number | null; kmDesde: string;
   /** Para el pin del mapa. Null cuando no hay dirección cargada. */
   lat: number | null; lng: number | null;
+  /** Cómo contactar al comercio. Los tres opcionales: el beneficio vale igual sin
+   *  ellos y la ficha no muestra la sección. Con los de un comercio que atiende a
+   *  domicilio o con turno, son el único camino que hay. */
+  phone: string | null; instagram: string | null; website: string | null;
 };
 /** El detalle necesita bastante más que la tarjeta del historial: el seguimiento,
  *  el comprobante y los datos de acreditación. */
@@ -237,7 +241,7 @@ export function useKumoData(userId: string | null) {
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
-      supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement').eq('status', 'activo'),
+      supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement, phone, instagram, website').eq('status', 'activo'),
       supabase.from('member_blocks').select('blocked_id, blocked_name').eq('blocker_id', userId),
       supabase.from('community_posts').select('id, category, title, body, photo_url, zone, replies, likes, created_at, author_name, author_id, community_answers(id, text, likes, best, created_at, author_name, author_id)').order('created_at', { ascending: false }).limit(20),
       /* Son VARIOS: un socio puede tener un servicio y un comercio. Antes esto era
@@ -426,6 +430,7 @@ export function useKumoData(userId: string | null) {
       kmDesde,
       // Para el pin del mapa de Beneficios.
       lat: b.lat, lng: b.lng,
+      phone: b.phone, instagram: b.instagram, website: b.website,
     }));
 
     const reintegros: ReintVM[] = (reintRes.data ?? []).map((r) => {

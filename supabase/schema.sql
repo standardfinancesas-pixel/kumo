@@ -256,7 +256,14 @@ create table if not exists benefits (
   lat              double precision,
   lng              double precision,
   days             text[] not null default '{}',
-  hours            text not null default ''
+  hours            text not null default '',
+  -- Como contactar al comercio: las mismas tres que tiene `providers`, porque es
+  -- el mismo dato y las pantallas lo muestran igual. Sin esto la ficha del socio
+  -- terminaba en "Mostrar carnet" y no habia forma de pedir un turno — se noto
+  -- con una veterinaria que atiende a domicilio, que no tiene local al que ir.
+  phone            text,
+  instagram        text,
+  website          text
 );
 
 create table if not exists reimbursements (

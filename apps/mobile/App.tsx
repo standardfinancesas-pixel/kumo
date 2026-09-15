@@ -1443,6 +1443,15 @@ const DIAS_SEMANA = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
  *  tabla ya guardaba (días, horario, vigencia) no se veían en ningún lado. */
 function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () => void; onCarnet: () => void }) {
   const activos = new Set(b.days);
+  /* Los mismos ayudantes que la ficha del prestador: la gente escribe el sitio sin
+     https y el Instagram con arroba, y de eso sale un link que funciona. */
+  const abrirSi = (url: string | null) => (url ? () => { void Linking.openURL(url); } : null);
+  const contacto = [
+    b.phone ? { i: 'phone' as IconName, t: b.phone, abrir: abrirSi(urlTel(b.phone)) } : null,
+    b.instagram ? { i: 'instagram' as IconName, t: b.instagram, abrir: abrirSi(urlInstagram(b.instagram)) } : null,
+    b.website ? { i: 'globe' as IconName, t: b.website, abrir: abrirSi(urlSitio(b.website)) } : null,
+  ].filter(Boolean) as { i: IconName; t: string; abrir: (() => void) | null }[];
+  const hayWa = (b.phone ?? '').replace(/\D/g, '').length >= 8;
   return (
     <Sheet onClose={onClose}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18 }}>
@@ -1513,6 +1522,39 @@ function BeneficioFicha({ b, onClose, onCarnet }: { b: BenefitVM; onClose: () =>
           </View>
         </View>
       )}
+
+      {/*
+        * Cómo contactarlo.
+        *
+        * Faltaba entero: la ficha mostraba el descuento, el lugar y el horario, y
+        * terminaba en "Mostrar carnet". El socio veía que la veterinaria le hace
+        * 30% y no tenía manera de pedir un turno. Con un comercio que atiende a
+        * domicilio —que fue el caso que lo destapó— no hay siquiera un local al
+        * que ir: el contacto es el único camino.
+        */}
+      {contacto.length > 0 || hayWa ? (
+        <View style={{ backgroundColor: '#f7f6fa', borderRadius: 14, padding: 16, marginBottom: 12 }}>
+          <Text style={{ fontSize: 11, color: '#8781a0', marginBottom: 10, fontWeight: '700', letterSpacing: 0.4 }}>CÓMO CONTACTARLO</Text>
+          {hayWa ? (
+            <TouchableOpacity onPress={() => openWa(b.phone ?? '')} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: BRAND, borderRadius: 12, paddingVertical: 12, marginBottom: contacto.length ? 12 : 0 }}>
+              <Ic d="chat" size={16} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14.5 }}>Escribir por WhatsApp</Text>
+            </TouchableOpacity>
+          ) : null}
+          {contacto.map(({ i, t, abrir }) => {
+            const adentro = (
+              <>
+                <Ic d={i} size={16} />
+                <Text style={{ fontSize: 13.5, fontWeight: '600', color: abrir ? BRAND : '#4a4560', flex: 1 }}>{t}</Text>
+              </>
+            );
+            const estilo = { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingVertical: 7 };
+            return abrir
+              ? <TouchableOpacity key={t} onPress={abrir} style={estilo}>{adentro}</TouchableOpacity>
+              : <View key={t} style={estilo}>{adentro}</View>;
+          })}
+        </View>
+      ) : null}
 
       <View style={{ backgroundColor: '#f7f6fa', borderRadius: 14, padding: 16, marginBottom: 16 }}>
         <Text style={{ fontSize: 11, color: '#8781a0', marginBottom: 6, fontWeight: '700', letterSpacing: 0.4 }}>¿CÓMO USAR?</Text>
