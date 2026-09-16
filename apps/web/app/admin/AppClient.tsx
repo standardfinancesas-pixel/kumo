@@ -125,7 +125,7 @@ const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'beneficios', label: 'Beneficios', icon: icons.beneficios },
   { k: 'planes', label: 'Planes', icon: icons.planes },
   { k: 'faq', label: 'FAQ', icon: icons.faq },
-  { k: 'push', label: 'Push', icon: icons.push },
+  { k: 'push', label: 'Notificaciones', icon: icons.push },
   { k: 'ajustes', label: 'Ajustes', icon: icons.ajustes },
   { k: 'prestadores', label: 'Servicios', icon: icons.prestadores },
   { k: 'moderacion', label: 'Moderación', icon: icons.moderacion },
@@ -1696,8 +1696,8 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
   };
   return (
     <div>
-      <h1 className="adm-h1" style={h1}>Notificaciones push</h1>
-      <p style={sub}>Enviá avisos a los socios directo a su celular.</p>
+      <h1 className="adm-h1" style={h1}>Notificaciones</h1>
+      <p style={sub}>Avisos del club: al celular, a la campanita de la app, o a las dos.</p>
       <Aviso texto={aviso} />
       <div className="adm-push" style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 20 }}>
         <div>
