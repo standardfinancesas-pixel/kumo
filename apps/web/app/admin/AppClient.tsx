@@ -1862,17 +1862,31 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, busy }: {
           {p.dueño
             ? (<>{dato('Titular de la cuenta', p.dueño.nombre)}{dato('Mail', p.dueño.email)}</>)
             : (
-              /* Sin dueño ya no significa una sola cosa. Hasta el 15/09 sí —lo
-                 cargaba el club— y este cartel lo afirmaba; desde que existe el
-                 formulario público hay fichas sin cuenta que SÍ tienen a alguien
-                 esperando del otro lado. Decirle al club "no hay a quién avisarle"
-                 con el WhatsApp tres líneas más arriba es peor que no decir nada. */
+              /*
+               * Sin dueño ya no significa una sola cosa. Hasta el 15/09 sí —lo
+               * cargaba el club— y este cartel lo afirmaba; desde que existe el
+               * formulario público hay fichas sin cuenta que SÍ tienen a alguien
+               * esperando del otro lado.
+               *
+               * El texto se arma con lo que la ficha realmente tiene, en vez de
+               * una frase fija: de dónde vino, quién puede editarla, y POR DÓNDE
+               * avisarle. Antes terminaba en "no hay a quién avisarle por mail" y
+               * punto, con el WhatsApp tres líneas más arriba en la misma ficha:
+               * el club leía "no hay forma de contactarlo" mirando el teléfono.
+               */
               <div style={{ fontSize: 13.5, color: 'rgb(146,105,10)', fontWeight: 600, lineHeight: 1.5 }}>
                 {p.origen === 'landing'
-                  ? 'Entró por el formulario público de kumo.pet. No tiene cuenta, así que no hay mail: cuando resuelvas, escribile al WhatsApp de acá arriba.'
+                  ? 'Entró por el formulario público de kumo.pet y no tiene cuenta. '
                   : p.origen === 'club'
-                    ? 'La cargó el club. Nadie puede editar esta ficha salvo ustedes, y no hay a quién avisarle por mail cuando se resuelva.'
-                    : 'Sin cuenta asociada. Es anterior al 16/09, así que no guardamos de dónde vino —casi siempre son las que cargó el club—. Nadie puede editarla salvo ustedes, y no hay a quién avisarle por mail.'}
+                    ? 'La cargó el club y no tiene cuenta. '
+                    : 'Sin cuenta asociada, y es anterior al 16/09: no guardamos de dónde vino. '}
+                Nadie puede editarla salvo ustedes, y no hay mail al que avisarle
+                {/* La sección por su NOMBRE y no por dónde está: "acá arriba" ya
+                    era falso el día que se escribió —Contacto está más abajo— y
+                    cualquier reordenamiento de la ficha lo vuelve a romper. */}
+                {p.telefono
+                  ? ': cuando la resuelvas, escribile al WhatsApp que dejó en Contacto.'
+                  : ' ni teléfono de contacto, así que no hay por dónde avisarle.'}
               </div>
             )}
         </div>
