@@ -53,8 +53,11 @@ export type ProviderAdminRow = {
    *  solicitud puede traerlas desde la landing pública, y verificar sin mirarlas
    *  es publicar en Servicios una foto que nadie del club vio. */
   logo: string | null; portada: string | null;
-  /** Quién está detrás. Null si el club lo cargó a mano y no tiene cuenta. */
+  /** Quién está detrás. Null si no la registró un socio. */
   dueño: { nombre: string; email: string } | null;
+  /** De dónde vino: 'landing' | 'socio' | 'club'. Null en las anteriores al
+   *  16/09/2026, cuando esto no se guardaba. */
+  origen: string | null;
 };
 export type ReportRow = { id: string; cat: string; autor: string; titulo: string; motivo: string };
 export type AudienceVM = { label: string; n: number };
@@ -1859,9 +1862,17 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, busy }: {
           {p.dueño
             ? (<>{dato('Titular de la cuenta', p.dueño.nombre)}{dato('Mail', p.dueño.email)}</>)
             : (
+              /* Sin dueño ya no significa una sola cosa. Hasta el 15/09 sí —lo
+                 cargaba el club— y este cartel lo afirmaba; desde que existe el
+                 formulario público hay fichas sin cuenta que SÍ tienen a alguien
+                 esperando del otro lado. Decirle al club "no hay a quién avisarle"
+                 con el WhatsApp tres líneas más arriba es peor que no decir nada. */
               <div style={{ fontSize: 13.5, color: 'rgb(146,105,10)', fontWeight: 600, lineHeight: 1.5 }}>
-                Sin cuenta asociada: lo cargó el club a mano. Nadie puede editar esta ficha
-                salvo ustedes, y no hay a quién avisarle por mail cuando se resuelva.
+                {p.origen === 'landing'
+                  ? 'Entró por el formulario público de kumo.pet. No tiene cuenta, así que no hay mail: cuando resuelvas, escribile al WhatsApp de acá arriba.'
+                  : p.origen === 'club'
+                    ? 'La cargó el club. Nadie puede editar esta ficha salvo ustedes, y no hay a quién avisarle por mail cuando se resuelva.'
+                    : 'Sin cuenta asociada. Es anterior al 16/09, así que no guardamos de dónde vino —casi siempre son las que cargó el club—. Nadie puede editarla salvo ustedes, y no hay a quién avisarle por mail.'}
               </div>
             )}
         </div>

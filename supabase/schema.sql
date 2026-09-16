@@ -216,6 +216,12 @@ create index if not exists member_blocks_blocker_idx on member_blocks (blocker_i
 create table if not exists providers (
   id           uuid primary key default uuid_generate_v4(),
   owner_id     uuid references profiles(id) on delete set null,
+  -- De donde vino la ficha: 'landing' (formulario publico), 'socio' (alta desde
+  -- la app) o 'club' (lo cargo el club). NULL en las anteriores al 16/09/2026.
+  -- Existe porque sin owner_id el panel no puede distinguir una solicitud de la
+  -- landing de una ficha que cargo el club, y le decia al club que no tenia a
+  -- quien escribirle cuando el WhatsApp estaba en la misma ficha.
+  origen       text,
   name         text not null,
   category     text not null,
   zone         text not null,

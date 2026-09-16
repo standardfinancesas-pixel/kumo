@@ -1589,7 +1589,7 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, logo_url: logoUrl, status: 'pendiente',
+      phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, logo_url: logoUrl, status: 'pendiente', origen: 'socio',
     }).select('id').single();
     if (insErr) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     /* El mail de "recibimos tus datos". Estaba SÓLO en el alta corta de Mi

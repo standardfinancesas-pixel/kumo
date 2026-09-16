@@ -170,6 +170,11 @@ export async function POST(req: Request) {
     lng: ubicacion?.lng ?? null,
     status: 'pendiente',
     owner_id: null,
+    /* De dónde vino. Sin esto el panel no puede distinguir esta solicitud de una
+       ficha que cargó el club —las dos quedan sin dueño— y terminaba diciéndole
+       al club que no había a quién escribirle, con el WhatsApp en la misma
+       ficha. */
+    origen: 'landing',
   });
   if (error) {
     console.error('[prestadores/solicitud] no se pudo guardar', error);

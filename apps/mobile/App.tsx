@@ -2774,7 +2774,7 @@ function Prestar({ userId, phone, onVolver, onNegocio, reload }: { userId: strin
       address: direccion.trim() || null,
       instagram: instagram.trim() || null, website: sitio.trim() || null,
       price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, about: about.trim(), photo_url: fotoUrl, logo_url: logoUrl, status: 'pendiente',
+      phone: tel.trim() || null, about: about.trim(), photo_url: fotoUrl, logo_url: logoUrl, status: 'pendiente', origen: 'socio',
     }).select('id').single();
     if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
     if (alta?.id) void avisar('negocio-recibido', alta.id);
