@@ -64,7 +64,13 @@ export type ProviderAdminRow = {
   origen: string | null;
 };
 export type ReportRow = { id: string; cat: string; autor: string; titulo: string; motivo: string };
-export type AudienceVM = { label: string; n: number };
+export type AudienceVM = {
+  label: string; n: number;
+  /** De esos socios, cuántos tienen la app con las notificaciones prendidas. Es
+   *  la diferencia entre quién ve el aviso en la campanita (todos) y a quién le
+   *  suena el teléfono. */
+  conApp: number;
+};
 /**
  * Un cobro de la cuota, como lo mira el club.
  *
@@ -1700,7 +1706,11 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
             {audiences.map((a, i) => (
               <button key={a.label} onClick={() => setAud(i)} style={{ textAlign: 'left', border: '1.5px solid ' + (aud === i ? 'rgb(93,84,145)' : '#e6e3f0'), background: aud === i ? '#faf9fd' : '#fff', borderRadius: 12, padding: '11px 13px', cursor: 'pointer' }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5 }}>{a.label}</div>
-                <div style={{ fontSize: 11.5, color: '#8781a0' }}>{a.n.toLocaleString('es-AR')} destinatarios</div>
+                {/* Los dos números, porque son dos cosas: a los socios les llega
+                    en la campanita, y a los que tienen la app prendida además les
+                    suena el teléfono. Antes decía "N destinatarios" y el envío
+                    informaba otro número. */}
+                <div style={{ fontSize: 11.5, color: '#8781a0' }}>{a.n.toLocaleString('es-AR')} socios · {a.conApp.toLocaleString('es-AR')} con notificaciones</div>
               </button>
             ))}
           </div>

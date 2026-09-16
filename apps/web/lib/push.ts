@@ -98,12 +98,29 @@ export async function mandarPush(tokens: string[], titulo: string, cuerpo: strin
 export async function tokensDeAudiencia(audiencia: string): Promise<string[]> {
   const svc = getServiceClient();
 
-  // Plan X → los socios activos de ese plan.
+  /*
+   * Plan X → los socios activos de ese plan CON LA CUOTA AL DÍA.
+   *
+   * Lo de la cuota no es un detalle: sin eso, esta audiencia y el número que el
+   * panel muestra al lado son dos cosas distintas —el panel cuenta al día, esto
+   * contaba a cualquiera con el plan escrito— y el club veía "2 destinatarios" y
+   * el aviso llegaba a 4. Pasó el 16/09/2026 con un envío a Plan AMIGO.
+   *
+   * Y es además la definición que usa el resto del producto: el que dejó de pagar
+   * no es socio AMIGO, es un gratuito — y tiene su propia audiencia, que es
+   * justamente la que sirve para decirle "activá tu cuota".
+   */
   const plan = /^Plan (.+)$/.exec(audiencia)?.[1];
   if (plan) {
     const { data: planRow } = await svc.from('plans').select('id').eq('name', plan).single();
     if (!planRow) return [];
-    const { data } = await svc.from('profiles').select('id').eq('role', 'socio').eq('status', 'activo').eq('plan_id', planRow.id);
+    const { data } = await svc
+      .from('profiles')
+      .select('id')
+      .eq('role', 'socio')
+      .eq('status', 'activo')
+      .eq('plan_id', planRow.id)
+      .gte('paid_until', hoyISO());
     return tokensDe(svc, (data ?? []).map((p) => p.id));
   }
 

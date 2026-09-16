@@ -78,9 +78,10 @@ export default async function Page() {
     { data: settingsRow },
     { data: providerRows },
     { data: reportRows },
-    { data: pendVaxPets },
+    { data: pendVaxRows },
     { data: sentRows },
     { data: cobroRows },
+    { data: tokenRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -122,7 +123,7 @@ export default async function Page() {
       .select('id, name, category, zone, address, phone, instagram, website, about, price, price_unit, rating, reviews, status, created_at, owner_id, origen, logo_url, photo_url, profiles!providers_owner_id_fkey(full_name, email)'),
     // El autor sale de la fila, igual que en la webapp del socio.
     supabase.from('community_posts').select('id, category, title, author_name, report_reason').eq('reported', true),
-    supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente'),
+    supabase.from('vaccinations').select('pet_id, pets(owner_id)').eq('status', 'pendiente'),
     supabase.from('push_notifications').select('id, title, audience, sent_at, en_push, en_campanita, vigente_hasta').order('sent_at', { ascending: false }).limit(10),
     /*
      * Los cobros de la cuota, con el socio embebido: la pantalla los muestra por
@@ -140,6 +141,10 @@ export default async function Page() {
       .select('id, member_id, amount, status, method, covers_until, detail, created_at, paid_at, plan_name, profiles!payments_member_id_fkey(full_name, member_no)')
       .order('created_at', { ascending: false })
       .limit(200),
+    /* Quién tiene la app con las notificaciones prendidas. Es lo que separa a
+       quien va a recibir el push de quien sólo lo va a ver en la campanita. Un
+       admin puede leerlos (ver la política "tokens propios - select"). */
+    supabase.from('push_tokens').select('member_id')
   ]);
   const socioList = profileRows ?? [];
   const planOf = (p: (typeof socioList)[number]) => (Array.isArray(p.plans) ? p.plans[0] : p.plans);
@@ -309,11 +314,39 @@ export default async function Page() {
    * nombre, no lo encuentra, devuelve una lista vacía, y el push queda registrado
    * como enviado sin haber salido. Se etiqueta aparte y tiene su propia rama.
    */
+  /*
+   * Las audiencias, con DOS números cada una: cuántos socios entran y cuántos de
+   * ésos tienen la app con notificaciones prendidas.
+   *
+   * El segundo no es un adorno. El club veía "2 destinatarios", mandaba, y el
+   * resultado decía "llegó a 4" — números de dos consultas distintas, una que
+   * contaba socios y otra que resolvía tokens. Con los dos canales encima, la
+   * diferencia es información real: al primero lo ven todos en la campanita, al
+   * segundo le suena el teléfono.
+   *
+   * Los conjuntos se arman con los MISMOS criterios que `tokensDeAudiencia`, que
+   * es lo que decide de verdad a quién le llega.
+   */
+  const conApp = new Set(((tokenRows ?? []) as { member_id: string }[]).map((t) => t.member_id));
+  const cuantosConApp = (ids: string[]) => ids.filter((id) => conApp.has(id)).length;
+  const activosDe = (f: (s: (typeof socioList)[number]) => boolean) =>
+    socioList.filter((s) => s.status === 'activo' && f(s)).map((s) => s.id as string);
+  const dueñosDeVacuna = [...new Set((pendVaxRows ?? []).map((v) => {
+    const pet = Array.isArray(v.pets) ? v.pets[0] : v.pets;
+    return (pet as { owner_id: string } | null)?.owner_id;
+  }).filter(Boolean) as string[])];
+
   const audiences: AudienceVM[] = [
-    { label: 'Todos los socios', n: totalSocios },
-    ...dist.filter((d) => d.plan !== 'Gratuito' && d.plan !== 'Sin plan').map((d) => ({ label: `Plan ${d.plan}`, n: d.socios })),
-    ...(kpi.gratuitos > 0 ? [{ label: 'Socios gratuitos', n: kpi.gratuitos }] : []),
-    { label: 'Vacunas pendientes', n: new Set((pendVaxPets ?? []).map((v) => v.pet_id)).size },
+    { label: 'Todos los socios', n: totalSocios, conApp: cuantosConApp(socioList.map((s) => s.id as string)) },
+    ...dist.filter((d) => d.plan !== 'Gratuito' && d.plan !== 'Sin plan').map((d) => ({
+      label: `Plan ${d.plan}`,
+      n: d.socios,
+      // Con la cuota al día, igual que el push: el que dejó de pagar no es de
+      // este plan, es un gratuito.
+      conApp: cuantosConApp(activosDe((s) => alDia(s) && planOf(s)?.name === d.plan)),
+    })),
+    ...(kpi.gratuitos > 0 ? [{ label: 'Socios gratuitos', n: kpi.gratuitos, conApp: cuantosConApp(activosDe((s) => !alDia(s))) }] : []),
+    { label: 'Vacunas pendientes', n: dueñosDeVacuna.length, conApp: cuantosConApp(dueñosDeVacuna) },
   ];
   const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ id: s.id, title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—', enPush: s.en_push, enCampanita: s.en_campanita, vigenteHasta: s.vigente_hasta }));
 

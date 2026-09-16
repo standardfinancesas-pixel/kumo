@@ -67,20 +67,41 @@ export async function POST(req: Request) {
     odonto = elegido.odonto === true;
     plan = { name: planRow.name, base_price: planRow.base_price };
     planId = planRow.id;
-    /* Por `asignar_plan` y no con un update directo: desde el 03/09/2026 el plan,
-       la cuota y el add-on están blindados en el perfil igual que la fecha de la
-       cuota, porque la RLS es por fila y el socio podía cambiárselos con un PATCH
-       desde el navegador. Esa función es la única puerta y sólo la abre la
-       service-role key (ver la migración 20260903190000). */
-    const { error: eAsignar } = await svc.rpc('asignar_plan', {
-      p_member_id: perfil.id,
-      p_plan_id: planRow.id,
-      p_odonto: odonto,
-      p_monto: cuotaMensual(planRow.base_price, odonto),
-    });
-    if (eAsignar) {
-      console.error('[pagos/crear] asignar_plan', eAsignar);
-      return NextResponse.json({ error: 'No pudimos asignarte el plan.' }, { status: 500 });
+  }
+
+  /*
+   * ACÁ NO SE ESCRIBE EL PLAN EN EL PERFIL, y es a propósito desde el 16/09/2026.
+   *
+   * Antes sí: el plan se asignaba en este punto, o sea cuando el socio ELEGÍA,
+   * antes de ir a Mercado Pago. El que rebotaba la tarjeta o abandonaba el
+   * checkout quedaba con AMIGO escrito en la ficha sin haber pagado nunca, y de
+   * ahí salía todo lo demás — el push a "Plan AMIGO" le llegaba, el panel lo
+   * contaba aparte, y nadie se lo sacaba jamás.
+   *
+   * El plan lo escribe ahora `cobrar.ts`, cuando entra la plata. Lo que el socio
+   * eligió no se pierde: queda en `mp_member_plans` junto con el plan de Mercado
+   * Pago, que es de donde lo lee el cobro para asignarlo.
+   */
+
+  /*
+   * Si no eligió ahora y tampoco tiene plan escrito —el caso normal de quien
+   * quedó a mitad de camino—, se retoma la última intención guardada. Sin esto,
+   * el que abandonó el checkout no tendría de dónde sacar el monto.
+   */
+  if (!planId) {
+    const { data: ultima } = await svc
+      .from('mp_member_plans')
+      .select('plan_id, addon_odonto, plans(name, base_price)')
+      .eq('member_id', perfil.id)
+      .not('plan_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const p = Array.isArray(ultima?.plans) ? ultima?.plans[0] : ultima?.plans;
+    if (ultima?.plan_id && p) {
+      planId = ultima.plan_id;
+      odonto = ultima.addon_odonto === true;
+      plan = { name: p.name, base_price: p.base_price };
     }
   }
 

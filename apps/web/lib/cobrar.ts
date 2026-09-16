@@ -45,7 +45,7 @@ export async function acreditarDebito(
 ): Promise<ResultadoDebito> {
   const pagoOk = debito.payment?.status === 'approved';
 
-  const COLUMNAS = 'id, email, full_name, member_no, monthly_fee_agreed, card_brand, card_last4, plans(name)';
+  const COLUMNAS = 'id, email, full_name, member_no, monthly_fee_agreed, card_brand, card_last4, plan_id, addon_odonto, plans(name)';
   let { data: quien } = await svc
     .from('profiles')
     .select(COLUMNAS)
@@ -167,6 +167,47 @@ export async function acreditarDebito(
       });
     }
     return { estado: rechazado ? 'rechazado' : 'agendado' };
+  }
+
+  /*
+   * El plan se escribe ACÁ, cuando entra la plata, y no cuando el socio lo elige.
+   *
+   * Antes lo escribía `pagos/crear` antes de mandarlo a Mercado Pago, así que el
+   * que rebotaba la tarjeta o abandonaba el checkout quedaba con el plan puesto
+   * sin haber pagado nunca — y nadie se lo sacaba. De ahí salía todo lo demás: el
+   * push a "Plan AMIGO" le llegaba igual, y el panel contaba una cosa distinta de
+   * la que se mandaba.
+   *
+   * La intención quedó guardada en `mp_member_plans` cuando se armó el link, así
+   * que acá se lee de ahí. Va ANTES de acreditar para que la fila del pago quede
+   * con el plan correcto: `acreditar_cuota` la estampa leyendo el perfil.
+   *
+   * Si falla, se acredita igual: la plata entró y el mes corresponde. El socio
+   * queda como "paga sin plan", que es un estado que el panel ya contempla —el
+   * club le cobra a mano— y se ve, en vez de perderse el cobro.
+   */
+  try {
+    const sus = await traerSuscripcion(debito.preapproval_id);
+    if (sus.preapproval_plan_id) {
+      const { data: mapeo } = await svc
+        .from('mp_member_plans')
+        .select('plan_id, addon_odonto, amount')
+        .eq('mp_plan_id', sus.preapproval_plan_id)
+        .maybeSingle();
+      const distinto = mapeo?.plan_id && (quien.plan_id !== mapeo.plan_id || quien.addon_odonto !== mapeo.addon_odonto);
+      if (mapeo?.plan_id && distinto) {
+        const { error: eAsignar } = await svc.rpc('asignar_plan', {
+          p_member_id: quien.id,
+          p_plan_id: mapeo.plan_id,
+          p_odonto: mapeo.addon_odonto === true,
+          p_monto: mapeo.amount,
+        });
+        if (eAsignar) console.error('[cobrar] no pudimos asignar el plan al acreditar', quien.id, eAsignar);
+        else console.log('[cobrar] plan asignado al acreditar', quien.id, '→', mapeo.plan_id);
+      }
+    }
+  } catch (e) {
+    console.error('[cobrar] no pudimos leer el plan de la suscripción', debito.preapproval_id, e);
   }
 
   const { data, error } = await svc.rpc('acreditar_cuota', {
