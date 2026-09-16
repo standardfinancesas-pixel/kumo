@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import {
-  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO,
+  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO, esDestino,
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -3148,7 +3148,9 @@ function HojaPlan({ profile, planes, recargar, onClose, irABeneficios }: { profi
 
 /* ── Sub-pantalla: Notificaciones ──────────────────────────────── */
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
-const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros', perfil: 'perfil' };
+/* `NonNullable` porque un aviso puede no llevar a ninguna pantalla: los del
+   club son un cartel, no una tarea. */
+const NOTIF_DESTINO: Record<NonNullable<Notif['to']>, Screen> = { carnet: 'carnet', servicios: 'servicios', beneficios: 'beneficios', reintegros: 'reintegros', minegocio: 'minegocio', foros: 'foros', perfil: 'perfil' };
 
 function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }: { groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; go: (t: Screen) => void; userId: string | null; onAbrirHilo: (id: string | null) => void }) {
   /*
@@ -3229,7 +3231,7 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }
               const st = NOTIF_STYLE[n.kind];
               const unread = esNoLeida(n, vistoAlAbrir);
               return (
-                <TouchableOpacity key={n.id} onPress={() => { onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
+                <TouchableOpacity key={n.id} disabled={!n.to} activeOpacity={n.to ? 0.2 : 1} onPress={() => { if (!n.to) return; onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: 13, borderWidth: 1, backgroundColor: unread ? '#faf9fd' : '#fff', borderColor: unread ? '#e6e1f2' : '#eeecf5' }}>
                   <View style={{ width: 40, height: 40, borderRadius: 12, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: st.chip }}>
                     <Ic d={st.ic} size={20} color={st.color} />
                   </View>
@@ -4690,10 +4692,12 @@ export default function App() {
   }, []);
 
   /** Tocar un push abre la pantalla del aviso, no el inicio. Se filtra contra la
-   *  lista de destinos posibles: el `data` de una notificación es texto que entra
-   *  de afuera, y no queremos que decida a dónde navegar. */
+   *  lista COMPARTIDA de destinos: el `data` de una notificación es texto que
+   *  entra de afuera, y no queremos que decida a dónde navegar. Antes la lista
+   *  estaba escrita acá con tres pantallas, así que un aviso del club apuntado a
+   *  Beneficios no llevaba a ningún lado. */
   useEffect(() => alTocarNotificacion((pantalla) => {
-    if (pantalla === 'carnet' || pantalla === 'reintegros' || pantalla === 'minegocio') setScreen(pantalla);
+    if (esDestino(pantalla)) setScreen(NOTIF_DESTINO[pantalla]);
   }), []);
 
   /*
@@ -4779,11 +4783,19 @@ export default function App() {
     return () => { vivo = false; };
   }, [userId]);
 
-  /** Tocar la notificación abre la pantalla que corresponde, no el inicio. */
+  /**
+   * Tocar la notificación abre la pantalla que corresponde, no el inicio.
+   *
+   * Validado contra la lista compartida, igual que el otro listener. Antes hacía
+   * `setScreen(pantalla as Screen)` con lo que viniera adentro del aviso: un
+   * `pantalla` que no existe dejaba la app en un estado que no se renderiza —
+   * pantalla en blanco, sin forma de volver salvo cerrándola—. El `as Screen`
+   * hacía que el compilador no lo viera.
+   */
   useEffect(() => {
     const sub = Notifications.addNotificationResponseReceivedListener((ev) => {
       const pantalla = ev.notification.request.content.data?.pantalla;
-      if (typeof pantalla === 'string') setScreen(pantalla as Screen);
+      if (esDestino(pantalla)) setScreen(NOTIF_DESTINO[pantalla]);
     });
     return () => sub.remove();
   }, []);

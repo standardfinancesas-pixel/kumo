@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
+import { esDestino, urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM, type PagoVM } from './AppClient';
 
@@ -226,6 +226,7 @@ export default async function Page() {
     { data: pagoRows },
     { data: foroRows },
     { data: fotoRows },
+    { data: avisosClubRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -298,6 +299,10 @@ export default async function Page() {
        todos menos uno mismo — que es la misma razón por la que el nombre del autor
        viaja copiado en cada publicación. La vista expone SOLO id y foto. */
     supabase.from('fotos_de_socios').select('id, photo_url'),
+    /* Los avisos que escribió el club. Llegan ya filtrados por audiencia y
+       vigencia: el filtro vive en la base (`avisos_del_club`) porque acá la fila
+       sería legible igual y un socio podría leer los avisos de otro plan. */
+    supabase.rpc('avisos_del_club', { p_member: auth.user.id })
   ]);
   if (!profileRow) redirect(LANDING);
 
@@ -494,6 +499,8 @@ export default async function Page() {
       id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
     })),
     negocios: (negocioRows ?? []).map((n) => ({ id: n.id, name: n.name, status: n.status, createdAt: n.created_at })),
+    avisosClub: ((avisosClubRows ?? []) as { id: string; title: string; body: string; destino: string | null; created_at: string }[])
+      .map((a) => ({ id: a.id, title: a.title, body: a.body, createdAt: a.created_at, destino: esDestino(a.destino) ? a.destino : null })),
     /* Las reacciones llegan sin agrupar: agrupar es decisión de `buildNotifs`,
        así que la webapp y la app cuentan igual. Ver la función `avisos_del_foro`. */
     foro: {

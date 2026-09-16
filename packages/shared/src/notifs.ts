@@ -15,7 +15,35 @@ import { nombreDePila } from './avatar';
  *  de mails y push, así que el aviso de la app y el del teléfono coinciden. */
 export const DIAS_AVISO_CARNET = 2;
 
-export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like' | 'cuota-ok' | 'cuota-no' | 'perfil-foto';
+export type NotifKind = 'vacuna' | 'reintegro-ok' | 'reintegro-no' | 'reintegro-revision' | 'negocio-ok' | 'negocio-revision' | 'foro-respuesta' | 'foro-like' | 'cuota-ok' | 'cuota-no' | 'perfil-foto' | 'club';
+
+/**
+ * A dónde puede llevar un aviso al tocarlo.
+ *
+ * La lista vive acá y no en cada lado porque la usan TRES: el panel la ofrece en
+ * un selector, la campanita la convierte en una pantalla, y el push la manda
+ * adentro del aviso para que la app navegue al abrirlo. Escrita tres veces,
+ * empieza a divergir — es exactamente lo que le pasó a la lista de rubros.
+ *
+ * `label` es lo que ve el club en el panel, y por eso dice "Mi servicio" y no
+ * `minegocio`: la clave es interna y no se toca (viaja adentro de los push que
+ * ya están en los teléfonos).
+ */
+export const DESTINOS_AVISO = [
+  { key: 'carnet', label: 'Carnet' },
+  { key: 'servicios', label: 'Servicios' },
+  { key: 'beneficios', label: 'Beneficios' },
+  { key: 'reintegros', label: 'Reintegros' },
+  { key: 'foros', label: 'Foro' },
+  { key: 'minegocio', label: 'Mi servicio' },
+  { key: 'perfil', label: 'Mi perfil' },
+] as const;
+export type DestinoAviso = (typeof DESTINOS_AVISO)[number]['key'];
+/** Si el texto es un destino válido. Se usa para no navegar a cualquier cosa que
+ *  venga adentro de un push: el contenido del aviso lo arma el servidor, pero la
+ *  app no tiene por qué confiar en que sea una pantalla que existe. */
+export const esDestino = (v: unknown): v is DestinoAviso =>
+  typeof v === 'string' && DESTINOS_AVISO.some((d) => d.key === v);
 
 export type Notif = {
   id: string;
@@ -37,8 +65,15 @@ export type Notif = {
   readDate?: string;
   /** Texto del pie. Si no está, se muestra el tiempo relativo a `date`. */
   timeLabel?: string;
-  /** A qué pantalla lleva al tocarla. */
-  to: 'carnet' | 'reintegros' | 'minegocio' | 'foros' | 'perfil';
+  /**
+   * A qué pantalla lleva al tocarla, si lleva a alguna.
+   *
+   * Los avisos del club llevan a donde el club eligió, y pueden no llevar a
+   * ningún lado: un aviso puede ser sólo un cartel. Lo que NO se hace es
+   * mandarlos a Inicio por defecto — el socio toca esperando que se abra lo que
+   * le contaron y se encuentra en otro lado, que es peor que no hacer nada.
+   */
+  to?: DestinoAviso;
   /**
    * Qué abrir dentro de esa pantalla. Hoy sólo el foro lo usa: sin esto, tocar
    * "respondieron tu publicación" te dejaba en la lista del foro a buscar cuál
@@ -65,6 +100,10 @@ export const NOTIF_STYLE: Record<NotifKind, { ic: 'bell' | 'wallet' | 'shield' |
   /* La invitación a poner la cara: chip de marca, no de alerta. No es un problema
      a resolver, es algo que suma. */
   'perfil-foto': { ic: 'chat', chip: '#e8e5f5', color: '#5d5491' },
+  /* El aviso que escribió el club. Campanita, que es el ícono de "esto te lo
+     estamos contando nosotros", y el lima de la marca: no es una alerta ni una
+     tarea pendiente, y no tiene que competir con las que sí lo son. */
+  club: { ic: 'bell', chip: '#eef7d6', color: '#5f7d10' },
 };
 
 /**
@@ -122,6 +161,15 @@ export type NotifInput = {
   reintegros: { id: string; providerName: string; refund: number; status: string; createdAt: string; resolvedAt: string | null }[];
   /** Los negocios del socio. Son varios: puede tener un servicio y un comercio. */
   negocios: { id: string; name: string; status: string; createdAt: string }[];
+  /**
+   * Los avisos que escribió el club y que le tocan a este socio.
+   *
+   * Llegan YA FILTRADOS por audiencia y vigencia: los resuelve `avisos_del_club`
+   * en la base, del lado del servidor. Si el filtro estuviera acá, la fila sería
+   * legible igual y un socio AMIGO podría leer los avisos dirigidos a VIP con
+   * sólo mirar la consulta.
+   */
+  avisosClub: { id: string; title: string; body: string; createdAt: string; destino: DestinoAviso | null }[];
   /**
    * Lo que pasó en el foro sobre lo que el socio escribió: respuestas a sus
    * publicaciones y "me gusta" a sus publicaciones y a sus respuestas.
@@ -238,6 +286,20 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
     } else if (n.status === 'pendiente') {
       items.push({ id: `negocio-rev-${n.id}`, kind: 'negocio-revision', title: 'Tu servicio está en revisión', body: `Estamos validando los datos de "${n.name}". Te avisamos cuando quede publicado.`, date: n.createdAt, to: 'minegocio' });
     }
+  }
+
+  /*
+   * Los avisos del club.
+   *
+   * Son los únicos que no salen de un hecho del socio: los escribe una persona
+   * del club en el panel y elige si van al push, a la campanita o a los dos.
+   * Existen porque hasta el 16/09/2026 sólo había push, y un aviso que el socio
+   * no veía en el momento se perdía para siempre.
+   *
+   * Sin `to`: no llevan a ninguna pantalla. Ver el comentario del campo.
+   */
+  for (const a of input.avisosClub) {
+    items.push({ id: `club-${a.id}`, kind: 'club', title: a.title, body: a.body, date: a.createdAt, ...(a.destino ? { to: a.destino } : {}) });
   }
 
   /*

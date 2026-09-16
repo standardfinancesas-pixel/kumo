@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion, sinBloqueados } from '@kumo/shared';
+import { esDestino, diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion, sinBloqueados } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -236,7 +236,7 @@ export function useKumoData(userId: string | null) {
   const load = useCallback(async (esReintento = false) => {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
-    const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes, fotosRes] = await Promise.all([
+    const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes, fotosRes, avisosClubRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
@@ -270,6 +270,10 @@ export function useKumoData(userId: string | null) {
          todos menos uno mismo — la misma razón por la que el nombre del autor viaja
          copiado en cada publicación. La vista expone SOLO id y foto. */
       supabase.from('fotos_de_socios').select('id, photo_url'),
+      /* Los avisos que escribió el club. Llegan ya filtrados por audiencia y
+         vigencia: el filtro vive en la base (`avisos_del_club`) porque acá la
+         fila sería legible igual y un socio podría leer los de otro plan. */
+      supabase.rpc('avisos_del_club', { p_member: userId })
     ]);
 
     /**
@@ -498,6 +502,7 @@ export function useKumoData(userId: string | null) {
      *  y el mapeo deja de estar chequeado. */
     type ForoRow = { id: string; tipo: string; post_id: string; post_title: string; sobre: string; autor: string; created_at: string };
     const foro = (foroRes.data ?? []) as ForoRow[];
+    type AvisoClubRow = { id: string; title: string; body: string; destino: string | null; created_at: string };
 
     const notifInput: NotifInput = {
       /** Sin foto, la campanita se lo recuerda una vez (ver DESDE_FOTO_PERFIL). */
@@ -510,6 +515,7 @@ export function useKumoData(userId: string | null) {
         id: r.id, providerName: r.provider_name, refund: r.refund, status: r.status, createdAt: r.created_at, resolvedAt: r.resolved_at,
       })),
       negocios: (negocioRes.data ?? []).map((n) => ({ id: n.id, name: n.name, status: n.status, createdAt: n.created_at })),
+      avisosClub: ((avisosClubRes.data ?? []) as AvisoClubRow[]).map((a) => ({ id: a.id, title: a.title, body: a.body, createdAt: a.created_at, destino: esDestino(a.destino) ? a.destino : null })),
       /* Sin agrupar: agrupar es decisión de `buildNotifs`, así la app y la webapp
          cuentan igual. */
       foro: {

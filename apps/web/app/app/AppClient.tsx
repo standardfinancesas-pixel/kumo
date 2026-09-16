@@ -4501,7 +4501,9 @@ function CarnetSheet({ petName, ownerId, vac, onClose, onSave, onBorrar }: {
 /* ── Pantalla: Notificaciones ──────────────────────────────────── */
 const NOTIF_IC = { bell: bellPath, wallet, shield: shieldPath, chat, heart: heartPath } as const;
 /** Cada notificación lleva a la pantalla donde el socio puede hacer algo con ella. */
-const NOTIF_DESTINO: Record<Notif['to'], Screen> = { carnet: 'carnet', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros', perfil: 'perfil' };
+/* `NonNullable` porque un aviso puede no llevar a ninguna pantalla: los del
+   club son un cartel, no una tarea. */
+const NOTIF_DESTINO: Record<NonNullable<Notif['to']>, Screen> = { carnet: 'carnet', servicios: 'servicios', beneficios: 'beneficios', reintegros: 'reintegros', minegocio: 'negocio', foros: 'foros', perfil: 'perfil' };
 
 function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: (s: Screen) => void; groups: NotifGroup[]; visto: string | null; marcarLeidas: () => void; onAbrirHilo: (id: string | null) => void }) {
   /*
@@ -4542,7 +4544,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
               const st = NOTIF_STYLE[n.kind];
               const unread = esNoLeida(n, vistoAlAbrir);
               return (
-                <button key={n.id} onClick={() => { onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: '13px 14px', width: '100%', textAlign: 'left', cursor: 'pointer', fontFamily: '"DM Sans"', background: unread ? '#faf9fd' : '#fff', border: unread ? '1px solid #e6e1f2' : '1px solid #eeecf5' }}>
+                <button key={n.id} disabled={!n.to} onClick={() => { if (!n.to) return; onAbrirHilo(n.targetId ?? null); go(NOTIF_DESTINO[n.to]); }} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', borderRadius: 16, padding: '13px 14px', width: '100%', textAlign: 'left', cursor: n.to ? 'pointer' : 'default', fontFamily: '"DM Sans"', background: unread ? '#faf9fd' : '#fff', border: unread ? '1px solid #e6e1f2' : '1px solid #eeecf5' }}>
                   <div style={{ width: 40, height: 40, borderRadius: 12, flex: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', background: st.chip, color: st.color }}>{ic(NOTIF_IC[st.ic], false, 20)}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, color: '#211E33', marginBottom: 2 }}>{n.title}</div>

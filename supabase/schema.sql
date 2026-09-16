@@ -341,7 +341,22 @@ create table if not exists push_notifications (
   body       text not null,
   audience   text not null default 'todos',
   sent_at    timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- A cuantos telefonos llego y a cuantos no. Se escriben al enviar: "Enviadas"
+  -- del panel dice a cuantos llego de verdad, no a cuantos se intento.
+  delivered  integer not null default 0,
+  failed     integer not null default 0,
+  -- Donde aparece el aviso. El club elige: la campanita de adentro de la app, el
+  -- push al telefono, o los dos. Antes solo existia el push, y un aviso que el
+  -- socio no veia en el momento se perdia para siempre.
+  en_campanita boolean not null default false,
+  en_push      boolean not null default true,
+  -- Hasta cuando se muestra en la campanita. Sin fecha de corte la campanita se
+  -- llena de avisos viejos y deja de servir.
+  vigente_hasta date,
+  -- A que pantalla lleva al tocarlo, en el push y en la campanita. Null = no
+  -- lleva a ningun lado, que es el default: un aviso puede ser solo un cartel.
+  destino       text
 );
 
 create table if not exists faqs (

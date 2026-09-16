@@ -3,9 +3,10 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, destinoParaMostrar } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, destinoParaMostrar, RUBROS, DESTINOS_AVISO } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
+import { prepararFoto } from '@/lib/foto';
 
 /*
  * Panel de administración de Kumo — vista "Admin" del prototipo (reference/kumo-prototype.html).
@@ -49,6 +50,9 @@ export type ProviderAdminRow = {
   id: string; nombre: string; rubro: string; zona: string; rating: string; estado: string; solicitado: string;
   about: string; direccion: string | null; telefono: string | null; instagram: string | null; web: string | null;
   reseñas: number; precio: string | null;
+  /** El precio y la unidad SIN formatear: `precio` ya viene armado para mostrar
+   *  ("$4.500 /paseo") y el editor necesita los dos valores por separado. */
+  precioNum: number | null; precioUnidad: string | null;
   /** Las dos imágenes de la ficha. Importan acá porque desde el 15/09 una
    *  solicitud puede traerlas desde la landing pública, y verificar sin mirarlas
    *  es publicar en Servicios una foto que nadie del club vio. */
@@ -74,7 +78,13 @@ export type CobroRow = {
   medio: 'mercadopago' | 'manual';
   cuando: string; cubreHasta: string | null; detalle: string | null; deprueba: boolean;
 };
-export type SentPushVM = { id: string; title: string; audience: string; when: string };
+export type SentPushVM = {
+  id: string; title: string; audience: string; when: string;
+  /** Dónde salió: el push al teléfono, la campanita de la app, o los dos. */
+  enPush: boolean; enCampanita: boolean;
+  /** Hasta cuándo se muestra en la campanita. Null si no va ahí. */
+  vigenteHasta: string | null;
+};
 
 /* ── Iconos del sidebar ────────────────────────────────────────── */
 const I = (inner: ReactNode) => (
@@ -1605,6 +1615,26 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
   const [aud, setAud] = useState(0);
   const [titulo, setTitulo] = useState('');
   const [msg, setMsg] = useState('');
+  /*
+   * Dónde aparece el aviso. Los dos marcados por default: hasta hoy el club sólo
+   * podía mandar push, y un aviso que el socio no veía en el momento se perdía
+   * —no quedaba en ningún lado—. Que quede es el comportamiento que conviene
+   * salvo que el club decida lo contrario.
+   */
+  const [enPush, setEnPush] = useState(true);
+  const [enCampanita, setEnCampanita] = useState(true);
+  /* La vigencia es obligatoria cuando va a la campanita, y arranca en 30 días:
+     sin fecha de corte la campanita se llena de avisos viejos y deja de servir
+     para lo que sirve. */
+  const [vigenteHasta, setVigenteHasta] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
+  /* A qué pantalla lleva al tocarlo, en los dos canales. Vacío = a ninguna, y es
+     el default: mandar a una pantalla que no tiene que ver con lo que dice el
+     aviso es peor que no llevar a ningún lado. */
+  const [destino, setDestino] = useState('');
   const [busy, setBusy] = useState(false);
   const [aviso, setAviso] = useState('');
   /*
@@ -1617,18 +1647,27 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
    */
   const send = async () => {
     if (!titulo.trim() || busy) return;
+    if (!enPush && !enCampanita) { setAviso('Elegí al menos un lugar donde mostrarlo: la campanita, el push, o los dos.'); return; }
     setBusy(true); setAviso('');
     try {
       const res = await fetch('/api/push/enviar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ titulo, cuerpo: msg, audiencia: audiences[aud]?.label ?? 'Todos los socios' }),
+        body: JSON.stringify({
+          titulo, cuerpo: msg, audiencia: audiences[aud]?.label ?? 'Todos los socios',
+          enPush, enCampanita, vigenteHasta: enCampanita ? vigenteHasta : null, destino: destino || null,
+        }),
       });
       const data = await res.json();
+      /* El resultado cuenta las dos cosas por separado, porque son dos cosas
+         distintas: el push llegó o no llegó a unos teléfonos, y la campanita no
+         "llega" — queda, y aparece la próxima vez que el socio abra la app. */
+      const enCampanitaTxt = enCampanita ? `Queda en la campanita hasta el ${fmtFechaCorta(vigenteHasta)}.` : '';
       if (!res.ok) setAviso(data.error ?? 'No pudimos enviar el aviso.');
-      else if (data.entregados === 0) setAviso(`Quedó guardado, pero no llegó a ningún teléfono${data.dispositivos === 0 ? ': todavía nadie tiene la app con notificaciones activadas.' : `. ${data.detalle?.[0] ?? ''}`}`);
-      else setAviso(`Llegó a ${data.entregados} dispositivo${data.entregados === 1 ? '' : 's'}${data.fallados ? ` · ${data.fallados} sin entregar` : ''}.`);
-      if (res.ok) { setTitulo(''); setMsg(''); }
+      else if (!enPush) setAviso(enCampanitaTxt);
+      else if (data.entregados === 0) setAviso(`No llegó a ningún teléfono${data.dispositivos === 0 ? ': todavía nadie tiene la app con notificaciones activadas' : `. ${data.detalle?.[0] ?? ''}`}. ${enCampanitaTxt}`);
+      else setAviso(`Llegó a ${data.entregados} dispositivo${data.entregados === 1 ? '' : 's'}${data.fallados ? ` · ${data.fallados} sin entregar` : ''}. ${enCampanitaTxt}`);
+      if (res.ok) { setTitulo(''); setMsg(''); setDestino(''); }
     } catch {
       setAviso('No pudimos enviar el aviso. Revisá la conexión.');
     }
@@ -1637,6 +1676,13 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
   };
   /** Saca un aviso del historial. Lo que ya llegó a los teléfonos no se puede
    *  volver atrás: esto limpia la lista del panel, nada más. */
+  /** Baja un aviso de la campanita sin tocar el historial. Lo que ya salió por
+   *  push no se puede volver atrás; esto es lo único que sí. */
+  const sacarDeLaCampanita = async (id: string) => {
+    const { data, error } = await supabase.from('push_notifications').update({ en_campanita: false }).eq('id', id).select('id');
+    setAviso(error || !data?.length ? 'No pudimos sacarlo. Probá de nuevo.' : 'Lo saqué de la campanita.');
+    router.refresh();
+  };
   const borrar = async (id: string) => {
     const { error } = await supabase.from('push_notifications').delete().eq('id', id);
     setAviso(error ? 'No pudimos borrarlo. Probá de nuevo.' : 'Lo saqué del historial.');
@@ -1662,6 +1708,43 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
           <input value={titulo} onChange={(e) => setTitulo(e.target.value)} style={{ ...inp, marginBottom: 12 }} placeholder="Título de la notificación" />
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>MENSAJE</div>
           <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={3} style={{ ...inp, resize: 'vertical', marginBottom: 14 }} placeholder="Acá va el texto que van a leer los socios." />
+
+          {/* Dónde aparece. Son dos cosas distintas y conviene que se lea así: el
+              push interrumpe y se pierde si no lo ven; la campanita no molesta y
+              queda. Por eso cada casilla dice qué hace, en vez de un rótulo. */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>DÓNDE APARECE</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+            {([
+              ['push', enPush, setEnPush, 'Push al teléfono', 'Le suena el celular ahora. Si no lo ve, se pierde.'],
+              ['campanita', enCampanita, setEnCampanita, 'Campanita de la app', 'No interrumpe y queda ahí hasta que vence.'],
+            ] as [string, boolean, (v: boolean) => void, string, string][]).map(([k, valor, set, titulo2, ayuda]) => (
+              <label key={k} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', border: '1.5px solid ' + (valor ? 'rgb(93,84,145)' : '#e6e3f0'), background: valor ? '#faf9fd' : '#fff', borderRadius: 12, padding: '11px 13px', cursor: 'pointer' }}>
+                <input type="checkbox" checked={valor} onChange={(e) => set(e.target.checked)} style={{ marginTop: 2, accentColor: 'rgb(93,84,145)' }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13.5 }}>{titulo2}</div>
+                  <div style={{ fontSize: 11.5, color: '#8781a0' }}>{ayuda}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          {enCampanita && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>VIGENTE HASTA</div>
+              <input type="date" value={vigenteHasta} onChange={(e) => setVigenteHasta(e.target.value)} style={inp} />
+              <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Después de esa fecha desaparece solo de la campanita. Sin fecha de corte se llenaría de avisos viejos.</div>
+            </div>
+          )}
+
+          {/* A dónde lleva. Vale para los dos canales: que el push te lleve a
+              Beneficios y el mismo aviso en la campanita no haga nada sería una
+              diferencia que nadie puede explicar. */}
+          <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>AL TOCARLO, ¿A DÓNDE LLEVA?</div>
+          <select value={destino} onChange={(e) => setDestino(e.target.value)} style={{ ...inp, marginBottom: 6 }}>
+            <option value="">A ningún lado (sólo abre la app)</option>
+            {DESTINOS_AVISO.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
+          </select>
+          <div style={{ fontSize: 12, color: '#8781a0', marginBottom: 14, lineHeight: 1.45 }}>Si el aviso es un cartel y no una tarea, dejalo en ningún lado: mandar a una pantalla que no tiene que ver es peor que no llevar.</div>
+
           <button disabled={busy} onClick={send} style={{ background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: '13px 20px', borderRadius: 12, cursor: 'pointer', opacity: busy ? 0.6 : 1 }}>Enviar a {audiences[aud]?.label ?? 'Todos los socios'}</button>
         </div>
         <div>
@@ -1684,8 +1767,21 @@ function Push({ audiences, sent }: { audiences: AudienceVM[]; sent: SentPushVM[]
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ fontWeight: 600, fontSize: 13 }}>{s.title}</div>
                     <div style={{ fontSize: 12, color: '#8781a0' }}>→ {s.audience} · {s.when}</div>
+                    {/* A dónde fue. Sin esto, dos avisos idénticos en la lista
+                        pueden haber hecho cosas distintas. */}
+                    <div style={{ fontSize: 11.5, color: '#a29dba', marginTop: 2 }}>
+                      {[s.enPush ? 'push' : null, s.enCampanita ? 'campanita' : null].filter(Boolean).join(' + ') || 'sin destino'}
+                      {s.enCampanita && s.vigenteHasta && ` · hasta el ${fmtFechaCorta(s.vigenteHasta)}`}
+                    </div>
                   </div>
-                  <MenuAcciones acciones={[{
+                  <MenuAcciones acciones={[...(s.enCampanita ? [{
+                    label: 'Sacar de la campanita',
+                    // El push ya salió y no se puede volver; el aviso de la
+                    // campanita sí se puede bajar, y es la única forma de
+                    // corregir algo que se mandó con un error.
+                    confirmar: `¿Sacar "${s.title}" de la campanita? Deja de verse en la app. El push que ya salió a los celulares no se puede volver atrás.`,
+                    onClick: () => sacarDeLaCampanita(s.id),
+                  }] : []), {
                     label: 'Borrar del historial',
                     destructiva: true,
                     // Se aclara que el aviso ya salió: borrar la fila limpia esta
@@ -1790,6 +1886,32 @@ async function borrarNegocio(id: string): Promise<string> {
 }
 
 /**
+ * Guarda los datos de una ficha de Servicios, editada desde el panel.
+ *
+ * Existe porque hasta el 16/09/2026 NADIE podía corregir una ficha sin dueño. El
+ * panel sólo sabía verificar, rechazar y borrar, y el prestador que entra por el
+ * formulario público no tiene cuenta con la que entrar a arreglarla. Una
+ * solicitud que llegaba con el teléfono mal escrito quedaba así para siempre: la
+ * única salida era borrarla y pedirle que la cargara de nuevo. Con la landing
+ * como puerta principal, ese caso pasó de raro a el normal.
+ *
+ * Va por el navegador y no por una ruta: la política "prestadores admin write"
+ * ya deja que un admin haga UPDATE, y está desde agosto. El trigger
+ * `providers_status_guard` sólo le prohíbe mover el estado a quien no es admin,
+ * y acá el estado no se toca — para eso están Verificar y Rechazar.
+ *
+ * El `.select('id')` no es decorativo: sin mirar las filas, un update que la RLS
+ * no deja pasar devuelve 200 con cero filas y "no escribió" se ve igual que
+ * "salió bien".
+ */
+async function guardarFicha(id: string, datos: Record<string, unknown>): Promise<string> {
+  const { data, error } = await supabase.from('providers').update(datos).eq('id', id).select('id');
+  if (error) return 'No pudimos guardar los cambios.';
+  if (!data?.length) return 'No se guardó nada: puede que no tengas permiso para editar esta ficha.';
+  return '';
+}
+
+/**
  * Lo que se pregunta antes de borrar, con las consecuencias que no se ven en la
  * pantalla: las reseñas que se van con él y que si está publicado desaparece de
  * Servicios. Sin esto, "Borrar" al lado de un negocio con veinte reseñas es un
@@ -1817,21 +1939,164 @@ function textoDeBorrado(p: ProviderAdminRow): string {
  * Lo que sigue faltando es la documentación (matrícula, habilitación): no hay
  * dónde guardarla todavía, y el aviso lo dice en vez de fingir que se validó.
  */
-function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, busy }: {
+function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, onGuardado, busy }: {
   p: ProviderAdminRow;
   onClose: () => void;
   onResolver: (status: 'verificado' | 'rechazado') => void;
   onBorrar: () => void;
+  /** Avisa que la ficha cambió, para refrescar la lista de atrás. */
+  onGuardado: (aviso: string) => void;
   busy: boolean;
 }) {
+  /* La edición va ADENTRO de esta ficha y no en otro modal encima: el club
+     acaba de leer los datos acá, y abrir una ventana arriba de otra para
+     corregir un teléfono es una ventana de más. */
+  const [editando, setEditando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [errorEd, setErrorEd] = useState('');
+  const [ed, setEd] = useState({
+    name: p.nombre, category: p.rubro, zone: p.zona, address: p.direccion ?? '',
+    phone: p.telefono ?? '', instagram: p.instagram ?? '', website: p.web ?? '',
+    price: p.precioNum != null ? String(p.precioNum) : '', priceUnit: p.precioUnidad ?? '',
+    about: p.about ?? '',
+  });
+
+  /* Las imágenes se guardan SOLAS al elegirlas, no con "Guardar cambios": el
+     archivo ya viajó y no tiene sentido tenerlo en el aire esperando un botón.
+     Es el mismo comportamiento que tiene el prestador en su Mi servicio. */
+  const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
+  const [fotos, setFotos] = useState({ logo: p.logo, portada: p.portada });
+  /** Una imagen se guarda sola, así que al cerrar la ficha hay que refrescar la
+   *  lista de atrás: si no, la tabla sigue mostrando la fila como estaba. */
+  const [fotoCambiada, setFotoCambiada] = useState(false);
+  const cerrar = () => { if (fotoCambiada) onGuardado(''); else onClose(); };
+  const cambiarFoto = (cual: 'logo' | 'portada') => async (elegida?: File) => {
+    if (!elegida) return;
+    /* Se achica acá, en el navegador: una foto de teléfono pesa varios MB y sin
+       esto el envío muere en el último paso. */
+    const listo = await prepararFoto(elegida);
+    if ('error' in listo) { setErrorEd(listo.error); return; }
+    setFotoBusy(cual); setErrorEd('');
+    const datos = new FormData();
+    datos.append('id', p.id);
+    datos.append('cual', cual);
+    datos.append('archivo', listo.file);
+    try {
+      const res = await fetch('/api/prestadores/foto', { method: 'POST', body: datos });
+      const r = await res.json();
+      if (!res.ok) setErrorEd(r.error ?? 'No pudimos subir la imagen.');
+      else { setFotos((f) => ({ ...f, [cual]: r.url as string })); setFotoCambiada(true); }
+    } catch {
+      setErrorEd('No pudimos subir la imagen. Revisá la conexión.');
+    }
+    setFotoBusy(null);
+  };
+
+  const guardar = async () => {
+    if (!ed.name.trim()) { setErrorEd('El nombre no puede quedar vacío.'); return; }
+    if (!ed.zone.trim()) { setErrorEd('La zona no puede quedar vacía.'); return; }
+    setGuardando(true); setErrorEd('');
+    const error = await guardarFicha(p.id, {
+      name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),
+      address: ed.address.trim() || null, phone: ed.phone.trim() || null,
+      instagram: ed.instagram.trim() || null, website: ed.website.trim() || null,
+      price: Number(ed.price.replace(/\D/g, '')) || null, price_unit: ed.priceUnit.trim() || null,
+      about: ed.about.trim(),
+    });
+    if (error) { setErrorEd(error); setGuardando(false); return; }
+    /* Si se mudó, el pin se muda con él — y si la dirección se borró, la ruta
+       guarda coordenadas nulas y la ficha sale del mapa, que es lo correcto: no
+       puede quedar un pin de un local que ya no está. */
+    if (ed.address.trim() !== (p.direccion ?? '')) {
+      void fetch('/api/prestadores/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: p.id }) });
+    }
+    setGuardando(false);
+    setEditando(false);
+    onGuardado(`Guardamos los cambios de ${ed.name.trim()}.`);
+  };
+
   const contacto: [string, string | null][] = [
     ['Teléfono', p.telefono],
     ['Instagram', p.instagram],
     ['Web', p.web],
     ['Dirección', p.direccion],
   ];
+  if (editando) {
+    const campo = (label: string, valor: string, set: (v: string) => void, placeholder = '') => (
+      <div>
+        <label style={fieldLabel}>{label}</label>
+        <input value={valor} onChange={(e) => { set(e.target.value); setErrorEd(''); }} placeholder={placeholder} style={inp} />
+      </div>
+    );
+    return (
+      <Modal title={`Editar ${p.nombre}`} sub="Los cambios se ven en la app de los socios enseguida." onClose={cerrar} width={560}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Las cajas tienen la forma del lugar donde se ve cada imagen —el logo
+              cuadrado porque es el avatar, la portada ancha porque es la banda de
+              arriba de la ficha—, así nadie sube un logo apaisado. */}
+          <div>
+            <label style={fieldLabel}>IMÁGENES</label>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'stretch' }}>
+              <label style={{ display: 'flex', width: 92, height: 92, flex: 'none', border: '2px dashed #e6e3f0', borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: fotos.logo ? `url(${fotos.logo}) center/cover` : '#faf9fd', cursor: 'pointer', overflow: 'hidden', textAlign: 'center' }}>
+                <input type="file" accept="image/*" onChange={(e) => cambiarFoto('logo')(e.target.files?.[0])} style={{ display: 'none' }} />
+                {(!fotos.logo || fotoBusy === 'logo') && <span style={{ fontSize: 11, color: '#8781a0', background: fotos.logo ? 'rgba(255,255,255,0.85)' : 'transparent', padding: 4, borderRadius: 6 }}>{fotoBusy === 'logo' ? 'Subiendo…' : 'Logo'}</span>}
+              </label>
+              <label style={{ display: 'flex', flex: 1, minWidth: 0, height: 92, border: '2px dashed #e6e3f0', borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: fotos.portada ? `url(${fotos.portada}) center/cover` : '#faf9fd', cursor: 'pointer', overflow: 'hidden', textAlign: 'center' }}>
+                <input type="file" accept="image/*" onChange={(e) => cambiarFoto('portada')(e.target.files?.[0])} style={{ display: 'none' }} />
+                {(!fotos.portada || fotoBusy === 'portada') && <span style={{ fontSize: 11.5, color: '#8781a0', background: fotos.portada ? 'rgba(255,255,255,0.85)' : 'transparent', padding: 4, borderRadius: 6 }}>{fotoBusy === 'portada' ? 'Subiendo…' : 'Foto de portada'}</span>}
+              </label>
+            </div>
+            <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Se guardan al elegirlas, sin esperar a &quot;Guardar cambios&quot;. La anterior se borra sola.</div>
+          </div>
+          {campo('NOMBRE', ed.name, (v) => setEd({ ...ed, name: v }))}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label style={fieldLabel}>RUBRO</label>
+              <select value={ed.category} onChange={(e) => setEd({ ...ed, category: e.target.value })} style={inp}>
+                {RUBROS.map((r) => <option key={r} value={r}>{r}</option>)}
+                {/* El rubro que ya tiene, aunque no esté en la lista: las fichas
+                    viejas pueden traer uno que se dejó de ofrecer, y un select
+                    que no lo incluye se lo cambia solo al abrir el editor. */}
+                {!RUBROS.includes(ed.category as (typeof RUBROS)[number]) && <option value={ed.category}>{ed.category}</option>}
+              </select>
+            </div>
+            {campo('TELÉFONO', ed.phone, (v) => setEd({ ...ed, phone: v }), '+54 11 ...')}
+          </div>
+          <div>
+            <label style={fieldLabel}>ZONA</label>
+            <CampoZona valor={ed.zone} onCambio={(t) => setEd({ ...ed, zone: t })} onElegir={(z) => setEd({ ...ed, zone: z.zona })} style={inp} placeholder="Palermo, CABA" />
+          </div>
+          <div>
+            <label style={fieldLabel}>DIRECCIÓN (OPCIONAL)</label>
+            <CampoDomicilio valor={ed.address} {...partirZona(ed.zone)} onCambio={(t) => setEd({ ...ed, address: t })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} style={inp} placeholder="Av. Santa Fe 3200" />
+            <div style={{ fontSize: 12, color: '#8781a0', marginTop: 6, lineHeight: 1.45 }}>Es lo único que lo pone en el mapa. Si cambiás la dirección, el pin se recalcula solo; si la borrás, sale del mapa.</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {campo('INSTAGRAM (OPCIONAL)', ed.instagram, (v) => setEd({ ...ed, instagram: v }), '@elnegocio')}
+            {campo('SITIO WEB (OPCIONAL)', ed.website, (v) => setEd({ ...ed, website: v }), 'elnegocio.com.ar')}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            {campo('TARIFA (OPCIONAL)', ed.price, (v) => setEd({ ...ed, price: v }), '4500')}
+            {campo('UNIDAD', ed.priceUnit, (v) => setEd({ ...ed, priceUnit: v }), '/paseo')}
+          </div>
+          <div>
+            <label style={fieldLabel}>QUÉ OFRECE</label>
+            <textarea value={ed.about} onChange={(e) => setEd({ ...ed, about: e.target.value })} rows={3} style={{ ...inp, resize: 'vertical' }} placeholder="Experiencia, disponibilidad, precios de referencia…" />
+          </div>
+          {/* El ESTADO no se toca acá a propósito: publicar o rechazar es una
+              decisión, no un campo de un formulario, y tiene sus botones. */}
+          {errorEd && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{errorEd}</div>}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <button onClick={() => { setEditando(false); setErrorEd(''); }} style={btnGhost}>Cancelar</button>
+            <button disabled={guardando} onClick={guardar} style={{ ...btnPrimary, opacity: guardando ? 0.6 : 1 }}>{guardando ? 'Guardando…' : 'Guardar cambios'}</button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title={p.nombre} sub={`${p.rubro} · ${p.zona}`} onClose={onClose} width={560}>
+    <Modal title={p.nombre} sub={`${p.rubro} · ${p.zona}`} onClose={cerrar} width={560}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={estadoBadge(p.estado)}>{p.estado}</span>
@@ -1847,10 +2112,10 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, busy }: {
             la ficha no las mostraba y el club las aprobaba sin verlas. */}
         <div>
           <div style={fieldLabel}>IMÁGENES</div>
-          {p.portada || p.logo ? (
+          {fotos.portada || fotos.logo ? (
             <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-              {p.portada && <img src={p.portada} alt="Portada" style={{ width: '100%', maxWidth: 330, height: 120, objectFit: 'cover', borderRadius: 12, border: '1px solid #e6e3f0', display: 'block' }} />}
-              {p.logo && <img src={p.logo} alt="Logo" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 14, border: '1px solid #e6e3f0', display: 'block' }} />}
+              {fotos.portada && <img src={fotos.portada} alt="Portada" style={{ width: '100%', maxWidth: 330, height: 120, objectFit: 'cover', borderRadius: 12, border: '1px solid #e6e3f0', display: 'block' }} />}
+              {fotos.logo && <img src={fotos.logo} alt="Logo" style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 14, border: '1px solid #e6e3f0', display: 'block' }} />}
             </div>
           ) : (
             <div style={{ fontSize: 13.5, color: '#8781a0' }}>No subió imágenes. La ficha va a salir con la inicial del nombre.</div>
@@ -1925,6 +2190,14 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, busy }: {
             {busy ? 'Guardando…' : 'Reconsiderar y publicar'}
           </button>
         )}
+
+        {/* Editar. Hasta el 16/09/2026 esto no existía y la ficha decía "nadie
+            puede editarla salvo ustedes", que era mentira: tampoco podían
+            ustedes. Una solicitud del formulario público con un dato mal escrito
+            no la podía arreglar nadie, porque su dueño no tiene cuenta. */}
+        <button onClick={() => setEditando(true)} style={{ background: '#f4f2f9', border: 'none', color: 'rgb(93,84,145)', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 14, padding: '12px 18px', borderRadius: 11, cursor: 'pointer', width: '100%' }}>
+          Editar datos
+        </button>
 
         {/* Borrar vive ACÁ y no en la fila de la tabla, separado del resto y al
             final: es lo único de esta pantalla que no se puede deshacer, y al
@@ -2020,6 +2293,7 @@ function Prestadores({ providers }: { providers: ProviderAdminRow[] }) {
           onClose={() => setFicha(null)}
           onResolver={async (status) => { await resolver(ficha.id, status); setFicha(null); }}
           onBorrar={async () => { if (await borrar(ficha)) setFicha(null); }}
+          onGuardado={(texto) => { setAviso(texto); router.refresh(); setFicha(null); }}
         />
       )}
       <h1 className="adm-h1" style={h1}>Servicios</h1>

@@ -123,7 +123,7 @@ export default async function Page() {
     // El autor sale de la fila, igual que en la webapp del socio.
     supabase.from('community_posts').select('id, category, title, author_name, report_reason').eq('reported', true),
     supabase.from('vaccinations').select('pet_id').eq('status', 'pendiente'),
-    supabase.from('push_notifications').select('id, title, audience, sent_at').order('sent_at', { ascending: false }).limit(10),
+    supabase.from('push_notifications').select('id, title, audience, sent_at, en_push, en_campanita, vigente_hasta').order('sent_at', { ascending: false }).limit(10),
     /*
      * Los cobros de la cuota, con el socio embebido: la pantalla los muestra por
      * nombre y número, no por uuid.
@@ -288,6 +288,7 @@ export default async function Page() {
       reseñas: p.reviews,
       logo: p.logo_url, portada: p.photo_url, origen: p.origen,
       precio: p.price != null ? `${money(p.price)}${p.price_unit ? ` ${p.price_unit}` : ''}` : null,
+      precioNum: p.price, precioUnidad: p.price_unit,
       dueño: p.owner_id && dueño ? { nombre: dueño.full_name, email: dueño.email } : null,
     };
   });
@@ -314,7 +315,7 @@ export default async function Page() {
     ...(kpi.gratuitos > 0 ? [{ label: 'Socios gratuitos', n: kpi.gratuitos }] : []),
     { label: 'Vacunas pendientes', n: new Set((pendVaxPets ?? []).map((v) => v.pet_id)).size },
   ];
-  const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ id: s.id, title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—' }));
+  const sent: SentPushVM[] = (sentRows ?? []).map((s) => ({ id: s.id, title: s.title, audience: s.audience, when: s.sent_at ? relTime(s.sent_at) : '—', enPush: s.en_push, enCampanita: s.en_campanita, vigenteHasta: s.vigente_hasta }));
 
   /*
    * Los cobros, como los mira el club.
