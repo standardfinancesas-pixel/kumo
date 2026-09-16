@@ -234,9 +234,9 @@ export function buildNotifs(input: NotifInput): NotifGroup[] {
      mismo estado colisionan en la lista. */
   for (const n of input.negocios) {
     if (n.status === 'verificado') {
-      items.push({ id: `negocio-ok-${n.id}`, kind: 'negocio-ok', title: '¡Tu negocio fue aprobado! 🎉', body: `"${n.name}" ya está publicado en Servicios. Los socios pueden verte y contactarte.`, date: n.createdAt, to: 'minegocio' });
+      items.push({ id: `negocio-ok-${n.id}`, kind: 'negocio-ok', title: '¡Tu servicio fue aprobado! 🎉', body: `"${n.name}" ya está publicado en Servicios. Los socios pueden verte y contactarte.`, date: n.createdAt, to: 'minegocio' });
     } else if (n.status === 'pendiente') {
-      items.push({ id: `negocio-rev-${n.id}`, kind: 'negocio-revision', title: 'Tu negocio está en revisión', body: `Estamos validando los datos de "${n.name}". Te avisamos cuando quede publicado.`, date: n.createdAt, to: 'minegocio' });
+      items.push({ id: `negocio-rev-${n.id}`, kind: 'negocio-revision', title: 'Tu servicio está en revisión', body: `Estamos validando los datos de "${n.name}". Te avisamos cuando quede publicado.`, date: n.createdAt, to: 'minegocio' });
     }
   }
 

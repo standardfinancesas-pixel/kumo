@@ -82,7 +82,7 @@ const NAV_TODO: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'reintegros', label: 'Reintegros', icon: ic(wallet) },
   { key: 'beneficios', label: 'Beneficios', icon: ic(idCard) },
   { key: 'foros', label: 'Foros', icon: ic(chat) },
-  { key: 'negocio', label: 'Mi negocio', icon: ic(house) },
+  { key: 'negocio', label: 'Mi servicio', icon: ic(house) },
   { key: 'perfil', label: 'Mi perfil', icon: ic(person) },
 ];
 
@@ -688,7 +688,7 @@ function Inicio({ go, petIdx, setPetIdx, pets, profile, noLeidas, pago, desdePla
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></svg>
             </div>
             <div>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>Mi negocio</div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>Mi servicio</div>
               <div style={{ fontSize: 11, color: 'rgb(135,129,160)' }}>Publicá y gestioná tu servicio</div>
             </div>
           </button>
@@ -1592,8 +1592,13 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
       phone: tel.trim() || null, about: about.trim(), photo_url: photoUrl, logo_url: logoUrl, status: 'pendiente',
     }).select('id').single();
     if (insErr) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
+    /* El mail de "recibimos tus datos". Estaba SÓLO en el alta corta de Mi
+       servicio y en la app del celular: quien daba de alta desde acá no recibía
+       nada y quedaba esperando. Es lo que pasa cuando el mismo alta está escrita
+       en varios lados — por eso ahora hay una sola. */
+    if (alta?.id) void avisar('negocio-recibido', alta.id);
     // El pin en el mapa: se resuelve en el servidor y no se espera. Si no sale, el
-    // negocio queda igual en la lista, sin distancia.
+    // servicio queda igual en la lista, sin distancia.
     if (alta?.id && direccion.trim()) void fetch('/api/prestadores/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: alta.id }) });
     setBusy(false);
     setEnviado(true);
@@ -1607,8 +1612,8 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
           <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12l5 5L20 6" /></svg>
         </div>
         <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, margin: '0 0 8px' }}>Solicitud enviada</div>
-        <p style={{ color: 'rgb(91,86,112)', fontSize: 14, lineHeight: 1.55, margin: '0 auto 24px', maxWidth: 420 }}>El club va a <strong>validar los datos de tu negocio</strong> antes de publicarlo. Podés seguir el estado desde <strong>Mi negocio</strong>.</p>
-        <button onClick={() => go('negocio')} style={{ width: '100%', maxWidth: 420, background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', marginBottom: 10, fontFamily: '"DM Sans"' }}>Ir a Mi negocio</button>
+        <p style={{ color: 'rgb(91,86,112)', fontSize: 14, lineHeight: 1.55, margin: '0 auto 24px', maxWidth: 420 }}>El club va a <strong>validar los datos de tu servicio</strong> antes de publicarlo. Podés seguir el estado desde <strong>Mi servicio</strong>.</p>
+        <button onClick={() => go('negocio')} style={{ width: '100%', maxWidth: 420, background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: 14, borderRadius: 14, cursor: 'pointer', marginBottom: 10, fontFamily: '"DM Sans"' }}>Ir a Mi servicio</button>
         <button onClick={() => go('servicios')} style={{ width: '100%', maxWidth: 420, background: 'none', color: 'rgb(135,129,160)', border: 'none', fontWeight: 600, fontSize: 14, padding: 10, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Volver a Servicios</button>
       </div>
     );
@@ -1700,7 +1705,7 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
           </div>
         )}
       </label>
-      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 18px', lineHeight: 1.45 }}>La banda de arriba de tu ficha. Las dos las podés cargar después desde Mi negocio.</p>
+      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '6px 0 18px', lineHeight: 1.45 }}>La banda de arriba de tu ficha. Las dos las podés cargar después desde Mi servicio.</p>
 
       {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
       <button onClick={enviar} disabled={busy} style={{ width: '100%', background: 'rgb(93,84,145)', color: '#fff', fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 14, border: 'none', borderRadius: 14, boxShadow: '0 8px 20px rgba(93,84,145,0.28)', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
@@ -2957,22 +2962,6 @@ function estadoNegocio(status: string): CSSProperties {
 function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => void; negocios: MiNegocio[]; profile: Profile; misReviews: Review[] }) {
   const router = useRouter();
   const [selId, setSelId] = useState<string | null>(null);
-  const [showAlta, setShowAlta] = useState(false);
-  const [nombre, setNombre] = useState('');
-  const [rubro, setRubro] = useState<string>(RUBROS[0]!);
-  const [zona, setZona] = useState('');
-  /** La dirección es opcional y es lo único que lo pone en el mapa: ver el aviso
-   *  debajo del campo y  en lib/geocodificar. */
-  const [direccion, setDireccion] = useState('');
-  /* Instagram, sitio y tarifa: opcionales, pero se piden ACÁ y no solo al editar.
-     Antes solo existían en "Editar datos" del negocio ya publicado, así que la ficha
-     de todo prestador nuevo salía con dos filas y sin precio, y el club no tenía
-     manera de mostrarlo bien hasta que el prestador volviera a entrar. */
-  const [instagram, setInstagram] = useState('');
-  const [sitio, setSitio] = useState('');
-  const [precio, setPrecio] = useState('');
-  const [unidad, setUnidad] = useState('');
-  const [tel, setTel] = useState(profile.phone ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editOpen, setEditOpen] = useState(false);
@@ -2980,34 +2969,8 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
   /** Cuál se está subiendo, para poner el cartel encima de ESA caja y no de las dos. */
   const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
   const [fotoError, setFotoError] = useState('');
-  /* Las imágenes del alta. Van aparte de las del negocio ya publicado: acá todavía no
-     existe la fila donde guardarlas, así que se eligen, se previsualizan y se suben
-     al enviar la solicitud. */
-  const [altaLogo, setAltaLogo] = useState<File | null>(null);
-  const [altaLogoPreview, setAltaLogoPreview] = useState<string | null>(null);
-  const [altaPortada, setAltaPortada] = useState<File | null>(null);
-  const [altaPortadaPreview, setAltaPortadaPreview] = useState<string | null>(null);
 
-  /** Valida y previsualiza una de las dos imágenes del alta. */
-  const elegirAlta = (cual: 'logo' | 'portada') => async (elegida?: File) => {
-    if (!elegida) return;
-    const listo = await prepararFoto(elegida);
-    if ('error' in listo) { setError(listo.error); return; }
-    const f = listo.file;
-    setError('');
-    if (cual === 'logo') { setAltaLogo(f); setAltaLogoPreview(URL.createObjectURL(f)); }
-    else { setAltaPortada(f); setAltaPortadaPreview(URL.createObjectURL(f)); }
-  };
 
-  /** Sube al bucket del socio y devuelve la URL, o null si falló. */
-  const subirImagen = async (f: File, prefijo: string): Promise<string | null> => {
-    const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
-    // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
-    const path = `${profile.id}/${prefijo}-${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
-    if (upErr) return null;
-    return supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
-  };
   /**
    * El negocio abierto. Con uno solo es ese; con varios, el que se toca en la lista.
    *
@@ -3087,40 +3050,6 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
       : negocio.status === 'rechazado' ? 'rechazado'
       : 'revision';
 
-  const enviarAlta = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
-    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
-    setBusy(true); setError('');
-
-    /* Las dos imágenes se suben ANTES del insert y con las URLs ya resueltas: si el
-       insert saliera primero, un fallo al subir dejaría el negocio creado sin foto y
-       sin manera de saber que faltó. */
-    let photoUrl: string | null = null;
-    let logoUrl: string | null = null;
-    if (altaPortada) {
-      photoUrl = await subirImagen(altaPortada, 'negocio');
-      if (!photoUrl) { setError('No pudimos subir la portada. Probá de nuevo o mandá la solicitud sin ella.'); setBusy(false); return; }
-    }
-    if (altaLogo) {
-      logoUrl = await subirImagen(altaLogo, 'negocio-logo');
-      if (!logoUrl) { setError('No pudimos subir el logo. Probá de nuevo o mandá la solicitud sin él.'); setBusy(false); return; }
-    }
-
-    const { data: alta, error: e2 } = await supabase.from('providers').insert({
-      owner_id: profile.id, name: nombre.trim(), category: rubro, zone: zona.trim(),
-      address: direccion.trim() || null,
-      instagram: instagram.trim() || null, website: sitio.trim() || null,
-      price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, photo_url: photoUrl, logo_url: logoUrl, status: 'pendiente',
-    }).select('id').single();
-    if (e2) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
-    if (alta?.id) void avisar('negocio-recibido', alta.id);
-    if (alta?.id && direccion.trim()) void fetch('/api/prestadores/ubicacion', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: alta.id }) });
-    setShowAlta(false);
-    router.refresh();
-    setBusy(false);
-  };
 
   const darDeBaja = async () => {
     if (!negocio) return;
@@ -3136,7 +3065,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
     <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, marginBottom: 14 }}>
       {!soloContacto && (
         <>
-          <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginBottom: 2 }}>Tu negocio</div>
+          <div style={{ fontSize: 12, color: 'rgb(162,157,186)', marginBottom: 2 }}>Tu servicio</div>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 18 }}>{negocio.name}</div>
           <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{negocio.category} · {negocio.zone}</div>
         </>
@@ -3150,53 +3079,15 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
     </div>
   );
 
-  /* El formulario del alta, en una constante: se usa en dos lugares —la tarjeta de
-     "todavia no tenes ninguno" y el boton "dar de alta otro" de la lista— y
-     duplicar veinte inputs es garantia de que se separen. */
-  const formAlta = showAlta ? (
-  <form onSubmit={enviarAlta} style={{ marginTop: 18, textAlign: 'left', display: 'flex', flexDirection: 'column', gap: 10, animation: 'kpop 0.2s ease' }}>
-    <input value={nombre} onChange={(e) => { setNombre(e.target.value); setError(''); }} placeholder="Nombre de tu negocio" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-    <select value={rubro} onChange={(e) => setRubro(e.target.value)} style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }}>
-      {RUBROS.map((r) => <option key={r}>{r}</option>)}
-    </select>
-    <CampoZona valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Zona (ej: Palermo, CABA)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
-    <CampoDomicilio valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} placeholder="Dirección del local (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"', width: '100%', boxSizing: 'border-box' }} />
-    <input value={tel} onChange={(e) => setTel(e.target.value)} placeholder="WhatsApp de contacto" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-    {/* La dirección es lo único que lo pone en el mapa; sin ella el
-        negocio aparece en la lista pero sin distancia ni pin. */}
-    <input value={instagram} onChange={(e) => setInstagram(e.target.value)} placeholder="Instagram (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-    <input value={sitio} onChange={(e) => setSitio(e.target.value)} placeholder="Sitio web (opcional)" style={{ padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-    <div style={{ display: 'flex', gap: 8 }}>
-      <input value={precio} onChange={(e) => setPrecio(e.target.value)} inputMode="numeric" placeholder="Tarifa (opcional)" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-      <input value={unidad} onChange={(e) => setUnidad(e.target.value)} placeholder="/paseo" style={{ flex: 1, minWidth: 0, padding: '11px 14px', border: '1.5px solid rgb(230,227,240)', borderRadius: 10, fontSize: 14, background: '#fff', outline: 'none', fontFamily: '"DM Sans"' }} />
-    </div>
-    {/* El logo y la portada, también acá: estaban solo en el alta larga ("Sumate como
-        prestador"), así que quien daba de alta desde Mi negocio —que es el camino más
-        corto— no tenía dónde subirlas y su ficha nacía con el ícono del rubro. */}
-    <div style={{ display: 'flex', gap: 10, alignItems: 'stretch' }}>
-      <label style={{ position: 'relative', display: 'flex', width: 84, height: 84, flex: 'none', border: '2px dashed rgb(230,227,240)', borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: altaLogoPreview ? `url(${altaLogoPreview}) center/cover` : '#fff', cursor: 'pointer', overflow: 'hidden' }}>
-        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirAlta('logo')(e.target.files?.[0])} style={{ display: 'none' }} />
-        {!altaLogoPreview && <div style={{ textAlign: 'center', color: 'rgb(135,129,160)', fontSize: 11, pointerEvents: 'none' }}>Logo<br />(opcional)</div>}
-      </label>
-      <label style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0, height: 84, border: '2px dashed rgb(230,227,240)', borderRadius: 14, alignItems: 'center', justifyContent: 'center', background: altaPortadaPreview ? `url(${altaPortadaPreview}) center/cover` : '#fff', cursor: 'pointer', overflow: 'hidden' }}>
-        <input type="file" accept={FOTO_TIPOS.join(',')} onChange={(e) => elegirAlta('portada')(e.target.files?.[0])} style={{ display: 'none' }} />
-        {!altaPortadaPreview && <div style={{ textAlign: 'center', color: 'rgb(135,129,160)', fontSize: 11.5, pointerEvents: 'none' }}>Foto de portada (opcional)</div>}
-      </label>
-    </div>
-    <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: 0, lineHeight: 1.45 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</p>
-    {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
-    <button type="submit" disabled={busy} style={{ background: 'rgb(225,251,98)', color: 'rgb(33,30,51)', border: 'none', fontWeight: 700, fontSize: 14, padding: 12, borderRadius: 10, cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.6 : 1 }}>{busy ? 'Enviando…' : 'Enviar solicitud'}</button>
-  </form>
-  ) : null;
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
       {/* Volver a la lista solo tiene sentido si hay una lista: con un negocio la
           pantalla es la de siempre. */}
       {negocio && negocios.length > 1 && (
-        <button onClick={() => setSelId(null)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '0 0 6px' }}>← Mis negocios</button>
+        <button onClick={() => setSelId(null)} style={{ background: 'none', border: 'none', color: 'rgb(93,84,145)', fontWeight: 600, fontSize: 14, cursor: 'pointer', padding: '0 0 6px' }}>← Mis servicios</button>
       )}
-      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>{negocios.length > 1 && !negocio ? 'Mis negocios' : 'Mi negocio'}</div>
+      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 4 }}>{negocios.length > 1 && !negocio ? 'Mis servicios' : 'Mi servicio'}</div>
       <div style={{ color: 'rgb(135,129,160)', fontSize: 14, marginBottom: 18 }}>Ofrecé tus servicios a la comunidad de Kumo.</div>
 
       {/* La lista. Aparece con el segundo negocio: con uno la pantalla va directo a
@@ -3217,8 +3108,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
               </button>
             ))}
           </div>
-          <button onClick={() => setShowAlta((s) => !s)} style={{ ...sheetBtn(false), width: '100%' }}>+ Dar de alta otro negocio</button>
-          {formAlta}
+          <button onClick={() => go('prestar')} style={{ ...sheetBtn(false), width: '100%' }}>+ Dar de alta otro servicio</button>
         </div>
       )}
 
@@ -3229,9 +3119,8 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
               <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#211E33" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{storeIcon}</svg>
             </div>
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, lineHeight: 1.15 }}>¿Ofrecés un servicio para mascotas?</div>
-            <p style={{ color: 'rgb(122,117,146)', fontSize: 14, lineHeight: 1.55, margin: '10px auto 20px', maxWidth: 460 }}>Dá de alta tu negocio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</p>
-            <button onClick={() => setShowAlta((s) => !s)} style={{ display: 'inline-block', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 14, cursor: 'pointer' }}>Dar de alta mi negocio →</button>
-            {formAlta}
+            <p style={{ color: 'rgb(122,117,146)', fontSize: 14, lineHeight: 1.55, margin: '10px auto 20px', maxWidth: 460 }}>Dá de alta tu servicio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</p>
+            <button onClick={() => go('prestar')} style={{ display: 'inline-block', background: 'rgb(93,84,145)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 15, padding: '14px 26px', borderRadius: 14, cursor: 'pointer' }}>Dar de alta mi servicio →</button>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {['Miles de socios buscando tu servicio', 'Sello "Verificado por Kumo"', 'Reseñas y contactos en un solo lugar'].map((t) => (
@@ -3250,13 +3139,13 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
         <div>
           <div style={{ background: 'rgb(251,243,226)', border: '1px solid rgb(240,224,180)', borderRadius: 16, padding: 16, marginBottom: 14 }}>
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: 'rgb(184,134,11)' }}>En revisión</div>
-            <div style={{ fontSize: 13, color: 'rgb(140,110,40)', marginTop: 2 }}>El club está validando los datos de tu negocio. Te avisamos en 48 hs hábiles.</div>
+            <div style={{ fontSize: 13, color: 'rgb(140,110,40)', marginTop: 2 }}>El club está validando los datos de tu servicio. Te avisamos en 48 hs hábiles.</div>
           </div>
           {negCard()}
           <div style={{ fontWeight: 700, fontSize: 15, margin: '18px 0 12px' }}>Estado de tu solicitud</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
             {[
-              { t: 'Solicitud enviada', d: 'Recibimos los datos de tu negocio', done: true },
+              { t: 'Solicitud enviada', d: 'Recibimos los datos de tu servicio', done: true },
               { t: 'Validación del club', d: 'Verificamos identidad y datos · en curso', current: true },
               { t: 'Negocio publicado', d: 'Quedás visible en Servicios' },
             ].map((s, i, arr) => (
@@ -3284,7 +3173,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
           <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 16, padding: 16, marginBottom: 14 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
               <div>
-                <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>Tu negocio</div>
+                <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>Tu servicio</div>
                 <div style={{ fontFamily: '"Baloo 2"', fontWeight: 700, fontSize: 18 }}>{negocio?.name}</div>
                 <div style={{ fontSize: 13, color: 'rgb(135,129,160)' }}>{negocio?.category} · {negocio?.zone}</div>
               </div>
@@ -3324,7 +3213,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <button onClick={() => negocio && abrirEdicion(negocio)} style={{ ...sheetBtn(true), width: '100%', fontSize: 14 }}>Editar datos</button>
             <button onClick={() => go('servicios')} style={{ ...sheetBtn(false), width: '100%', fontSize: 14 }}>Ver perfil público</button>
-            <button onClick={() => setBajaOpen(true)} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Dar de baja mi negocio</button>
+            <button onClick={() => setBajaOpen(true)} style={{ background: 'none', color: 'rgb(176,72,63)', border: 'none', fontWeight: 600, fontSize: 13, padding: 6, cursor: 'pointer', fontFamily: '"DM Sans"' }}>Dar de baja mi servicio</button>
           </div>
         </div>
       )}
@@ -3363,7 +3252,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
             </div>
           </div>
 
-          <label style={sheetLabel}>Nombre del negocio</label>
+          <label style={sheetLabel}>Nombre del servicio</label>
           <input value={ed.name} onChange={(e) => { setEd({ ...ed, name: e.target.value }); setError(''); }} style={{ ...sheetInput, marginBottom: 12 }} />
           <label style={sheetLabel}>Rubro</label>
           <select value={ed.category} onChange={(e) => setEd({ ...ed, category: e.target.value })} style={{ ...sheetInput, marginBottom: 12 }}>
@@ -3396,7 +3285,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
       {/* Baja del negocio. Antes borraba de una, sin preguntar. */}
       {bajaOpen && (
         <Sheet onClose={() => setBajaOpen(false)}>
-          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>¿Dar de baja tu negocio?</div>
+          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 20, marginBottom: 8 }}>¿Dar de baja tu servicio?</div>
           <p style={{ fontSize: 13.5, color: 'rgb(91,86,112)', lineHeight: 1.55, margin: '0 0 18px' }}>Deja de aparecer en Servicios y se borran sus reseñas y los guardados que tenga. No se puede deshacer: para volver hay que dar de alta de nuevo.</p>
           <button onClick={darDeBaja} disabled={busy} style={{ width: '100%', background: 'rgb(251,232,239)', color: 'rgb(176,72,63)', border: 'none', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 14, cursor: 'pointer', marginBottom: 8, fontFamily: '"DM Sans"', opacity: busy ? 0.6 : 1 }}>{busy ? 'Dando de baja…' : 'Sí, dar de baja'}</button>
           <button onClick={() => setBajaOpen(false)} style={{ ...sheetBtn(true), width: '100%' }}>Cancelar</button>
@@ -3406,7 +3295,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
       {state === 'rechazado' && (
         <div>
           <div style={{ background: 'rgb(251,232,239)', border: '1px solid rgb(240,200,215)', borderRadius: 16, padding: 16, marginBottom: 14 }}>
-            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: 'rgb(176,72,63)' }}>No pudimos aprobar tu negocio</div>
+            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: 'rgb(176,72,63)' }}>No pudimos aprobar tu servicio</div>
             <div style={{ fontSize: 13, color: 'rgb(150,70,70)', marginTop: 2 }}>Escribinos y lo revisamos con vos. Podés dar de baja la solicitud y volver a empezar cuando quieras.</div>
           </div>
           {negCard()}
@@ -3418,8 +3307,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
           sin esto, el que ya tiene uno no tendría por dónde dar de alta el segundo. */}
       {negocio && (
         <div style={{ marginTop: 18 }}>
-          <button onClick={() => setShowAlta((s) => !s)} style={{ ...sheetBtn(false), width: '100%' }}>+ Dar de alta otro negocio</button>
-          {formAlta}
+          <button onClick={() => go('prestar')} style={{ ...sheetBtn(false), width: '100%' }}>+ Dar de alta otro servicio</button>
         </div>
       )}
     </div>
@@ -3688,7 +3576,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
       {/* Mi cuenta */}
       <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 10 }}>Mi cuenta</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-        {row(ic(storeIcon, false, 19), 'Mi negocio', negocioHint, chevron, () => go('negocio'))}
+        {row(ic(storeIcon, false, 19), 'Mi servicio', negocioHint, chevron, () => go('negocio'))}
         {/* El historial de cuotas. Va para todos, incluido el gratuito: si alguna vez
             pagó, tiene derecho a ver qué le cobraron. La bajada dice lo último que pasó
             de verdad, que es lo que uno viene a mirar. */}
@@ -4644,7 +4532,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
         <div style={{ background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 26, textAlign: 'center' }}>
           <div style={{ width: 46, height: 46, borderRadius: 14, background: 'rgb(240,237,249)', margin: '0 auto 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#5D5491' }}>{ic(bellPath, false, 22)}</div>
           <div style={{ fontWeight: 600, fontSize: 14.5 }}>No tenés notificaciones</div>
-          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 4, lineHeight: 1.45 }}>Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu negocio.</div>
+          <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 4, lineHeight: 1.45 }}>Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu servicio.</div>
         </div>
       ) : groups.map((g) => (
         <div key={g.label} style={{ marginBottom: 18 }}>

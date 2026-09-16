@@ -411,7 +411,7 @@ function Inicio({ pets, petIdx, setPetIdx, go, pago, desdePlan, onPlan }: { pets
         </TouchableOpacity>
         <TouchableOpacity onPress={() => go('minegocio')} style={{ width: '47%', flexGrow: 1, height: 130, borderRadius: 14, padding: 14, justifyContent: 'space-between', backgroundColor: colors.violet[50], borderWidth: 1, borderColor: colors.violet[200] }}>
           <View style={{ width: 32, height: 32, borderRadius: 8, overflow: 'hidden', backgroundColor: LIME, alignItems: 'center', justifyContent: 'center' }}><Ic d="store" size={17} color={INK} /></View>
-          <View><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Mi negocio</Text><Text style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>Publicá y gestioná tu servicio</Text></View>
+          <View><Text style={{ fontWeight: '700', fontSize: 14, color: INK }}>Mi servicio</Text><Text style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>Publicá y gestioná tu servicio</Text></View>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -1705,7 +1705,7 @@ function MasSheet({ onClose, onGo, pago, onPlan }: { onClose: () => void; onGo: 
     { t: 'Mi perfil', s: 'Datos, plan y facturación', icon: 'person', to: 'perfil' },
     { t: 'Mis mascotas', s: 'Datos y carnet de tus peludos', icon: 'paw', fill: true, to: 'mismascotas' },
     { t: 'Mis guardados', s: 'Prestadores que guardaste', icon: 'heart', fill: true, to: 'guardados' },
-    { t: 'Mi negocio', s: 'Publicá y gestioná tus servicios', icon: 'house', to: 'minegocio' },
+    { t: 'Mi servicio', s: 'Publicá y gestioná tus servicios', icon: 'house', to: 'minegocio' },
     // Los reintegros son del que paga. Para el gratuito, en su lugar va la
     // invitación: es un menú al que se entra a propósito, no una pestaña que
     // insiste sola.
@@ -1894,7 +1894,7 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
     if (!profile) return;
     Alert.alert(
       'Eliminar tu cuenta',
-      'Se borran para siempre tus mascotas con sus vacunas y fotos, tus reintegros, tus publicaciones y tu negocio.\n\nSi lo que querés es dejar de pagar y conservar tu historial, usá "Darme de baja del club": eso sí se puede revertir.',
+      'Se borran para siempre tus mascotas con sus vacunas y fotos, tus reintegros, tus publicaciones y tu servicio.\n\nSi lo que querés es dejar de pagar y conservar tu historial, usá "Darme de baja del club": eso sí se puede revertir.',
       [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Continuar', style: 'destructive', onPress: confirmarEliminacion },
@@ -2746,9 +2746,9 @@ function Prestar({ userId, phone, onVolver, onNegocio, reload }: { userId: strin
           <Svg width={34} height={34} viewBox="0 0 24 24"><Path d="M4 12l5 5L20 6" fill="none" stroke={INK} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>
         </View>
         <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: INK, marginBottom: 8 }}>Solicitud enviada</Text>
-        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 22, textAlign: 'center', marginBottom: 24 }}>El club va a validar los datos de tu negocio antes de publicarlo. Podés seguir el estado desde Mi negocio.</Text>
+        <Text style={{ color: MUTED, fontSize: 14, lineHeight: 22, textAlign: 'center', marginBottom: 24 }}>El club va a validar los datos de tu servicio antes de publicarlo. Podés seguir el estado desde Mi servicio.</Text>
         <TouchableOpacity onPress={onNegocio} style={{ alignSelf: 'stretch', backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginBottom: 10 }}>
-          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ir a Mi negocio</Text>
+          <Text style={{ color: '#fff', fontWeight: '700', fontSize: 15 }}>Ir a Mi servicio</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={onVolver} style={{ paddingVertical: 10 }}><Text style={{ color: '#8781a0', fontWeight: '600', fontSize: 14 }}>Volver a Servicios</Text></TouchableOpacity>
       </ScrollView>
@@ -2884,7 +2884,7 @@ function Prestar({ userId, phone, onVolver, onNegocio, reload }: { userId: strin
           </View>
         )}
       </TouchableOpacity>
-      <Text style={{ fontSize: 12, color: MUTED, marginTop: 6, marginBottom: 18, lineHeight: 17 }}>La banda de arriba de tu ficha. Las dos las podés cargar después desde Mi negocio.</Text>
+      <Text style={{ fontSize: 12, color: MUTED, marginTop: 6, marginBottom: 18, lineHeight: 17 }}>La banda de arriba de tu ficha. Las dos las podés cargar después desde Mi servicio.</Text>
 
       {error ? <Text style={{ fontSize: 12.5, color: '#b0483f', fontWeight: '600', marginBottom: 12 }}>{error}</Text> : null}
       <TouchableOpacity disabled={busy} onPress={enviar} style={{ backgroundColor: BRAND, borderRadius: 14, paddingVertical: 14, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
@@ -3219,7 +3219,7 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }
           <View style={{ width: 72, height: 72, borderRadius: 36, overflow: 'hidden', backgroundColor: colors.violet[100], alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
             <Ic d="bell" size={30} color={colors.violet[400]} />
           </View>
-          <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 24, lineHeight: 20 }}>Todavía no tenés notificaciones. Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu negocio.</Text>
+          <Text style={{ fontSize: 14, color: MUTED, textAlign: 'center', paddingHorizontal: 24, lineHeight: 20 }}>Todavía no tenés notificaciones. Acá te avisamos cuando venza una vacuna, cuando se resuelva un reintegro o cuando aprobemos tu servicio.</Text>
         </View>
       ) : groups.map((g) => (
         <View key={g.label} style={{ marginBottom: 18 }}>
@@ -3275,30 +3275,10 @@ function Notificaciones({ groups, visto, marcarLeidas, go, userId, onAbrirHilo }
  * Con uno solo la pantalla se ve igual que antes —no hay lista de un elemento—; la
  * lista aparece recién con el segundo.
  */
-function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; userId: string; phone: string; reload: () => void }) {
+function Negocio({ negocios, userId, reload, onAlta }: { negocios: MiNegocio[]; userId: string; reload: () => void; onAlta: () => void }) {
   const [selId, setSelId] = useState<string | null>(null);
-  const [showAlta, setShowAlta] = useState(false);
   /** Cuál se está subiendo, para poner el cartel en ESA caja y no en las dos. */
   const [fotoBusy, setFotoBusy] = useState<'logo' | 'portada' | null>(null);
-  /* Las imágenes del alta. Van aparte de las del negocio publicado: acá todavía no
-     existe la fila donde guardarlas, así que se suben al elegirlas y el insert guarda
-     las URLs. */
-  const [altaLogo, setAltaLogo] = useState<string | null>(null);
-  const [altaPortada, setAltaPortada] = useState<string | null>(null);
-  const [altaBusy, setAltaBusy] = useState<'logo' | 'portada' | null>(null);
-  const [nombre, setNombre] = useState('');
-  const [rubro, setRubro] = useState<ProviderCategory>(RUBROS[0]!);
-  const [zona, setZona] = useState('');
-  /** La dirección es opcional y es lo único que pone el negocio en el mapa. */
-  const [direccion, setDireccion] = useState('');
-  /* Instagram, sitio y tarifa: opcionales, pero se piden ACÁ y no solo al editar.
-     Antes solo existían en "Editar datos" del negocio ya publicado, así que la ficha
-     de todo prestador nuevo salía con dos filas y sin precio. */
-  const [instagram, setInstagram] = useState('');
-  const [sitio, setSitio] = useState('');
-  const [precio, setPrecio] = useState('');
-  const [unidad, setUnidad] = useState('');
-  const [tel, setTel] = useState(phone === '—' ? '' : phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -3385,31 +3365,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
       : 'revision';
 
   /** Elegir y subir una de las dos imágenes del alta. */
-  const elegirAlta = async (cual: 'logo' | 'portada') => {
-    setAltaBusy(cual); setError('');
-    const r = await elegirYSubirFoto(userId, cual === 'logo' ? 'negocio-logo-' : 'negocio-');
-    if ('url' in r) (cual === 'logo' ? setAltaLogo : setAltaPortada)(r.url);
-    else if ('error' in r) setError(r.error);
-    setAltaBusy(null);
-  };
 
-  const enviarAlta = async () => {
-    if (!nombre.trim()) { setError('Poné el nombre de tu negocio.'); return; }
-    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
-    setBusy(true); setError('');
-    const { data: alta, error: e } = await supabase.from('providers').insert({
-      owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
-      address: direccion.trim() || null,
-      instagram: instagram.trim() || null, website: sitio.trim() || null,
-      price: Number(precio.replace(/\D/g, '')) || null, price_unit: unidad.trim() || null,
-      phone: tel.trim() || null, photo_url: altaPortada, logo_url: altaLogo, status: 'pendiente',
-    }).select('id').single();
-    if (e) { setError('No pudimos enviar la solicitud. Probá de nuevo.'); setBusy(false); return; }
-    if (alta?.id && direccion.trim()) void ubicarNegocio(alta.id);
-    setShowAlta(false);
-    await reload();
-    setBusy(false);
-  };
 
   const darDeBaja = async () => {
     if (!negocio) return;
@@ -3419,76 +3375,17 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
     setBusy(false);
   };
 
-  const field = { borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' } as const;
 
-  /* El formulario del alta, en una constante: se usa en la tarjeta de "todavía no
-     tenés ninguno" y en el botón "dar de alta otro" de la lista. */
-  const formAlta = (
-  <View style={{ gap: 10 }}>
-    <TextInput value={nombre} onChangeText={(t) => { setNombre(t); setError(''); }} placeholder="Nombre de tu negocio" placeholderTextColor={colors.violet[400]} style={field} />
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
-      {RUBROS.map((r) => (
-        <TouchableOpacity key={r} onPress={() => setRubro(r)} style={{ backgroundColor: rubro === r ? LIME : 'rgba(255,255,255,0.15)', borderRadius: 100, paddingVertical: 8, paddingHorizontal: 13 }}>
-          <Text style={{ color: rubro === r ? INK : '#fff', fontWeight: '700', fontSize: 12.5 }}>{r}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-    {/* `tono="oscuro"`: este formulario vive dentro de la tarjeta violeta y
-        los rótulos por defecto son grises: sobre el violeta no se leen. */}
-    <CampoZona tono="oscuro" label="Zona" valor={zona} onCambio={(t) => { setZona(t); setError(''); }} onElegir={(z) => { setZona(z.zona); setError(''); }} placeholder="Ej: Palermo, CABA" />
-    <CampoDomicilio tono="oscuro" label="Dirección (opcional)" valor={direccion} {...partirZona(zona)} onCambio={setDireccion} onElegir={(l) => setDireccion(l.domicilio)} />
-    <TextInput value={tel} onChangeText={setTel} placeholder="WhatsApp de contacto" placeholderTextColor={colors.violet[400]} keyboardType="phone-pad" style={field} />
-    {/* La dirección es lo único que lo pone en el mapa; sin ella el negocio
-        aparece en la lista pero sin distancia ni pin. */}
-    <TextInput value={instagram} onChangeText={setInstagram} placeholder="Instagram (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
-    <TextInput value={sitio} onChangeText={setSitio} placeholder="Sitio web (opcional)" placeholderTextColor={colors.violet[400]} autoCapitalize="none" style={field} />
-    <View style={{ flexDirection: 'row', gap: 8 }}>
-      <TextInput value={precio} onChangeText={setPrecio} keyboardType="numeric" placeholder="Tarifa (opcional)" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
-      <TextInput value={unidad} onChangeText={setUnidad} placeholder="/paseo" placeholderTextColor={colors.violet[400]} style={{ ...field, flex: 1 }} />
-    </View>
-    {/* El logo y la portada, también acá: estaban solo en el alta larga ("Sumate como
-        prestador"), así que quien daba de alta desde Mi negocio —que es el camino más
-        corto— no tenía dónde subirlas y su ficha nacía con el ícono del rubro. */}
-    <View style={{ flexDirection: 'row', gap: 10 }}>
-      <TouchableOpacity
-        disabled={!!altaBusy}
-        onPress={() => elegirAlta('logo')}
-        style={{ width: 84, height: 84, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-      >
-        {altaLogo ? <Image source={{ uri: altaLogo }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          : <Text style={{ fontSize: 11, color: MUTED, textAlign: 'center' }}>{altaBusy === 'logo' ? 'Subiendo…' : 'Logo\n(opcional)'}</Text>}
-      </TouchableOpacity>
-      <TouchableOpacity
-        disabled={!!altaBusy}
-        onPress={() => elegirAlta('portada')}
-        style={{ flex: 1, height: 84, borderRadius: 14, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.violet[200], backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}
-      >
-        {altaPortada ? <Image source={{ uri: altaPortada }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-          : <Text style={{ fontSize: 11.5, color: MUTED, textAlign: 'center' }}>{altaBusy === 'portada' ? 'Subiendo…' : 'Foto de portada (opcional)'}</Text>}
-      </TouchableOpacity>
-    </View>
-    <Text style={{ fontSize: 11.5, color: colors.violet[200], lineHeight: 17 }}>Si atendés en un local, la dirección te ubica en el mapa de los socios. Si trabajás a domicilio, dejala vacía. Todo esto se puede completar después.</Text>
-    {!!error && <Text style={{ color: LIME, fontSize: 12.5, fontWeight: '600' }}>{error}</Text>}
-    <View style={{ flexDirection: 'row', gap: 10 }}>
-      <TouchableOpacity onPress={() => setShowAlta(false)} style={{ flex: 1, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 12, paddingVertical: 13, alignItems: 'center' }}>
-        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Cancelar</Text>
-      </TouchableOpacity>
-      <TouchableOpacity disabled={busy} onPress={enviarAlta} style={{ flex: 1, backgroundColor: LIME, borderRadius: 12, paddingVertical: 13, alignItems: 'center', opacity: busy ? 0.6 : 1 }}>
-        <Text style={{ color: INK, fontWeight: '700', fontSize: 14 }}>{busy ? 'Enviando…' : 'Enviar'}</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-  );
 
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       {/* Volver a la lista solo tiene sentido si hay una lista. */}
       {negocio && negocios.length > 1 && (
         <TouchableOpacity onPress={() => setSelId(null)} style={{ paddingVertical: 6 }}>
-          <Text style={{ color: BRAND, fontWeight: '600', fontSize: 14 }}>← Mis negocios</Text>
+          <Text style={{ color: BRAND, fontWeight: '600', fontSize: 14 }}>← Mis servicios</Text>
         </TouchableOpacity>
       )}
-      <H1>{negocios.length > 1 && !negocio ? 'Mis negocios' : 'Mi negocio'}</H1>
+      <H1>{negocios.length > 1 && !negocio ? 'Mis servicios' : 'Mi servicio'}</H1>
       <Sub>Ofrecé tus servicios a la comunidad de Kumo.</Sub>
 
       {/* La lista. Aparece con el segundo negocio: con uno la pantalla va directo a
@@ -3515,11 +3412,9 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
               </View>
             </TouchableOpacity>
           ))}
-          {showAlta ? formAlta : (
-            <TouchableOpacity onPress={() => setShowAlta(true)} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
-              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>+ Dar de alta otro negocio</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={onAlta} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
+            <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>+ Dar de alta otro servicio</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -3528,18 +3423,16 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
           <View style={{ position: 'absolute', right: -20, top: -20, opacity: 0.15 }}><Ic d="store" size={120} color="#fff" /></View>
           <View style={{ width: 52, height: 52, borderRadius: 16, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}><Ic d="store" size={26} color="#fff" /></View>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 22, color: '#fff', lineHeight: 27 }}>¿Ofrecés un servicio para mascotas?</Text>
-          <Text style={{ color: colors.violet[300], fontSize: 13.5, lineHeight: 20, marginTop: 10, marginBottom: 18 }}>Dá de alta tu negocio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</Text>
-          {showAlta ? formAlta : (
-            <TouchableOpacity onPress={() => setShowAlta(true)} style={{ backgroundColor: LIME, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
-              <Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>Dar de alta mi negocio →</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={{ color: colors.violet[300], fontSize: 13.5, lineHeight: 20, marginTop: 10, marginBottom: 18 }}>Dá de alta tu servicio como paseador, guardería, adiestrador, baño o cuidador. El club valida tus datos y quedás visible para miles de socios.</Text>
+          <TouchableOpacity onPress={onAlta} style={{ backgroundColor: LIME, borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}>
+            <Text style={{ color: INK, fontWeight: '700', fontSize: 15 }}>Dar de alta mi servicio →</Text>
+          </TouchableOpacity>
         </View>
       )}
       {state === 'revision' && (
         <View style={{ backgroundColor: '#fbf3e2', borderWidth: 1, borderColor: '#f0d98a', borderRadius: 20, padding: 22, marginBottom: 18 }}>
           <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: '#b8860b' }}>Tu alta está en revisión</Text>
-          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Nuestro equipo está validando tus datos. Te avisamos cuando tu negocio quede activo.</Text>
+          <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Nuestro equipo está validando tus datos. Te avisamos cuando tu servicio quede activo.</Text>
           <Text style={{ color: INK, fontWeight: '700', fontSize: 15, marginTop: 14 }}>{negocio?.name}</Text>
           <Text style={{ color: MUTED, fontSize: 13 }}>{negocio?.category} · {negocio?.zone}</Text>
           <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
@@ -3549,7 +3442,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
       )}
       {state === 'activo' && (
         <View style={{ backgroundColor: colors.success.bg, borderWidth: 1, borderColor: '#a8dcc0', borderRadius: 20, padding: 22, marginBottom: 18 }}>
-          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: colors.success.fg }}>Tu negocio está activo ✓</Text>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: colors.success.fg }}>Tu servicio está activo ✓</Text>
           <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Ya sos visible para los socios en Servicios.</Text>
           <Text style={{ color: INK, fontWeight: '700', fontSize: 16, marginTop: 14 }}>{negocio?.name}</Text>
           <Text style={{ color: MUTED, fontSize: 13 }}>{negocio?.category} · {negocio?.zone}</Text>
@@ -3560,7 +3453,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
             <Text style={{ color: colors.success.fg, fontWeight: '700', fontSize: 14 }}>Editar datos</Text>
           </TouchableOpacity>
           <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
-            <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Dando de baja…' : 'Dar de baja mi negocio'}</Text>
+            <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Dando de baja…' : 'Dar de baja mi servicio'}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -3609,7 +3502,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
           <CampoZona label="Zona" valor={ed.zone} onCambio={(v) => { setEd({ ...ed, zone: v }); setError(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setError(''); }} />
           <CampoDomicilio label="Dirección (opcional)" valor={ed.address} {...partirZona(ed.zone)} onCambio={(v) => setEd({ ...ed, address: v })} onElegir={(l) => setEd({ ...ed, address: l.domicilio })} ayuda="Es lo que te ubica en el mapa de los socios. Vacía, te encuentran por zona." />
           {[
-            ['Nombre del negocio', ed.name, (v: string) => setEd({ ...ed, name: v }), {}],
+            ['Nombre del servicio', ed.name, (v: string) => setEd({ ...ed, name: v }), {}],
             ['Teléfono', ed.phone, (v: string) => setEd({ ...ed, phone: v }), { keyboardType: 'phone-pad' as const }],
             ['Instagram', ed.instagram, (v: string) => setEd({ ...ed, instagram: v }), { autoCapitalize: 'none' as const }],
             ['Sitio web', ed.website, (v: string) => setEd({ ...ed, website: v }), { autoCapitalize: 'none' as const }],
@@ -3649,7 +3542,7 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
       )}
       {state === 'rechazado' && (
         <View style={{ backgroundColor: '#fbe8ef', borderWidth: 1, borderColor: '#f0c8d7', borderRadius: 20, padding: 22, marginBottom: 18 }}>
-          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: '#b0483f' }}>No pudimos aprobar tu negocio</Text>
+          <Text style={{ fontFamily: FH, fontWeight: '800', fontSize: 18, color: '#b0483f' }}>No pudimos aprobar tu servicio</Text>
           <Text style={{ color: MUTED, fontSize: 13.5, lineHeight: 20, marginTop: 8 }}>Escribinos y lo revisamos con vos. Podés borrar la solicitud y volver a empezar cuando quieras.</Text>
           <TouchableOpacity disabled={busy} onPress={darDeBaja} style={{ marginTop: 14 }}>
             <Text style={{ color: '#b0483f', fontWeight: '600', fontSize: 13 }}>{busy ? 'Borrando…' : 'Borrar la solicitud'}</Text>
@@ -3661,11 +3554,9 @@ function Negocio({ negocios, userId, phone, reload }: { negocios: MiNegocio[]; u
           sin esto, el que ya tiene uno no tendría por dónde dar de alta el segundo. */}
       {negocio && (
         <View style={{ marginBottom: 18 }}>
-          {showAlta ? formAlta : (
-            <TouchableOpacity onPress={() => setShowAlta(true)} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
-              <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>+ Dar de alta otro negocio</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity onPress={onAlta} style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 14, paddingVertical: 13, alignItems: 'center' }}>
+            <Text style={{ color: BRAND, fontWeight: '700', fontSize: 14 }}>+ Dar de alta otro servicio</Text>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -5107,7 +4998,7 @@ export default function App() {
           {pantalla === 'perfil' && <Perfil profile={data.profile} pagos={data.pagos} bloqueados={data.bloqueados} go={go} reload={reload} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'mismascotas' && <MisMascotas pets={pets} reintegros={data.reintegros} userId={userId} reload={reload} go={go} setPetIdx={setPetIdx} />}
           {pantalla === 'guardados' && <Guardados providers={data.providers} guardados={guardados} onAbrir={() => go('servicios')} />}
-          {pantalla === 'minegocio' && <Negocio negocios={data.negocios} userId={userId} phone={data.profile?.phone ?? ''} reload={reload} />}
+          {pantalla === 'minegocio' && <Negocio negocios={data.negocios} userId={userId} reload={reload} onAlta={() => go('prestar')} />}
           {pantalla === 'notif' && <Notificaciones groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} go={go} userId={userId} onAbrirHilo={setHiloDesdeAviso} />}
         </View>
         <View style={styles.tabbar}>

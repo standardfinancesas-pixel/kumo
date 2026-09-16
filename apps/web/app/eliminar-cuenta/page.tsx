@@ -87,7 +87,7 @@ export default async function EliminarCuenta() {
             <li style={li}>Tus mascotas, sus vacunas y sus fotos</li>
             <li style={li}>Tus reintegros y los comprobantes que subiste</li>
             <li style={li}>Tus publicaciones y respuestas del foro</li>
-            <li style={li}>Tu negocio, si diste uno de alta</li>
+            <li style={li}>Tu servicio, si diste uno de alta</li>
             <li style={li}>Tu usuario de acceso</li>
           </ul>
           {/* Se dice explícito porque es la duda que frena a cualquiera antes de
@@ -109,7 +109,7 @@ export default async function EliminarCuenta() {
             <li style={li}>Una publicación o una respuesta del foro</li>
             <li style={li}>Una reseña que hayas dejado</li>
             <li style={li}>Los prestadores que guardaste</li>
-            <li style={li}>Tu negocio, si diste uno de alta</li>
+            <li style={li}>Tu servicio, si diste uno de alta</li>
           </ul>
           <p style={p}>Tus datos personales —teléfono, domicilio, cuenta bancaria— se editan o se vacían desde <strong>Mi perfil</strong>. Y los avisos push se apagan desde el interruptor de Notificaciones en la app, que borra el registro de tu teléfono.</p>
           {/* Se dice qué NO puede borrar solo, porque prometer de más acá es peor

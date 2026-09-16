@@ -69,10 +69,10 @@ export async function POST(req: Request) {
   if (tokens?.length) {
     const r = await mandarPush(
       tokens.map((t) => t.token as string),
-      status === 'verificado' ? 'Tu negocio ya está publicado' : 'No pudimos publicar tu negocio',
+      status === 'verificado' ? 'Tu servicio ya está publicado' : 'No pudimos publicar tu servicio',
       status === 'verificado'
         ? `${fila.name} ya aparece en Servicios para todos los socios.`
-        : `Entrá a Mi negocio para ver qué falta en ${fila.name}.`,
+        : `Entrá a Mi servicio para ver qué falta en ${fila.name}.`,
       { pantalla: 'minegocio' },
     );
     pushEntregados = r.entregados;

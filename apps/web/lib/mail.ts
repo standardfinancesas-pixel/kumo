@@ -468,11 +468,11 @@ export async function sendNegocioRecibido(opts: { to: string; firstName: string;
   const { to, firstName, negocio } = opts;
   const wa = await whatsappDelClub();
   const cuerpo = `
-    ${h1('Estamos validando tu negocio')}
+    ${h1('Estamos validando tu servicio')}
     ${par(`Gracias por sumarte, ${esc(firstName)}. Antes de publicar ${esc(negocio)} revisamos los datos: es lo que hace que el sello de verificado signifique algo para los socios.`)}
     ${par(`Te escribimos en cuanto esté listo. Si necesitamos algo más, te lo pedimos ${linkWa(wa, 'por WhatsApp')}.`, true)}`;
   const text = `Gracias por sumarte, ${firstName}. Estamos validando los datos de ${negocio} antes de publicarlo: es lo que hace que el sello de verificado signifique algo.\n\nTe escribimos en cuanto esté listo.`;
-  return enviar(to, `Recibimos los datos de ${negocio}`, layout('Alta de negocio recibida', cuerpo, wa), text);
+  return enviar(to, `Recibimos los datos de ${negocio}`, layout('Alta de servicio recibida', cuerpo, wa), text);
 }
 
 /** 10 · El negocio quedó publicado. */
@@ -482,9 +482,9 @@ export async function sendNegocioPublicado(opts: { to: string; firstName: string
   const cuerpo = `
     ${h1(`¡Estás en la red, ${esc(firstName)}! 🎉`)}
     ${par(`${esc(negocio)} ya aparece en Servicios y los socios pueden verte, contactarte y dejarte reseñas.`)}
-    ${par('Desde <strong>Mi negocio</strong> podés editar horarios, precios y fotos cuando quieras. Los cambios se publican al instante.', true)}`;
-  const text = `¡Estás en la red, ${firstName}!\n\n${negocio} ya aparece en Servicios: los socios pueden verte, contactarte y dejarte reseñas.\n\nDesde Mi negocio editás horarios, precios y fotos cuando quieras: ${SITE}${urls.webapp}`;
-  return enviar(to, `${negocio} ya está publicado en Kumo`, layout('Negocio publicado', cuerpo, wa, { label: 'Ver mi ficha', href: `${SITE}${urls.webapp}` }), text);
+    ${par('Desde <strong>Mi servicio</strong> podés editar horarios, precios y fotos cuando quieras. Los cambios se publican al instante.', true)}`;
+  const text = `¡Estás en la red, ${firstName}!\n\n${negocio} ya aparece en Servicios: los socios pueden verte, contactarte y dejarte reseñas.\n\nDesde Mi servicio editás horarios, precios y fotos cuando quieras: ${SITE}${urls.webapp}`;
+  return enviar(to, `${negocio} ya está publicado en Kumo`, layout('Servicio publicado', cuerpo, wa, { label: 'Ver mi ficha', href: `${SITE}${urls.webapp}` }), text);
 }
 
 /** 11 · El negocio no se publicó. */
@@ -496,7 +496,7 @@ export async function sendNegocioRechazado(opts: { to: string; firstName: string
     ${par(`${esc(firstName)}, revisamos ${esc(negocio)} y por ahora no lo publicamos. Puede ser porque faltan datos de contacto, porque no pudimos verificar la dirección, o porque el rubro no entra en las categorías del club.`)}
     ${par(`No es definitivo: ${linkWa(wa, 'escribinos por WhatsApp')}, vemos qué falta y lo publicamos.`, true)}`;
   const text = `${firstName}, revisamos ${negocio} y por ahora no lo publicamos: pueden faltar datos de contacto, no haber podido verificar la dirección, o el rubro no entrar en las categorías del club.\n\nNo es definitivo: escribinos y lo resolvemos. ${waLink(wa)}`;
-  return enviar(to, `Sobre la publicación de ${negocio}`, layout('Negocio no publicado', cuerpo, wa), text);
+  return enviar(to, `Sobre la publicación de ${negocio}`, layout('Servicio no publicado', cuerpo, wa), text);
 }
 
 /* ── Cobro de la cuota ──────────────────────────────────────────
