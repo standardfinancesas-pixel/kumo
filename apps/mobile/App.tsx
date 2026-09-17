@@ -112,7 +112,7 @@ const VAC_IC = { shield: 'shield', pill: 'pill', plus: 'hospital' } as const;
 const WA_CLUB = '5491125168802';
 
 /* ── Iconos (react-native-svg) ─────────────────────────────────── */
-type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone' | 'image' | 'lapiz';
+type IconName = 'paw' | 'house' | 'idcard' | 'chat' | 'wallet' | 'tag' | 'menu' | 'bell' | 'shield' | 'search' | 'calendar' | 'store' | 'person' | 'heart' | 'hospital' | 'pill' | 'droplet' | 'pin' | 'globe' | 'instagram' | 'phone' | 'image' | 'lapiz' | 'refugio';
 function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?: number; color?: string; fill?: boolean }) {
   const stroke = fill ? 'none' : color;
   const fillC = fill ? color : 'none';
@@ -127,6 +127,9 @@ function Ic({ d, size = 22, color = BRAND, fill = false }: { d: IconName; size?:
         <Path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" fill={color} />
       </>}
       {d === 'house' && <><Path d="M3 10.5 12 3l9 7.5" {...common} /><Path d="M5 9.5V20h14V9.5" {...common} /></>}
+      {/* Casa con un corazón adentro: una guardería y un refugio son los dos una
+          casa, y lo que los distingue es por qué está el animal ahí. */}
+      {d === 'refugio' && <><Path d="M3 10.5 12 3l9 7.5" {...common} /><Path d="M5 9.5V20h14V9.5" {...common} /><Path d="M12 17.3c-1.5-1.1-2.5-1.8-2.5-2.9a1.4 1.4 0 0 1 2.5-.9 1.4 1.4 0 0 1 2.5.9c0 1.1-1 1.8-2.5 2.9z" {...common} /></>}
       {d === 'idcard' && <><Rect x="3" y="4" width="18" height="16" rx="2" {...common} /><Circle cx="9" cy="10" r="2.1" {...common} /><Path d="M6.2 16c.5-1.5 1.9-2.4 3.3-2.4s2.8.9 3.3 2.4" {...common} /><Line x1="14" y1="9" x2="17.5" y2="9" {...common} /><Line x1="14" y1="13" x2="16.5" y2="13" {...common} /></>}
       {d === 'chat' && <Path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" {...common} />}
       {d === 'wallet' && <><Path d="M3 7a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2" {...common} /><Rect x="2" y="7" width="20" height="12" rx="2" {...common} /><Path d="M22 11h-4a2 2 0 0 0 0 4h4" {...common} /></>}
@@ -1032,9 +1035,20 @@ function Carnet({ pets, petIdx, setPetIdx, contacts, userId, reload, go }: { pet
 }
 
 /* ── Pantalla: Servicios ───────────────────────────────────────── */
-const CHIPS = [
-  { label: 'Todos', cat: null as string | null }, { label: 'Paseos', cat: 'Paseador' }, { label: 'Guardería', cat: 'Guardería' },
-  { label: 'Baño', cat: 'Baño y estética' }, { label: 'Adiestrador', cat: 'Adiestrador' }, { label: 'Cuidador', cat: 'Cuidador' },
+/*
+ * Los filtros de Servicios salen de RUBROS y no de una lista escrita acá.
+ *
+ * Escritos a mano se quedaron atrás sin que nadie lo notara: tenían CINCO de los
+ * siete rubros que el producto ya ofrecía, así que una veterinaria publicada no
+ * se podía filtrar por ningún chip. Es el mismo error que tenía la landing con
+ * su propia lista de rubros, arreglado el 16/09.
+ *
+ * `CHIP_CORTO` es sólo para los dos nombres que no entran bien en un chip.
+ */
+const CHIP_CORTO: Record<string, string> = { Paseador: 'Paseos', 'Baño y estética': 'Baño' };
+const CHIPS: { label: string; cat: string | null }[] = [
+  { label: 'Todos', cat: null },
+  ...RUBROS.map((r) => ({ label: CHIP_CORTO[r] ?? r, cat: r as string })),
 ];
 /* ── Sub-pantalla: ficha del prestador ─────────────────────────── */
 /** Portada, identidad, tarifa, contacto y reseñas, con la barra fija de abajo.
@@ -2709,7 +2723,7 @@ function Guardados({ providers, guardados, onAbrir }: { providers: ProviderVM[];
 const RUBRO_IC: Record<string, IconName> = {
   Paseador: 'paw', Guardería: 'house', Adiestrador: 'idcard', 'Baño y estética': 'droplet', Cuidador: 'person',
   // Los dos que el tipo ya contemplaba y ninguna pantalla ofrecía.
-  Veterinaria: 'hospital', Otros: 'store',
+  Veterinaria: 'hospital', Refugio: 'refugio', Otros: 'store',
 };
 
 /* Ya no frena si el socio tiene uno: puede tener varios —un servicio y un comercio—,

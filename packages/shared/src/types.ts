@@ -196,7 +196,7 @@ export type Reimbursement = {
  * desincronizar. En la base `category` es texto libre, así que no hace falta
  * migración para sumar uno.
  */
-export const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador', 'Veterinaria', 'Otros'] as const;
+export const RUBROS = ['Paseador', 'Guardería', 'Adiestrador', 'Baño y estética', 'Cuidador', 'Veterinaria', 'Refugio', 'Otros'] as const;
 export type ProviderCategory = (typeof RUBROS)[number];
 
 export type ProviderStatus = 'pendiente' | 'verificado' | 'rechazado';

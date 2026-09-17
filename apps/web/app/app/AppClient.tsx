@@ -1001,13 +1001,20 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
 }
 
 /* ── Pantalla: Servicios ───────────────────────────────────────── */
-const chips = [
+/*
+ * Los filtros de Servicios salen de RUBROS y no de una lista escrita acá.
+ *
+ * Escritos a mano se quedaron atrás sin que nadie lo notara: tenían CINCO de los
+ * siete rubros que el producto ya ofrecía, así que una veterinaria publicada no
+ * se podía filtrar por ningún chip. Es el mismo error que tenía la landing con
+ * su propia lista de rubros, arreglado el 16/09.
+ *
+ * `CHIP_CORTO` es sólo para los dos nombres que no entran bien en un chip.
+ */
+const CHIP_CORTO: Record<string, string> = { Paseador: 'Paseos', 'Baño y estética': 'Baño' };
+const chips: { label: string; cat: string | null }[] = [
   { label: 'Todos', cat: null },
-  { label: 'Paseos', cat: 'Paseador' },
-  { label: 'Guardería', cat: 'Guardería' },
-  { label: 'Baño', cat: 'Baño y estética' },
-  { label: 'Adiestrador', cat: 'Adiestrador' },
-  { label: 'Cuidador', cat: 'Cuidador' },
+  ...RUBROS.map((r) => ({ label: CHIP_CORTO[r] ?? r, cat: r as string })),
 ];
 /* `catPin` (el icono por rubro del mapa dibujado) se fue con ese mapa: en el de
    OpenStreetMap el pin es la inicial del prestador, que se lee mejor a 30 px. */
@@ -1509,6 +1516,9 @@ const RUBRO_ICONS: Record<string, ReactNode> = {
   Cuidador: person,
   // Los dos que el tipo ya contemplaba y ninguna pantalla ofrecía.
   Veterinaria: <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M12 8v8M8 12h8" /></>,
+  /* Casa con un corazón adentro: una guardería y un refugio son los dos una casa,
+     y lo que los distingue es por qué está el animal ahí. */
+  Refugio: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /><path d="M12 17.3c-1.5-1.1-2.5-1.8-2.5-2.9a1.4 1.4 0 0 1 2.5-.9 1.4 1.4 0 0 1 2.5.9c0 1.1-1 1.8-2.5 2.9z" /></>,
   Otros: <><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>,
 };
 

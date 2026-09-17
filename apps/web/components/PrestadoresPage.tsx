@@ -36,6 +36,7 @@ const IC = {
   droplet: <path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z" />,
   cruz: <><rect x="3" y="3" width="18" height="18" rx="4" /><path d="M12 8v8M8 12h8" /></>,
   tienda: <><path d="M3 9l1-5h16l1 5" /><path d="M4 9v11h16V9" /><path d="M9 20v-6h6v6" /></>,
+  refugio: <><path d="M3 10.5 12 3l9 7.5" /><path d="M5 9.5V20h14V9.5" /><path d="M12 17.3c-1.5-1.1-2.5-1.8-2.5-2.9a1.4 1.4 0 0 1 2.5-.9 1.4 1.4 0 0 1 2.5.9c0 1.1-1 1.8-2.5 2.9z" /></>,
 };
 
 const FEATURES: { icon: keyof typeof IC; t: string; d: string }[] = [
@@ -64,7 +65,7 @@ const STEPS = [
  */
 const ICONO_RUBRO: Record<ProviderCategory, keyof typeof IC> = {
   Paseador: 'paw', Guardería: 'house', Adiestrador: 'idcard', 'Baño y estética': 'droplet',
-  Cuidador: 'person', Veterinaria: 'cruz', Otros: 'tienda',
+  Cuidador: 'person', Veterinaria: 'cruz', Refugio: 'refugio', Otros: 'tienda',
 };
 
 /** La ayuda gris debajo de un campo: por qué conviene llenarlo, en una línea. */
