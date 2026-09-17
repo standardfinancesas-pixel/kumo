@@ -4196,8 +4196,22 @@ function Hilo({ p, userId, firstName, miFoto, misLikes, reload, onVolver }: { p:
   const insets = useSafeAreaInsets();
   const [altoTeclado, setAltoTeclado] = useState(0);
   useEffect(() => {
-    const subir = Keyboard.addListener('keyboardDidShow', (e) => setAltoTeclado(e.endCoordinates.height));
-    const bajar = Keyboard.addListener('keyboardDidHide', () => setAltoTeclado(0));
+    /*
+     * El evento NO es el mismo en las dos plataformas, y usar el de Android en
+     * iOS es lo que hacía que la caja pareciera esconderse.
+     *
+     * En iOS, `keyboardDidShow` llega DESPUÉS de que el teclado terminó de subir:
+     * durante esos ~250 ms de animación la caja se queda abajo, tapada, y recién
+     * ahí pega el salto. `keyboardWillShow` avisa antes, así la caja sube junto
+     * con el teclado.
+     *
+     * En Android hay que quedarse con `did`: `keyboardWillShow` directamente no
+     * se emite, y escuchándolo la caja no se movería nunca — que es el bug que
+     * este mismo código vino a arreglar el 11/09.
+     */
+    const iOS = Platform.OS === 'ios';
+    const subir = Keyboard.addListener(iOS ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setAltoTeclado(e.endCoordinates.height));
+    const bajar = Keyboard.addListener(iOS ? 'keyboardWillHide' : 'keyboardDidHide', () => setAltoTeclado(0));
     return () => { subir.remove(); bajar.remove(); };
   }, []);
   const espacioTeclado = Math.max(altoTeclado - insets.bottom, 0);
