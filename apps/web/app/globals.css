@@ -47,6 +47,23 @@ a:hover { color: #443d6e; }
   .r-subrayado { animation: none; }
 }
 
+/* El latido del corazón de la firma del estudio (ver el pie en LandingClient).
+   Sin el prefijo `k` ni el `.r-` del resto del archivo a propósito: la firma es la
+   misma en todos los proyectos del estudio y se copia tal cual, así que renombrarla
+   acá la haría distinta justo donde tiene que ser igual.
+   Los tiempos hacen un latido doble —sístole y diástole— y después descansa: un
+   pulso parejo se lee como un parpadeo y no como un corazón. */
+@keyframes latido {
+  0%, 28%, 100% { transform: scale(1); }
+  14% { transform: scale(1.18); }
+  21% { transform: scale(1.04); }
+}
+.animate-latido { animation: latido 1.6s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) {
+  /* Quien pidió menos movimiento no debería recibir un corazón latiendo. */
+  .animate-latido { animation: none; }
+}
+
 /* La croqueta que el perro del hero está por atrapar: flota y se ladea sobre sí
    misma, como suspendida en el aire. Es una capa aparte de la foto (ver
    `scripts/cortar-croqueta.mjs`), así que mover la capa mueve solo la croqueta.

@@ -925,8 +925,65 @@ function Footer() {
             {EMPRESA.legal} <span style={{ whiteSpace: 'nowrap' }}>{EMPRESA.cuit}.</span>
           </span>
         </div>
+        <FirmaEstudio />
       </div>
     </footer>
+  );
+}
+
+/**
+ * La firma del estudio que construyó el sitio, al pie de todo y en su renglón.
+ *
+ * Tres cosas que parecen detalles y no lo son:
+ *
+ * - El corazón va en `#FF7046` ESCRITO A MANO y no con un token de `@kumo/shared`,
+ *   que es lo que pide la regla del proyecto. Es la excepción a propósito: la firma
+ *   es la misma en todos los proyectos del estudio, así que adaptarla a la paleta de
+ *   Kumo sería justamente romperla. No cambiar por `colors.*`.
+ * - `shapeRendering="crispEdges"` apaga el suavizado: sin eso el navegador difumina
+ *   los bordes de cada cuadradito y el pixel-art se ve sucio en lugar de nítido.
+ * - El SVG va `aria-hidden` con la palabra en un `sr-only` al lado. Si no, un lector
+ *   de pantalla lee "Construido con imagen por Cambalache Studio". Con esto lee
+ *   "Construido con cariño por Cambalache Studio", que es la frase.
+ *
+ * El dibujo es una grilla de 7×6 cuadraditos de 2px: cada par es la esquina superior
+ * izquierda de uno.
+ */
+const CORAZON_PIXELES = [
+  [2, 0], [4, 0], [8, 0], [10, 0],
+  [0, 2], [2, 2], [4, 2], [6, 2], [8, 2], [10, 2], [12, 2],
+  [0, 4], [2, 4], [4, 4], [6, 4], [8, 4], [10, 4], [12, 4],
+  [2, 6], [4, 6], [6, 6], [8, 6], [10, 6],
+  [4, 8], [6, 8], [8, 8],
+  [6, 10],
+];
+
+function FirmaEstudio() {
+  return (
+    <div style={{ borderTop: '1px solid rgb(230,227,240)', padding: '18px 0 24px', display: 'flex', justifyContent: 'center' }}>
+      <a
+        href="https://cambalache.studio"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1.5 text-xs opacity-60 hover:opacity-100"
+        style={{ color: 'rgb(91,86,112)', textDecoration: 'none', transition: 'opacity 0.15s' }}
+      >
+        Construido con
+        <svg width="12" height="11" viewBox="0 0 14 12" shapeRendering="crispEdges" aria-hidden="true" className="animate-latido">
+          {CORAZON_PIXELES.map(([x, y]) => (
+            <rect key={`${x}-${y}`} x={x} y={y} width="2" height="2" fill="#FF7046" />
+          ))}
+        </svg>
+        {/* Los espacios van ADENTRO del sr-only y no sueltos entre los elementos: JSX
+            borra el espacio del final de cada línea, así que los nodos de texto quedan
+            "Construido con" y "por Cambalache Studio" pegados. A la vista no se nota
+            —los separa el gap del flex— pero el nombre accesible del enlace salía
+            "Construido concariñopor Cambalache Studio". Como este span está oculto,
+            los espacios no mueven nada de lo que se ve. */}
+        <span className="sr-only">{' cariño '}</span>
+        por Cambalache Studio
+      </a>
+    </div>
   );
 }
 
