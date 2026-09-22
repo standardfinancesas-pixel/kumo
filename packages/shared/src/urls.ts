@@ -50,6 +50,21 @@ export const INSTAGRAM = 'https://www.instagram.com/kumo_app/';
 export const APP_STORE = 'https://apps.apple.com/ar/app/id6805949148';
 
 /**
+ * La ficha de la app en Google Play, o `null` mientras no exista.
+ *
+ * Hoy es null porque la versión sigue en revisión de producción: hasta que
+ * Google la apruebe, `play.google.com/store/apps/details?id=pet.kumo.app`
+ * devuelve 404 —la ficha pública recién nace con la versión en Producción, no
+ * con la prueba cerrada— y un botón que lleva a un error es peor que uno que
+ * lleva a la webapp.
+ *
+ * Cuando salga, se pone la URL ACÁ y los dos lugares que la usan —la landing y
+ * la pantalla de bienvenida del alta— la toman solos. Antes estaba escrita a
+ * mano en la landing, que es como se terminan teniendo dos verdades.
+ */
+export const PLAY_STORE: string | null = null;
+
+/**
  * Quién administra Kumo, para el pie de página.
  *
  * El CUIT va aparte del resto de la frase porque en el pie se renderiza sin corte:
