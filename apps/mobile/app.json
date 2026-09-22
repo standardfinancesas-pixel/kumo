@@ -53,7 +53,15 @@
           "backgroundColor": "#5D5491"
         }
       ],
-      "expo-asset"
+      "expo-asset",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableProguardInReleaseBuilds": true
+          }
+        }
+      ]
     ],
     "runtimeVersion": {
       "policy": "appVersion"
