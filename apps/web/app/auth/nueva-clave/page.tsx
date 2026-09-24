@@ -67,10 +67,30 @@ export default function NuevaClave() {
 
     const { error: e } = await supabase.auth.updateUser({ password: clave });
     if (e) {
-      // El caso típico: el link ya se usó o venció mientras completaba.
-      setError(/expired|invalid|session/i.test(e.message)
-        ? 'El link ya venció o se usó. Pedí uno nuevo desde "¿Olvidaste tu contraseña?".'
-        : 'No pudimos guardar la contraseña. Probá de nuevo.');
+      /*
+       * El motivo se MUESTRA, no se tapa.
+       *
+       * Antes todo lo que no fuera "el link venció" caía en "No pudimos guardar la
+       * contraseña. Probá de nuevo", y ese mensaje manda a repetir exactamente lo
+       * mismo que acaba de fallar. Supabase sí dice qué pasó —que la clave no
+       * cumple su política, que es igual a la anterior— y esconderlo deja a la
+       * persona probando a ciegas. Pasó el 24/09/2026.
+       *
+       * Los dos motivos conocidos van traducidos; cualquier otro se muestra tal
+       * como vino, que es feo pero accionable. Y va al log para que el que mire
+       * desde afuera vea el texto original.
+       */
+      console.warn('[nueva-clave] updateUser falló:', e.message);
+      const m = e.message.toLowerCase();
+      setError(
+        /expired|invalid|session/.test(m)
+          ? 'El link ya venció o se usó. Pedí uno nuevo desde "¿Olvidaste tu contraseña?".'
+          : /different from the old/.test(m)
+            ? 'Esa es la contraseña que ya tenías. Elegí una distinta.'
+            : /password/.test(m)
+              ? `Esa contraseña no la acepta el sistema: ${e.message}`
+              : `No pudimos guardarla: ${e.message}`,
+      );
       setEstado('lista');
       return;
     }
