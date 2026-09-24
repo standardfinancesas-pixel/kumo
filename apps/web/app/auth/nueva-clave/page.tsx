@@ -7,10 +7,20 @@ import { CampoClave } from '@/components/CampoClave';
 /**
  * Elegir una contraseña nueva, al final del link del mail.
  *
- * Cómo llega hasta acá: el mail lleva a `/auth/callback`, que canjea el código por
- * una sesión y redirige a esta página. O sea que quien la ve ya está identificado
- * —por eso alcanza con `updateUser`— y quien no tenga esa sesión no puede cambiarle
- * la contraseña a nadie.
+ * EL TOKEN SE CANJEA AL GUARDAR, NO AL ABRIR, y en eso está todo el asunto.
+ *
+ * Antes el mail llevaba el link de Supabase, que es la URL que valida el token: se
+ * consumía con sólo abrirla. Cualquiera que la abriera primero —el escáner de
+ * seguridad de un correo corporativo, la previsualización de un cliente de mail—
+ * se llevaba el único uso, y el socio recibía "el link ya no sirve" sin haber
+ * hecho nada. Pasó con Google Workspace el 24/09/2026.
+ *
+ * Ahora el mail trae `token_hash` en la URL y esta página no lo toca hasta que la
+ * persona escribe la contraseña y aprieta guardar. Un robot que la visite no gasta
+ * nada: no hay nada que gastar hasta que alguien completa el formulario.
+ *
+ * Sigue aceptando el camino viejo —una sesión ya abierta— por los links que
+ * pudieran estar dando vueltas en alguna casilla.
  *
  * Es una página aparte y no un modal a propósito: se entra desde el cliente de
  * mail, sin nada de la landing cargado atrás.
@@ -21,12 +31,18 @@ export default function NuevaClave() {
   const [estado, setEstado] = useState<'cargando' | 'lista' | 'sin-sesion' | 'guardando' | 'ok'>('cargando');
   const [error, setError] = useState('');
 
+  /** El token del mail, si vino por ahí. Se guarda sin usar: se canjea al guardar. */
+  const [tokenHash, setTokenHash] = useState<string | null>(null);
+
   /*
-   * ¿El link sirvió? Si no hay sesión, el token venció (dura una hora), ya se usó,
-   * o alguien entró a esta URL de rebote. Se lo dice en lugar de mostrarle un
-   * formulario que va a fallar cuando ya eligió la contraseña.
+   * Con qué llegó: el token en la URL (el camino de ahora) o una sesión ya abierta
+   * (el camino viejo, y también el de quien vuelve a esta página con la sesión
+   * puesta). Sin ninguno de los dos no hay nada que hacer, y se lo dice en lugar de
+   * mostrarle un formulario que va a fallar recién cuando ya eligió la contraseña.
    */
   useEffect(() => {
+    const th = new URLSearchParams(window.location.search).get('token_hash');
+    if (th) { setTokenHash(th); setEstado('lista'); return; }
     supabase.auth.getSession().then(({ data }) => setEstado(data.session ? 'lista' : 'sin-sesion'));
   }, []);
 
@@ -37,6 +53,18 @@ export default function NuevaClave() {
   const guardar = async () => {
     if (!puede) return;
     setEstado('guardando'); setError('');
+
+    /* Acá se canjea, y recién acá: el token se convierte en sesión en el mismo
+       gesto con el que la persona guarda la contraseña nueva. */
+    if (tokenHash) {
+      const { error: ev } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' });
+      if (ev) {
+        setError('El link ya venció o se usó. Pedí uno nuevo desde "¿Olvidaste tu contraseña?".');
+        setEstado('lista');
+        return;
+      }
+    }
+
     const { error: e } = await supabase.auth.updateUser({ password: clave });
     if (e) {
       // El caso típico: el link ya se usó o venció mientras completaba.

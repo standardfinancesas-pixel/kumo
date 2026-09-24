@@ -30,6 +30,12 @@ export async function POST(req: Request) {
 
   try {
     const svc = getServiceClient();
+    /* Los dos destinos posibles, elegidos por un enum y NO por una URL que mande
+       el cliente: si el cliente pudiera elegirla, este endpoint serviría para
+       mandar a alguien recién autenticado a un sitio ajeno con un link que parece
+       de Kumo. */
+    const base = process.env.NEXT_PUBLIC_SITE_URL ?? SITIO;
+    const destino = origen === 'app' ? '/auth/abrir-app' : '/auth/nueva-clave';
     const { data, error } = await svc.auth.admin.generateLink({
       type: 'recovery',
       email: dir,
@@ -46,24 +52,42 @@ export async function POST(req: Request) {
          * rebotando a la portada, o sea que recuperar la clave no llegaba a ninguna
          * parte. La página del navegador sí lee el fragmento, sola.
          */
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL ?? SITIO}${
-          origen === 'app' ? '/auth/abrir-app' : '/auth/nueva-clave'
-        }`,
+        redirectTo: `${base}${destino}`,
       },
     });
 
     // Mail que no existe, o cuenta que entró con Google y no tiene contraseña:
     // no hay nada que mandar, y tampoco se lo cuenta.
-    if (error || !data?.properties?.action_link) {
-      console.warn('[auth/recuperar] sin link para', dir, error?.message ?? 'sin action_link');
+    if (error || !data?.properties?.hashed_token) {
+      console.warn('[auth/recuperar] sin link para', dir, error?.message ?? 'sin hashed_token');
       return listo;
     }
+
+    /*
+     * El mail NO lleva el link de Supabase, y esto es lo que arregla el bug del
+     * 24/09/2026: ese link es la URL que valida el token, así que se consume con
+     * sólo ABRIRLO. Cualquiera que lo abra primero —el escáner de seguridad de un
+     * correo corporativo, la previsualización de un cliente de mail— se lleva el
+     * único uso, y el socio recibe "el link ya no sirve" sin haber hecho nada.
+     * Pasó con Workspace y no es un caso raro: le puede pasar a cualquiera con
+     * mail de empresa.
+     *
+     * Ahora el mail lleva a una página NUESTRA con el token en la URL, y el token
+     * se canjea recién cuando la persona escribe la contraseña nueva y aprieta
+     * guardar. Un visitazo de un robot no gasta nada, porque no hay nada que
+     * gastar hasta que alguien completa el formulario.
+     *
+     * El destino de la app es el mismo de siempre: `abrir-app` reenvía la query
+     * al esquema `kumo://` y ahí el canje lo hace la app, que un escáner no puede
+     * abrir.
+     */
+    const link = `${base}${destino}?token_hash=${encodeURIComponent(data.properties.hashed_token)}&type=recovery`;
 
     const nombre = (data.user?.user_metadata?.full_name as string | undefined)?.split(' ')[0];
     await sendRecuperarClave({
       to: dir,
       firstName: nombre || 'Hola',
-      link: data.properties.action_link,
+      link,
     });
   } catch (e) {
     // Tampoco se le informa: el que pide el link no tiene por qué enterarse de
