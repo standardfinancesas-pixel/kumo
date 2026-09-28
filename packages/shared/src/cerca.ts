@@ -148,6 +148,28 @@ export function puedeEstarCerca(zonaPrestador?: string | null, provinciaSocio?: 
   return sinAcentos(suya) === sinAcentos(mia);
 }
 
+/**
+ * Lo que hay que avisarle a quien escribe una zona, o null si la zona sirve.
+ *
+ * Los campos de zona autocompletan una lista de localidades y barrios, pero dejan
+ * escribir libre y lo escrito se guardaba igual. Así entró "Caballito" a secas: el
+ * geocodificador igual lo resuelve —la ciudad la saca del perfil— pero el filtro
+ * no, porque compara texto, y "Caballito" y "Caballito, CABA" son dos zonas
+ * distintas; peor, sin provincia `puedeEstarCerca` no puede descartarlo y el
+ * prestador le aparece a un socio de cualquier punto del país.
+ *
+ * Lo que se exige es el VALOR y no el gesto: que la zona diga su provincia, venga
+ * de la lista o la hayan tipeado entera. Tiene que ser así porque estos campos
+ * también editan fichas que ya existen, donde la zona llega de la base y nadie la
+ * eligió en esa pantalla; y de paso, cuando la zona vieja no dice provincia, pide
+ * completarla, que es como se arreglan las que ya están cargadas.
+ */
+export function avisoZona(zona?: string | null): string | null {
+  if (!(zona ?? '').trim()) return 'Poné la zona y elegila de la lista que aparece al escribir.';
+  if (partirZona(zona).provincia) return null;
+  return 'Elegí la zona de la lista que aparece al escribir: con la provincia sabemos a qué socios les queda cerca.';
+}
+
 /* ── Cuando el catálogo no es de tu zona ───────────────────────────── */
 
 /** Desde cuántos kilómetros "lejos" es lejos. Es el techo del slider de Servicios:

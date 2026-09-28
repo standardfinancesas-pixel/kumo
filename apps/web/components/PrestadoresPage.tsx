@@ -2,7 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 
 import { useState } from 'react';
-import { EMPRESA, FOTO_TIPOS, RUBROS, partirZona, type ProviderCategory } from '@kumo/shared';
+import { EMPRESA, FOTO_TIPOS, RUBROS, avisoZona, partirZona, type ProviderCategory } from '@kumo/shared';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 import { prepararFoto } from '@/lib/foto';
 
@@ -102,6 +102,20 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [rubro, setRubro] = useState<string>(RUBROS[0]!);
   const [nombre, setNombre] = useState('');
   const [zona, setZona] = useState('');
+  /*
+   * Si la zona se ELIGIÓ de la lista o se escribió a mano, y no es un detalle.
+   *
+   * Elegida viene completa —"Caballito, CABA"— y escrita a mano viene suelta:
+   * "Caballito". Sin la provincia, el geocodificador se queda con un solo intento
+   * —"Muñiz 442, Caballito"— y si el barrio no coincide con la calle no encuentra
+   * nada y la ficha nace sin pin, en silencio. Desde adentro de la app eso no
+   * pasa porque la ciudad y la provincia salen del perfil del socio; acá no hay
+   * perfil del que sacarlas, así que la zona es el único contexto que existe.
+   *
+   * Pasó con pasiondeperris el 27/09/2026: dirección cargada, sin pin, y nadie se
+   * enteró. Y de paso, el filtro de Servicios compara la zona como TEXTO, así que
+   * "Caballito" y "Caballito, CABA" son dos zonas distintas para el socio que busca.
+   */
   /** Opcional, y es lo único que pone el pin en el mapa: ver el aviso debajo del
    *  campo y `consultasDeComercio` en lib/geocodificar. */
   const [direccion, setDireccion] = useState('');
@@ -135,6 +149,10 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   };
 
   const enviar = async () => {
+    /* Se pide ANTES de mandar y no se deja pasar: una zona suelta no se puede
+       arreglar después sin volver a hablar con el prestador. */
+    const malaZona = avisoZona(zona);
+    if (malaZona) { setError(malaZona); return; }
     setBusy(true);
     setError('');
     try {
@@ -203,7 +221,13 @@ function RegModal({ open, onClose }: { open: boolean; onClose: () => void }) {
                 {/* De la lista y no a mano: el filtro por zona de Servicios compara
                     texto, así que "Palermo" y "Palermo, CABA" eran dos zonas
                     distintas y el socio veía media lista. */}
-                <CampoZona valor={zona} onCambio={setZona} onElegir={(z) => setZona(z.zona)} placeholder="Palermo, CABA" style={input} />
+                <CampoZona
+                  valor={zona}
+                  onCambio={(t) => { setZona(t); setError(''); }}
+                  onElegir={(z) => { setZona(z.zona); setError(''); }}
+                  placeholder="Palermo, CABA"
+                  style={input}
+                />
               </div>
               {/* El WhatsApp pasa a ser obligatorio: es el único modo que tiene el
                   club de contestar, porque acá no se pide mail. */}

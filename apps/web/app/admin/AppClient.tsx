@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, destinoParaMostrar, RUBROS, DESTINOS_AVISO, edadDeMascota } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, avisoZona, destinoParaMostrar, RUBROS, DESTINOS_AVISO, edadDeMascota } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 import { prepararFoto } from '@/lib/foto';
@@ -49,6 +49,9 @@ export type SettingsVM = { whatsapp: string; email: string };
 export type ProviderAdminRow = {
   id: string; nombre: string; rubro: string; zona: string; rating: string; estado: string; solicitado: string;
   about: string; direccion: string | null; telefono: string | null; instagram: string | null; web: string | null;
+  /** Si tiene punto en el mapa. Una ficha con dirección y sin punto no aparece
+   *  con distancia para el socio, y hasta ahora eso no se veía en ningún lado. */
+  enElMapa: boolean;
   reseñas: number; precio: string | null;
   /** El precio y la unidad SIN formatear: `precio` ya viene armado para mostrar
    *  ("$4.500 /paseo") y el editor necesita los dos valores por separado. */
@@ -2004,7 +2007,8 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, onGuardado, bus
 
   const guardar = async () => {
     if (!ed.name.trim()) { setErrorEd('El nombre no puede quedar vacío.'); return; }
-    if (!ed.zone.trim()) { setErrorEd('La zona no puede quedar vacía.'); return; }
+    const malaZona = avisoZona(ed.zone);
+    if (malaZona) { setErrorEd(malaZona); return; }
     setGuardando(true); setErrorEd('');
     const error = await guardarFicha(p.id, {
       name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),
@@ -2074,7 +2078,7 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, onGuardado, bus
           </div>
           <div>
             <label style={fieldLabel}>ZONA</label>
-            <CampoZona valor={ed.zone} onCambio={(t) => setEd({ ...ed, zone: t })} onElegir={(z) => setEd({ ...ed, zone: z.zona })} style={inp} placeholder="Palermo, CABA" />
+            <CampoZona valor={ed.zone} onCambio={(t) => { setEd({ ...ed, zone: t }); setErrorEd(''); }} onElegir={(z) => { setEd({ ...ed, zone: z.zona }); setErrorEd(''); }} style={inp} placeholder="Palermo, CABA" />
           </div>
           <div>
             <label style={fieldLabel}>DIRECCIÓN (OPCIONAL)</label>
@@ -2165,6 +2169,18 @@ function FichaPrestadorModal({ p, onClose, onResolver, onBorrar, onGuardado, bus
               </div>
             )}
         </div>
+
+        {/* El aviso de que está cargada pero no ubicada.
+            Una dirección escrita no es un punto en el mapa: hay que geocodificarla,
+            y eso falla en silencio cuando la zona no coincide con la calle —"Muñiz
+            442, Caballito" no existe, la calle está en Almagro—. Sin este cartel la
+            ficha se ve completa, el club la verifica, y el socio nunca la ve con
+            distancia ni en el mapa. Pasó con pasiondeperris el 27/09/2026. */}
+        {p.direccion && !p.enElMapa && (
+          <div style={{ background: 'rgb(251,243,226)', color: 'rgb(146,105,10)', border: '1px solid rgb(240,226,190)', borderRadius: 12, padding: '11px 13px', fontSize: 12.5, fontWeight: 600, lineHeight: 1.5 }}>
+            Tiene dirección pero no está en el mapa: no pudimos ubicar «{p.direccion}» en {p.zona}. Revisá que la zona sea la del barrio de esa calle y guardá de nuevo — se reintenta solo.
+          </div>
+        )}
 
         <div>
           <div style={fieldLabel}>CONTACTO</div>

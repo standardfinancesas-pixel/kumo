@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import {
-  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, puedeEstarCerca, PAGO_ESTADO, PAGO_MEDIO, esDestino,
+  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZona, avisoZonaLejos, puedeEstarCerca, PAGO_ESTADO, PAGO_MEDIO, esDestino,
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, fnacAISO, isoAFnac, formatFecha, edadDeMascota, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
@@ -2830,7 +2830,8 @@ function Prestar({ userId, phone, onVolver, onNegocio, reload }: { userId: strin
 
   const enviar = async () => {
     if (!nombre.trim()) { setError('Poné el nombre o la marca de tu servicio.'); return; }
-    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
+    const malaZona = avisoZona(zona);
+    if (malaZona) { setError(malaZona); return; }
     setBusy(true); setError('');
     const { data: alta, error: e } = await supabase.from('providers').insert({
       owner_id: userId, name: nombre.trim(), category: rubro, zone: zona.trim(),
@@ -3398,7 +3399,9 @@ function Negocio({ negocios, userId, reload, onAlta }: { negocios: MiNegocio[]; 
 
   const guardarEdicion = async () => {
     if (!negocio) return;
-    if (!ed.name.trim() || !ed.zone.trim()) { setError('El nombre y la zona no pueden quedar vacíos.'); return; }
+    if (!ed.name.trim()) { setError('El nombre no puede quedar vacío.'); return; }
+    const malaZonaEd = avisoZona(ed.zone);
+    if (malaZonaEd) { setError(malaZonaEd); return; }
     setBusy(true); setError('');
     const { error: e, data } = await supabase.from('providers').update({
       name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),

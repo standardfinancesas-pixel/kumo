@@ -4,7 +4,7 @@ import type { CSSProperties, FormEvent, ReactNode } from 'react';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZonaLejos,
+  urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZona, avisoZonaLejos,
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
@@ -1613,7 +1613,8 @@ function Prestar({ go, profile }: { go: (s: Screen) => void; profile: Profile })
 
   const enviar = async () => {
     if (!nombre.trim()) { setError('Poné el nombre o la marca de tu servicio.'); return; }
-    if (!zona.trim()) { setError('Poné la zona donde trabajás.'); return; }
+    const malaZona = avisoZona(zona);
+    if (malaZona) { setError(malaZona); return; }
     setBusy(true); setError('');
 
     let photoUrl: string | null = null;
@@ -3063,7 +3064,9 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
 
   const guardarEdicion = async () => {
     if (!negocio) return;
-    if (!ed.name.trim() || !ed.zone.trim()) { setError('El nombre y la zona no pueden quedar vacíos.'); return; }
+    if (!ed.name.trim()) { setError('El nombre no puede quedar vacío.'); return; }
+    const malaZona = avisoZona(ed.zone);
+    if (malaZona) { setError(malaZona); return; }
     setBusy(true); setError('');
     const { error: e } = await supabase.from('providers').update({
       name: ed.name.trim(), category: ed.category, zone: ed.zone.trim(),

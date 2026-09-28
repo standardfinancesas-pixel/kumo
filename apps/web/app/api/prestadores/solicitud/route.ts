@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { RUBROS, motivoFotoInvalida, type ProviderCategory } from '@kumo/shared';
+import { RUBROS, avisoZona, motivoFotoInvalida, type ProviderCategory } from '@kumo/shared';
 import { geocodificarComercio } from '@/lib/geocodificar';
 import { getServiceClient } from '@/lib/supabase-service';
 
@@ -111,7 +111,11 @@ export async function POST(req: Request) {
   const precio = Number(limpiar(form.get('precio'), 12).replace(/\D/g, '')) || null;
 
   if (!nombre) return NextResponse.json({ error: 'Poné el nombre de tu servicio o empresa.' }, { status: 400 });
-  if (!zona) return NextResponse.json({ error: 'Poné la zona donde trabajás.' }, { status: 400 });
+  /* La zona tiene que traer su provincia. El formulario ya lo pide, pero esto
+     entra sin cuenta ni sesión: si la regla vive sola en el navegador, una zona
+     suelta se guarda igual y después no hay a quién preguntarle. */
+  const malaZona = avisoZona(zona);
+  if (malaZona) return NextResponse.json({ error: malaZona }, { status: 400 });
   /* El WhatsApp es obligatorio y no un dato más: es el único canal por el que el
      club puede contestarle, porque acá no se crea cuenta ni se pide mail. */
   if (whatsapp.replace(/\D/g, '').length < 8) return NextResponse.json({ error: 'Poné un WhatsApp donde podamos escribirte.' }, { status: 400 });
