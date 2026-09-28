@@ -117,13 +117,42 @@ export function partirZona(zona?: string | null): { localidad?: string; provinci
   return { localidad: texto };
 }
 
+const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
+/* ── Prestadores sin coordenadas ───────────────────────────────────── */
+
+/**
+ * ¿Un prestador SIN coordenadas puede estar cerca del socio?
+ *
+ * Existe por un caso real del 28/09/2026: una socia de Mendoza vio tres
+ * prestadores de Caballito listados bajo "3 prestadores en 1 km". Ninguno tenía
+ * coordenadas, así que el radio no los descartaba —no se puede descartar por una
+ * distancia que no se conoce— y el título los contaba igual.
+ *
+ * Esto es lo único que se puede afirmar sin coordenadas: si la zona del
+ * prestador dice una provincia y NO es la del socio, está lejos. Alcanza para
+ * "Caballito, CABA" visto desde Mendoza.
+ *
+ * Cuando no se puede afirmar —la zona no dice provincia ("Caballito" a secas), o
+ * el socio no cargó la suya— devuelve `true`: ante la duda se muestra. Esconder
+ * un prestador por una sospecha es peor que mostrarlo, y la pantalla ya lo separa
+ * en su propio grupo diciendo que no se sabe dónde queda.
+ *
+ * La cura de fondo es que tengan dirección y pin; esto es lo que se puede hacer
+ * mientras tanto.
+ */
+export function puedeEstarCerca(zonaPrestador?: string | null, provinciaSocio?: string | null): boolean {
+  const suya = partirZona(zonaPrestador).provincia;
+  const mia = (provinciaSocio ?? '').trim();
+  if (!suya || !mia) return true;
+  return sinAcentos(suya) === sinAcentos(mia);
+}
+
 /* ── Cuando el catálogo no es de tu zona ───────────────────────────── */
 
 /** Desde cuántos kilómetros "lejos" es lejos. Es el techo del slider de Servicios:
  *  más que eso ya no es una opción para ir un sábado. */
 export const LEJOS_KM = 25;
-
-const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 /**
  * El aviso de que el catálogo de beneficios no es de la zona del socio.

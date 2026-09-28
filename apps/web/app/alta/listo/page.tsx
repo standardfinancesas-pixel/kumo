@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase-server';
-import { etiquetaPlan, hoyISO, urls, selloCarnet, type EstadoSuscripcion } from '@kumo/shared';
+import { etiquetaPlan, hoyISO, urls, selloCarnet, edadDeMascota, type EstadoSuscripcion } from '@kumo/shared';
 import { CarnetAlta } from '@/components/CarnetAlta';
 import { AltaListoClient } from './AltaListoClient';
 
@@ -27,7 +27,7 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
 
   const [{ data: perfil }, { data: mascotas }] = await Promise.all([
     supabase.from('profiles').select('member_no, full_name, paid_until, mp_subscription_status, addon_odonto, plans(name)').eq('id', auth.user.id).maybeSingle(),
-    supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, photo_url').eq('owner_id', auth.user.id).order('created_at'),
+    supabase.from('pets').select('id, name, type, breed, age_years, birth_date, weight_kg, microchip, photo_url').eq('owner_id', auth.user.id).order('created_at'),
   ]);
   // Sin perfil no hay alta que celebrar: la persona llegó acá de rebote.
   if (!perfil) redirect(urls.landing);
@@ -72,7 +72,7 @@ export default async function AltaListo({ searchParams }: { searchParams: Promis
               nombre={m.name}
               especie={ESPECIE[m.type as string] ?? 'Otro'}
               raza={m.breed}
-              edad={m.age_years}
+              edad={edadDeMascota({ birthDate: m.birth_date, ageYears: m.age_years })}
               peso={m.weight_kg}
               microchip={m.microchip}
               fotoUrl={m.photo_url}

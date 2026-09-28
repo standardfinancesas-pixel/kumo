@@ -72,7 +72,9 @@ export type SocioAlta = {
  */
 export type MascotaAlta = {
   nombre: string; especie: string; sexo: string; castrado: string; raza: string;
-  edad: string; peso: string; microchip: string; vet: string; foto: string;
+  /** Fecha de nacimiento, `dd/mm/aaaa`. Reemplaza a la edad escrita a mano: un
+   *  número envejece y la fecha no (ver `edadDeMascota`). */
+  fnac: string; peso: string; microchip: string; vet: string; foto: string;
 };
 
 /**
@@ -159,7 +161,7 @@ export function mascotaVacia(inicial?: { nombre?: string; especie?: string }): M
     datos: {
       nombre: inicial?.nombre ?? '',
       especie: inicial?.especie === 'gato' ? 'Gato' : 'Perro',
-      sexo: 'Macho', castrado: 'Sí', raza: '', edad: '', peso: '', microchip: '', vet: '', foto: '',
+      sexo: 'Macho', castrado: 'Sí', raza: '', fnac: '', peso: '', microchip: '', vet: '', foto: '',
     },
     salud: {},
     sanit: {},
@@ -454,6 +456,14 @@ const EDAD_MAXIMA = 110;
  * pasa cualquier regex y `new Date` la convierte calladita en el 3 de marzo. Antes
  * `99/99/9999` entraba sin problema y quedaba guardado como fecha de nacimiento.
  */
+/** `aaaa-mm-dd` → `dd/mm/aaaa`, para volver a llenar un formulario con lo que ya
+ *  estaba guardado. Va pegada a `fnacAISO` a propósito: son la ida y la vuelta, y
+ *  separadas es como terminan existiendo dos versiones que no coinciden. */
+export function isoAFnac(iso?: string | null): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec((iso ?? '').trim());
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+}
+
 export function fnacAISO(fnac: string): string | null {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fnac.trim());
   if (!m) return null;

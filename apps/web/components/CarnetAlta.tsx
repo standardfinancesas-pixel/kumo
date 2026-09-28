@@ -14,7 +14,9 @@ export function CarnetAlta({
   nombre: string;
   especie: string;
   raza: string | null;
-  edad: number | null;
+  /** Ya viene escrita ("3 meses", "5 años"): la arma `edadDeMascota`, que sabe
+   *  calcularla desde la fecha de nacimiento y caer en el número viejo si no hay. */
+  edad: string | null;
   peso: number | null;
   microchip: string | null;
   fotoUrl: string | null;
@@ -59,7 +61,7 @@ export function CarnetAlta({
       <div>
         {fila('Especie', especie)}
         {raza ? fila('Raza', raza) : null}
-        {edad ? fila('Edad', `${edad} ${edad === 1 ? 'año' : 'años'}`) : null}
+        {edad ? fila('Edad', edad) : null}
         {peso ? fila('Peso', `${peso} kg`) : null}
         {microchip ? fila('Microchip', microchip) : null}
       </div>

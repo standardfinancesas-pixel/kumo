@@ -330,7 +330,10 @@ export async function POST(req: Request) {
       raza: m.raza || null,
       sexo: PET_SEX[m.sexo] ?? null,
       castrada: m.castrado === 'Sí',
-      edad: leadingNumber(m.edad),
+      /* La fecha va en ISO porque la lee Postgres; `fnacAISO` es el par exacto
+         del `formatFecha` del formulario. Si una arma y el otro parsea distinto,
+         `birth_date` se guarda en null sin que nadie se entere. */
+      fnac: fnacAISO(m.fnac ?? '') ?? '',
       peso: leadingNumber(m.peso),
       microchip: m.microchip || null,
       vet: m.vet || null,

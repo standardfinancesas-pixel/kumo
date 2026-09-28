@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { esDestino, diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion, sinBloqueados } from '@kumo/shared';
+import { esDestino, edadDeMascota, diaISO, diasHasta, hoyISO, providerBadge, pagoEnHistorial, type EstadoPago, type MedioPago, distanciaKm, origenDelSocio, etiquetaCentro, textoDistancia, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, type NotifInput, type VaccineKind, type Review, type EstadoSuscripcion, sinBloqueados } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /* ── Formas que consumen las pantallas ─────────────────────────── */
@@ -238,7 +238,7 @@ export function useKumoData(userId: string | null) {
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes, fotosRes, avisosClubRes] = await Promise.all([
       supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price)').eq('id', userId).single(),
-      supabase.from('pets').select('id, name, type, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)').eq('owner_id', userId),
+      supabase.from('pets').select('id, name, type, breed, age_years, birth_date, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
       supabase.from('benefits').select('id, name, category, discount, description, zone, address, lat, lng, days, hours, valid_until, plan_requirement, phone, instagram, website').eq('status', 'activo'),
@@ -384,7 +384,7 @@ export function useKumoData(userId: string | null) {
         .sort((a: VacRow, b: VacRow) => (a.due_on! < b.due_on! ? -1 : 1))[0];
       const breedParts = [
         row.breed ?? 'Mestizo',
-        row.age_years != null ? `${row.age_years} años` : null,
+        edadDeMascota({ birthDate: row.birth_date, ageYears: row.age_years }),
         row.weight_kg != null ? `${row.weight_kg} kg` : null,
       ].filter(Boolean);
       const species = row.type === 'gato' ? 'Gato' : 'Perro';
@@ -392,7 +392,7 @@ export function useKumoData(userId: string | null) {
         id: row.id, name: row.name, species, plan: etiquetaPlan(planName, debePagar, p?.mp_subscription_status === 'authorized' && !p?.paid_until), socio: memberNo,
         photo: row.photo_url ?? PET_FALLBACK[i % PET_FALLBACK.length]!,
         breed: breedParts.join(' · '),
-        age: row.age_years != null ? `${species} · ${row.age_years} años` : species,
+        age: (() => { const e = edadDeMascota({ birthDate: row.birth_date, ageYears: row.age_years }); return e ? `${species} · ${e}` : species; })(),
         microchip: row.microchip ?? '—',
         castrado: row.neutered ? 'Sí' : 'No',
         // La cobertura la habilita la cuota paga, no haberla contratado: misma regla

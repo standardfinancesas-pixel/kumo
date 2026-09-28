@@ -8,7 +8,7 @@ import {
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
-  ratingLabel, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
+  ratingLabel, puedeEstarCerca, edadDeMascota, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -1299,20 +1299,59 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
     p.lat == null || p.lng == null ? p.km
       : enCasa ? p.km : Math.round(distanciaKm(centroBusqueda, { lat: p.lat, lng: p.lng }) * 10) / 10;
 
-  const list = providers.filter((p) => {
-    // Se descarta al que SABEMOS que está lejos. El que no tiene coordenadas no
-    // entra ni sale del radio: no se puede afirmar ninguna de las dos cosas, así que
-    // se muestra sin distancia en vez de esconderlo.
-    const km = kmDe(p);
-    if (km != null && km > radio) return false;
+  const coincide = (p: ProviderVM) => {
     if (cat && p.category !== cat) return false;
     if (ql && !(`${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql))) return false;
     return true;
-  });
+  };
+  const candidatos = providers.filter(coincide);
+
+  /*
+   * DOS GRUPOS, y no uno, porque no son lo mismo.
+   *
+   * `list` son los que están adentro del radio, medido. `sinUbicacion` son los que
+   * no tienen coordenadas: de ésos no se sabe la distancia, así que no se los puede
+   * meter en un radio ni contar en "N prestadores en X km".
+   *
+   * Antes iban todos juntos y el que no tenía coordenadas pasaba el filtro siempre.
+   * Con todo el catálogo en CABA eso no se notaba; el 28/09/2026 una socia de
+   * Mendoza vio tres prestadores de Caballito bajo el título "3 prestadores en 1 km".
+   * El número afirmaba una distancia que el sistema no conocía.
+   *
+   * De los sin coordenadas igual se descarta lo que se pueda: si su zona nombra una
+   * provincia y no es la del socio, está lejos y no se muestra (ver
+   * `puedeEstarCerca`). Los que quedan van abajo, en su propio grupo y sin fingir
+   * una distancia.
+   */
+  const list = candidatos.filter((p) => { const km = kmDe(p); return km != null && km <= radio; });
+  const sinUbicacion = candidatos.filter((p) => kmDe(p) == null && puedeEstarCerca(p.zone, profile.province));
   /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
   const conDistancia = providers.map(kmDe).filter((k): k is number => k != null);
   const masCerca = conDistancia.length ? Math.min(...conDistancia) : null;
   const pct = ((radio - 1) / 24) * 100;
+
+  /* La tarjeta, en una función: la usan los dos grupos —los del radio y los de
+     ubicación desconocida— y duplicarla es garantía de que se separen. */
+  const tarjeta = (p: ProviderVM) => (
+      <button key={p.id} className="wa-card" onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 14, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
+        <FotoPrestador p={p} lado={50} radio={15} />
+        <div style={{ flex: '1 1 0%', minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
+            {p.badge && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 5 }}>{p.badge}</span>}
+          </div>
+          <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone}{p.km != null && <> · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></>}</div>
+          {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
+          <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>
+            {ratingLabel(p.rating, p.reviews) ? <>{star} {ratingLabel(p.rating, p.reviews)} ({p.reviews}){precioTexto(p.price, p.priceUnit) ? ' · ' : ''}</> : <span style={{ color: 'rgb(162,157,186)' }}>Sin reseñas{precioTexto(p.price, p.priceUnit) ? ' · ' : ''}</span>}
+            {/* Sin tarifa cargada no se muestra nada: "$0" se lee como que trabaja
+                gratis, y el que se acaba de dar de alta todavía no la puso. */}
+            {precioTexto(p.price, p.priceUnit) && <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>{precioTexto(p.price, p.priceUnit)}</span>}
+          </div>
+        </div>
+        <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
+      </button>
+  );
 
   return (
     <div style={{ padding: '8px 20px 24px' }}>
@@ -1411,31 +1450,12 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {list.map((p) => (
-          <button key={p.id} className="wa-card" onClick={() => setSelId(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 13, background: 'rgb(247,246,250)', border: '1px solid rgb(238,236,245)', borderRadius: 18, padding: 14, cursor: 'pointer', textAlign: 'left', width: '100%', fontFamily: '"DM Sans"' }}>
-            <FotoPrestador p={p} lado={50} radio={15} />
-            <div style={{ flex: '1 1 0%', minWidth: 0 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>{p.name}</span>
-                {p.badge && <span style={{ background: 'rgb(240,237,249)', color: 'rgb(93,84,145)', fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 5 }}>{p.badge}</span>}
-              </div>
-              <div style={{ fontSize: 12, color: 'rgb(162,157,186)' }}>{p.category} · {p.zone}{p.km != null && <> · <span style={{ color: 'rgb(93,84,145)', fontWeight: 600 }}>{p.km} km</span></>}</div>
-              {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
-              <div style={{ fontSize: 12, color: 'rgb(91,86,112)', marginTop: 3 }}>
-                {ratingLabel(p.rating, p.reviews) ? <>{star} {ratingLabel(p.rating, p.reviews)} ({p.reviews}){precioTexto(p.price, p.priceUnit) ? ' · ' : ''}</> : <span style={{ color: 'rgb(162,157,186)' }}>Sin reseñas{precioTexto(p.price, p.priceUnit) ? ' · ' : ''}</span>}
-                {/* Sin tarifa cargada no se muestra nada: "$0" se lee como que trabaja
-                    gratis, y el que se acaba de dar de alta todavía no la puso. */}
-                {precioTexto(p.price, p.priceUnit) && <span style={{ color: 'rgb(93,84,145)', fontWeight: 700 }}>{precioTexto(p.price, p.priceUnit)}</span>}
-              </div>
-            </div>
-            <span style={{ color: 'rgb(199,194,218)', fontSize: 18 }}>›</span>
-          </button>
-        ))}
+        {list.map(tarjeta)}
         {/* El vacío dice a qué distancia está el más cercano.
             Ahora que las distancias se miden desde la casa del socio, "ampliá el
             radio" es un consejo inútil para alguien de Tandil: el radio llega hasta
             25 km y el prestador más cercano está a 350. Que lo diga el número. */}
-        {list.length === 0 && (
+        {list.length === 0 && sinUbicacion.length === 0 && (
           <div style={{ textAlign: 'center', padding: '30px 10px', color: 'rgb(162,157,186)', fontSize: 14, lineHeight: 1.5 }}>
             Sin resultados en {radio} km.
             {masCerca != null && masCerca > radio
@@ -1444,6 +1464,19 @@ function Servicios({ go, providers, initialGuardados, profile, reviews, centro }
           </div>
         )}
       </div>
+
+      {/* Los de ubicación desconocida, aparte y DICIÉNDOLO. Mezclados con los de
+          arriba parecen estar cerca; escondidos, un prestador real desaparece del
+          catálogo sólo porque nadie le cargó la dirección. */}
+      {sinUbicacion.length > 0 && (
+        <div style={{ marginTop: 22, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'rgb(33,30,51)' }}>Sin ubicación cargada</div>
+            <div style={{ fontSize: 12.5, color: 'rgb(135,129,160)', marginTop: 2 }}>No sabemos a qué distancia quedan. Fijate la zona de cada uno.</div>
+          </div>
+          {sinUbicacion.map(tarjeta)}
+        </div>
+      )}
     </div>
   );
 }
@@ -4170,7 +4203,10 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
   const [breed, setBreed] = useState('');
   const [sexo, setSexo] = useState('macho');
   const [castrado, setCastrado] = useState(false);
-  const [edad, setEdad] = useState('');
+  /* La fecha de nacimiento reemplaza a la edad escrita a mano: ver `edadDeMascota`
+     en shared. `edadVieja` es sólo para mostrar lo que ya estaba cargado. */
+  const [fnac, setFnac] = useState('');
+  const [edadVieja, setEdadVieja] = useState<number | null>(null);
   const [peso, setPeso] = useState('');
   const [chip, setChip] = useState('');
   const [vet, setVet] = useState('');
@@ -4207,7 +4243,7 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
     (async () => {
       const { data } = await supabase
         .from('pets')
-        .select('name, type, breed, sex, neutered, age_years, weight_kg, microchip, vet_name, photo_url')
+        .select('name, type, breed, sex, neutered, age_years, birth_date, weight_kg, microchip, vet_name, photo_url')
         .eq('id', petId)
         .single();
       if (!vigente || !data) { setCargando(false); return; }
@@ -4216,7 +4252,11 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
       setBreed(data.breed ?? '');
       setSexo(data.sex ?? 'macho');
       setCastrado(!!data.neutered);
-      setEdad(data.age_years != null ? String(data.age_years) : '');
+      setFnac(data.birth_date ?? '');
+      /* La edad vieja se conserva para MOSTRARLA mientras no haya fecha, pero el
+         formulario ya no la edita: pedir las dos sería pedir dos veces lo mismo y
+         dejar que se contradigan. */
+      setEdadVieja(data.age_years);
       setPeso(data.weight_kg != null ? String(data.weight_kg) : '');
       setChip(data.microchip ?? '');
       setVet(data.vet_name ?? '');
@@ -4242,7 +4282,7 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
     if (editando) {
       const { error: e, data } = await supabase.from('pets').update({
         name: name.trim(), type: tipo, breed: breed.trim() || null, sex: sexo, neutered: castrado,
-        age_years: num(edad), weight_kg: num(peso), microchip: chip.trim() || null, vet_name: vet.trim() || null,
+        birth_date: fnac || null, weight_kg: num(peso), microchip: chip.trim() || null, vet_name: vet.trim() || null,
         ...(fotoUrl ? { photo_url: fotoUrl } : {}),
       }).eq('id', petId).select('id');
       if (e || !data?.length) { setError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
@@ -4253,7 +4293,7 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
     if (!declaracion) { setError('Completá y firmá la declaración jurada de la mascota.'); return; }
     const { error: e } = await supabase.rpc('agregar_mascota', {
       p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
-      p_age_years: num(edad), p_weight_kg: num(peso), p_microchip: chip, p_vet_name: vet,
+      p_age_years: null, p_birth_date: fnac || null, p_weight_kg: num(peso), p_microchip: chip, p_vet_name: vet,
       p_photo_url: fotoUrl,
       p_version: declaracion.version, p_answers: declaracion.answers,
       p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
@@ -4304,8 +4344,15 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
 
       <div style={{ display: 'flex', gap: 10, marginBottom: 16 }}>
         <div style={{ flex: 1 }}>
-          <label style={sheetLabel} htmlFor="am-edad">Edad</label>
-          <input id="am-edad" value={edad} onChange={(e) => setEdad(e.target.value)} placeholder="años" style={sheetInput} />
+          {/* La FECHA y no la edad: un número escrito una vez envejece mal, y para
+              un cachorro la diferencia entre 2 y 8 meses es otra vacuna. */}
+          <label style={sheetLabel} htmlFor="am-fnac">Fecha de nacimiento</label>
+          <input id="am-fnac" type="date" value={fnac} max={hoyISO()} onChange={(e) => setFnac(e.target.value)} style={sheetInput} />
+          {!fnac && edadVieja != null && (
+            <div style={{ fontSize: 12, color: 'rgb(135,129,160)', marginTop: 5, lineHeight: 1.4 }}>
+              Hoy figura como {edadDeMascota({ ageYears: edadVieja })}. Poné la fecha y se calcula sola.
+            </div>
+          )}
         </div>
         <div style={{ flex: 1 }}>
           <label style={sheetLabel} htmlFor="am-peso">Peso</label>

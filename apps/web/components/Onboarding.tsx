@@ -7,7 +7,7 @@ import {
   data, FOTO_TIPOS, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, pasoOk, payloadAlta,
   borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
-  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador, motivoFotosDelAltaPesan } from '@kumo/shared';
+  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador, motivoFotosDelAltaPesan, fnacAISO, isoAFnac } from '@kumo/shared';
 import { prepararFoto } from '@/lib/foto';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
@@ -137,7 +137,7 @@ function FilaMascota({
       </div>
       <div style={{ display: 'flex', gap: 12 }}>
         <div style={{ flex: 2 }}>{field('Raza', <input value={d.raza} onChange={(e) => set({ raza: e.target.value })} placeholder="Ej. Mestizo" style={input} />)}</div>
-        <div style={{ flex: 1 }}>{field('Edad aprox.', <input value={d.edad} onChange={(e) => set({ edad: e.target.value })} placeholder="4 años" style={input} />)}</div>
+        <div style={{ flex: 1 }}>{field('Nacimiento', <input type="date" value={fnacAISO(d.fnac) ?? ''} max={hoyISO()} onChange={(e) => set({ fnac: isoAFnac(e.target.value) })} style={input} />)}</div>
         <div style={{ flex: 1 }}>{field('Peso', <input value={d.peso} onChange={(e) => set({ peso: e.target.value })} placeholder="12 kg" style={input} />)}</div>
       </div>
       {field(<>N° de microchip <span style={{ color: '#a29dba', fontWeight: 500 }}>(si tiene)</span></>, <input value={d.microchip} onChange={(e) => set({ microchip: e.target.value })} placeholder="982 000 000 000" style={input} />)}

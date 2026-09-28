@@ -8,9 +8,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFonts, Baloo2_700Bold, Baloo2_800ExtraBold } from '@expo-google-fonts/baloo-2';
 import { DMSans_400Regular, DMSans_500Medium, DMSans_600SemiBold, DMSans_700Bold } from '@expo-google-fonts/dm-sans';
 import {
-  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, PAGO_ESTADO, PAGO_MEDIO, esDestino,
+  colors, PROVINCIAS, RUBROS, type ProviderCategory, partirZona, avisoZonaLejos, puedeEstarCerca, PAGO_ESTADO, PAGO_MEDIO, esDestino,
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifGroup, type Notif,
-  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
+  buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, fnacAISO, isoAFnac, formatFecha, edadDeMascota, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
   destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, pareceCbu, parchePerfilBancario, hayDatosBancarios,
@@ -1271,7 +1271,7 @@ function PrestadorDetalle({ p, guardado, onGuardar, onVolver, reviews, userId, f
 /** El centro de los mapas: el domicilio del socio (ver useKumoData). */
 type Centro = { lat: number; lng: number; etiqueta: string | null };
 
-function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId, firstName, reload, centro }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void; reviews: Record<string, Review[]>; userId: string; firstName: string; reload: () => void; centro: Centro }) {
+function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId, firstName, reload, centro, provincia }: { providers: ProviderVM[]; guardados: string[]; onGuardar: (id: string) => void; onPrestar: () => void; reviews: Record<string, Review[]>; userId: string; firstName: string; reload: () => void; centro: Centro; provincia: string | null }) {
   const [q, setQ] = useState('');
   const [cat, setCat] = useState<string | null>(null);
   const [radius, setRadius] = useState(5);
@@ -1298,14 +1298,29 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
       : enCasa ? p.km : Math.round(distanciaKm(centroBusqueda, { lat: p.lat, lng: p.lng }) * 10) / 10;
 
   const ql = q.trim().toLowerCase();
-  // El radio descarta al que SABEMOS que está lejos; el que no tiene coordenadas no
-  // entra ni sale del radio, así que se muestra sin distancia en vez de esconderlo.
-  const list = providers.filter((p) => {
-    const km = kmDe(p);
-    return (!cat || p.category === cat)
-      && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql))
-      && (km == null || km <= radiusAplicado);
-  });
+  const coincide = (p: ProviderVM) => (!cat || p.category === cat)
+    && (!ql || `${p.name} ${p.category} ${p.zone}`.toLowerCase().includes(ql));
+  const candidatos = providers.filter(coincide);
+
+  /*
+   * DOS GRUPOS, y no uno, porque no son lo mismo.
+   *
+   * `list` son los que están adentro del radio, medido. `sinUbicacion` son los que
+   * no tienen coordenadas: de ésos no se sabe la distancia, así que no se los puede
+   * meter en un radio ni contar en "N prestadores en X km".
+   *
+   * Antes iban todos juntos y el que no tenía coordenadas pasaba el filtro siempre.
+   * Con todo el catálogo en CABA eso no se notaba; el 28/09/2026 una socia de
+   * Mendoza vio tres prestadores de Caballito bajo el título "3 prestadores en 1 km".
+   * El número afirmaba una distancia que el sistema no conocía.
+   *
+   * De los sin coordenadas igual se descarta lo que se pueda: si su zona nombra una
+   * provincia y no es la del socio, está lejos y no se muestra (ver
+   * `puedeEstarCerca`). Los que quedan van abajo, en su propio grupo y sin fingir
+   * una distancia.
+   */
+  const list = candidatos.filter((p) => { const km = kmDe(p); return km != null && km <= radiusAplicado; });
+  const sinUbicacion = candidatos.filter((p) => kmDe(p) == null && puedeEstarCerca(p.zone, provincia));
   /** El prestador con distancia conocida más cercano, para el mensaje de vacío. */
   const masCerca = providers.reduce<number | null>((min, p) => { const k = kmDe(p); return k != null && (min == null || k < min) ? k : min; }, null);
 
@@ -1330,6 +1345,29 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
     );
   }
 
+  /* La tarjeta, en una función: la usan los dos grupos —los del radio y los de
+     ubicación desconocida— y duplicarla es garantía de que se separen. */
+  const tarjeta = (p: ProviderVM) => (
+      <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
+        <FotoPrestador p={p} lado={54} radio={15} />
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
+            {p.badge ? <View style={{ backgroundColor: colors.violet[100], borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}><Text style={{ fontSize: 9, fontWeight: '700', color: BRAND }}>{p.badge}</Text></View> : null}
+          </View>
+          <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone}{p.km != null ? ` · ${p.km} km` : ''}</Text>
+          {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
+          <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+            {ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews}) · ` : <Text style={{ color: '#a29dba' }}>Sin reseñas · </Text>}
+            {/* Sin tarifa cargada no se muestra nada: "$0" se lee como que trabaja
+                gratis, y el que se acaba de dar de alta todavía no la puso. */}
+            {precioTexto(p.price, p.priceUnit) ? <Text style={{ color: BRAND, fontWeight: '700' }}>{precioTexto(p.price, p.priceUnit)}</Text> : null}
+          </Text>
+        </View>
+        <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
+      </TouchableOpacity>
+  );
+
   return (
     <ScrollView contentContainerStyle={styles.screen}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
@@ -1345,6 +1383,7 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }} contentContainerStyle={{ gap: 8 }}>
         {CHIPS.map((c) => {
           const active = cat === c.cat;
+
           return (
             <TouchableOpacity key={c.label} onPress={() => setCat(c.cat)} style={{ paddingVertical: 8, paddingHorizontal: 15, borderRadius: 100, backgroundColor: active ? BRAND : colors.violet[100] }}>
               <Text style={{ fontWeight: '600', fontSize: 13, color: active ? '#fff' : BRAND }}>{c.label}</Text>
@@ -1408,7 +1447,10 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         <Text style={{ fontSize: 13, color: INK }}><Text style={{ fontWeight: '700' }}>{list.length} prestadores</Text> en {radiusAplicado} km</Text>
         <Text style={{ fontSize: 12.5, color: MUTED }}>≡ Más cercano</Text>
       </View>
-      {list.length === 0 && (
+      {/* El cartel de vacío habla del RADIO, así que sólo aparece si tampoco hay
+          nada abajo: con el grupo de ubicación desconocida a la vista, decir "sin
+          resultados" sería falso. */}
+      {list.length === 0 && sinUbicacion.length === 0 && (
         <View style={{ backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 16, padding: 22, alignItems: 'center' }}>
           {/* Ahora que las distancias salen del domicilio del socio, "ampliá el radio"
               es un consejo inútil para alguien de Tandil: el radio llega a 25 km y el
@@ -1422,27 +1464,21 @@ function Servicios({ providers, guardados, onGuardar, onPrestar, reviews, userId
         </View>
       )}
       <View style={{ gap: 12 }}>
-        {list.map((p) => (
-          <TouchableOpacity key={p.id} onPress={() => setSelId(p.id)} style={{ flexDirection: 'row', alignItems: 'center', gap: 13, backgroundColor: '#f7f6fa', borderWidth: 1, borderColor: '#eeecf5', borderRadius: 18, padding: 12 }}>
-            <FotoPrestador p={p} lado={54} radio={15} />
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={{ fontWeight: '700', fontSize: 15, color: INK }}>{p.name}</Text>
-                {p.badge ? <View style={{ backgroundColor: colors.violet[100], borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}><Text style={{ fontSize: 9, fontWeight: '700', color: BRAND }}>{p.badge}</Text></View> : null}
-              </View>
-              <Text style={{ fontSize: 12, color: colors.violet[400] }}>{p.category} · {p.zone}{p.km != null ? ` · ${p.km} km` : ''}</Text>
-              {/* Sin reseñas no se muestra estrella: un "★ 0 (0)" se lee como mala calificación. */}
-              <Text style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
-                {ratingLabel(p.rating, p.reviews) ? `★ ${ratingLabel(p.rating, p.reviews)} (${p.reviews}) · ` : <Text style={{ color: '#a29dba' }}>Sin reseñas · </Text>}
-                {/* Sin tarifa cargada no se muestra nada: "$0" se lee como que trabaja
-                    gratis, y el que se acaba de dar de alta todavía no la puso. */}
-                {precioTexto(p.price, p.priceUnit) ? <Text style={{ color: BRAND, fontWeight: '700' }}>{precioTexto(p.price, p.priceUnit)}</Text> : null}
-              </Text>
-            </View>
-            <Text style={{ color: colors.violet[300], fontSize: 18 }}>›</Text>
-          </TouchableOpacity>
-        ))}
+        {list.map(tarjeta)}
       </View>
+
+      {/* Los de ubicación desconocida, aparte y DICIÉNDOLO. Mezclados con los de
+          arriba parecen estar cerca; escondidos, un prestador real desaparece del
+          catálogo sólo porque nadie le cargó la dirección. */}
+      {sinUbicacion.length > 0 && (
+        <View style={{ marginTop: 22, gap: 12 }}>
+          <View>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: INK }}>Sin ubicación cargada</Text>
+            <Text style={{ fontSize: 12.5, color: MUTED, marginTop: 2 }}>No sabemos a qué distancia quedan. Fijate la zona de cada uno.</Text>
+          </View>
+          {sinUbicacion.map(tarjeta)}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -2322,7 +2358,12 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
   // nombre y raza nada más, y su carnet quedaba a medias respecto de la primera.
   const [sexo, setSexo] = useState<'macho' | 'hembra'>('macho');
   const [castrado, setCastrado] = useState(false);
-  const [edad, setEdad] = useState('');
+  /* La fecha de nacimiento en lugar de la edad: un número escrito una vez
+     envejece mal, y para un cachorro 2 meses y 8 meses son otra vacuna. Va como
+     texto `dd/mm/aaaa` y no con un selector, igual que la del socio en el alta:
+     es el patrón que la app ya usa y no agrega un módulo nativo. */
+  const [fnac, setFnac] = useState('');
+  const [edadVieja, setEdadVieja] = useState<number | null>(null);
   const [peso, setPeso] = useState('');
   const [chip, setChip] = useState('');
   const [vet, setVet] = useState('');
@@ -2343,7 +2384,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
     (async () => {
       const { data } = await supabase
         .from('pets')
-        .select('name, type, breed, sex, neutered, age_years, weight_kg, microchip, vet_name, photo_url')
+        .select('name, type, breed, sex, neutered, age_years, birth_date, weight_kg, microchip, vet_name, photo_url')
         .eq('id', editId)
         .single();
       if (!vigente || !data) return;
@@ -2352,7 +2393,8 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
       setBreed(data.breed ?? '');
       setSexo(data.sex === 'hembra' ? 'hembra' : 'macho');
       setCastrado(!!data.neutered);
-      setEdad(data.age_years != null ? String(data.age_years) : '');
+      setFnac(isoAFnac(data.birth_date));
+      setEdadVieja(data.age_years);
       setPeso(data.weight_kg != null ? String(data.weight_kg) : '');
       setChip(data.microchip ?? '');
       setVet(data.vet_name ?? '');
@@ -2500,7 +2542,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
    */
   const limpiarForm = () => {
     setName(''); setBreed(''); setTipo('perro'); setSexo('macho'); setCastrado(false);
-    setEdad(''); setPeso(''); setChip(''); setVet(''); setFotoUrl(null);
+    setFnac(''); setEdadVieja(null); setPeso(''); setChip(''); setVet(''); setFotoUrl(null);
     setHealth({}); setSanit({}); setFirma(''); setAdding(false); setEditId(null);
   };
 
@@ -2513,7 +2555,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
       setBusy(true); setAddError('');
       const { error, data } = await supabase.from('pets').update({
         name: name.trim(), type: tipo, breed: breed.trim() || null, sex: sexo, neutered: castrado,
-        age_years: numero(edad), weight_kg: numero(peso), microchip: chip.trim() || null, vet_name: vet.trim() || null,
+        birth_date: fnacAISO(fnac), weight_kg: numero(peso), microchip: chip.trim() || null, vet_name: vet.trim() || null,
         ...(fotoUrl ? { photo_url: fotoUrl } : {}),
       }).eq('id', editId).select('id');
       if (error || !data?.length) { setAddError('No pudimos guardar los cambios. Probá de nuevo.'); setBusy(false); return; }
@@ -2528,7 +2570,7 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
     setBusy(true); setAddError('');
     const { error } = await supabase.rpc('agregar_mascota', {
       p_name: name, p_type: tipo, p_breed: breed, p_sex: sexo, p_neutered: castrado,
-      p_age_years: numero(edad), p_weight_kg: numero(peso), p_microchip: chip, p_vet_name: vet, p_photo_url: fotoUrl,
+      p_age_years: null, p_birth_date: fnacAISO(fnac), p_weight_kg: numero(peso), p_microchip: chip, p_vet_name: vet, p_photo_url: fotoUrl,
       p_version: declaracion.version, p_answers: declaracion.answers,
       p_sanitary: declaracion.sanitary, p_signature: declaracion.signature,
     });
@@ -2576,11 +2618,18 @@ function MisMascotas({ pets, reintegros, userId, reload, go, setPetIdx }: { pets
           <TextInput value={breed} onChangeText={setBreed} placeholder="Raza (opcional)" placeholderTextColor={colors.violet[400]}
             style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
           <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TextInput value={edad} onChangeText={setEdad} placeholder="Edad (años)" placeholderTextColor={colors.violet[400]} keyboardType="numeric"
+            <TextInput value={fnac} onChangeText={(t) => setFnac(formatFecha(t))} placeholder="Nacimiento dd/mm/aaaa" placeholderTextColor={colors.violet[400]} keyboardType="numeric"
               style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
             <TextInput value={peso} onChangeText={setPeso} placeholder="Peso (kg)" placeholderTextColor={colors.violet[400]} keyboardType="numeric"
               style={{ flex: 1, borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
           </View>
+          {/* Lo que ya estaba cargado, para que el cambio no se lea como un dato
+              perdido: la edad vieja se sigue mostrando hasta que pongan la fecha. */}
+          {!fnac && edadVieja != null ? (
+            <Text style={{ fontSize: 12, color: MUTED, lineHeight: 17 }}>
+              Hoy figura como {edadDeMascota({ ageYears: edadVieja })}. Poné la fecha y se calcula sola.
+            </Text>
+          ) : null}
           <TextInput value={chip} onChangeText={setChip} placeholder="Microchip (opcional)" placeholderTextColor={colors.violet[400]}
             style={{ borderWidth: 1.5, borderColor: colors.violet[200], borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14, color: INK, backgroundColor: '#fff' }} />
           <TextInput value={vet} onChangeText={setVet} placeholder="Veterinaria de cabecera (opcional)" placeholderTextColor={colors.violet[400]}
@@ -5030,7 +5079,7 @@ export default function App() {
         <View style={{ flex: 1 }}>
           {pantalla === 'inicio' && <Inicio pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} go={go} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet pets={pets} petIdx={safeIdx} setPetIdx={setPetIdx} contacts={data.contacts} userId={userId} reload={reload} go={go} />}
-          {pantalla === 'servicios' && <Servicios centro={data.centro} providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} />}
+          {pantalla === 'servicios' && <Servicios centro={data.centro} providers={data.providers} guardados={guardados} onGuardar={toggleGuardado} onPrestar={() => go('prestar')} reviews={data.reviews} userId={userId} firstName={data.profile?.firstName ?? 'Socio'} reload={reload} provincia={data.profile?.province ?? null} />}
           {pantalla === 'prestar' && <Prestar userId={userId} phone={data.profile?.phone ?? ''} onVolver={() => go('servicios')} onNegocio={() => go('minegocio')} reload={reload} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={data.benefits} go={go} centro={data.centro} profile={data.profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros profile={data.profile} pets={pets} reintegros={data.reintegros} reintTotal={data.reintTotal} userId={userId} reload={reload} go={go} />}

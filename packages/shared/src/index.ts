@@ -7,6 +7,7 @@ export * from './fechas';
 export * from './moderacion';
 export * from './notifs';
 export * from './avatar';
+export * from './edad';
 export * from './carnet';
 export * from './prestadores';
 export * from './reintegros';

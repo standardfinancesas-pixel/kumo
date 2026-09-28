@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { esDestino, urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
+import { esDestino, edadDeMascota, urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM, type PagoVM } from './AppClient';
 
@@ -42,7 +42,7 @@ function imgSrc(photoUrl: string | null, fallback = 'default-pet.webp'): string 
   return v.startsWith('http') ? v : `/img/${v}`;
 }
 
-type PetRow = { id: string; name: string; breed: string | null; age_years: number | null; weight_kg: number | null; microchip: string | null; neutered: boolean; photo_url: string | null; vaccinations: VaccinationRow[] };
+type PetRow = { id: string; name: string; breed: string | null; age_years: number | null; birth_date: string | null; weight_kg: number | null; microchip: string | null; neutered: boolean; photo_url: string | null; vaccinations: VaccinationRow[] };
 /** `socio` viene armado y no como número: un perfil que no es de socio no tiene
  *  número, y "#null" en el carnet es peor que un guion. */
 /** `plan`, `odonto` y `sello` llegan armados: son del SOCIO y los decide la cuota,
@@ -54,7 +54,7 @@ function mapPet(row: PetRow, socio: string, plan: string, odonto: string, sello:
     plan,
     socio,
     photo: imgSrc(row.photo_url),
-    breed: [row.breed ?? 'Mestizo', row.age_years != null ? `${row.age_years} años` : null, row.weight_kg != null ? `${row.weight_kg} kg` : null].filter(Boolean).join(' · '),
+    breed: [row.breed ?? 'Mestizo', edadDeMascota({ birthDate: row.birth_date, ageYears: row.age_years }), row.weight_kg != null ? `${row.weight_kg} kg` : null].filter(Boolean).join(' · '),
     microchip: row.microchip ?? 'Sin chip',
     castrado: row.neutered ? 'Sí' : 'No',
     odonto,
@@ -235,7 +235,7 @@ export default async function Page() {
       .single(),
     supabase
       .from('pets')
-      .select('id, name, breed, age_years, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)')
+      .select('id, name, breed, age_years, birth_date, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)')
       .eq('owner_id', auth.user.id),
     supabase
       .from('reimbursements')

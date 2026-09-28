@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { urls, mesActualISO, hoyISO, diaISO } from '@kumo/shared';
+import { urls, mesActualISO, hoyISO, diaISO, edadDeMascota } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, {
   type AdminProfile, type KpiVM, type DistRow, type SocioRow, type ColaRow, type HistRow,
@@ -97,7 +97,7 @@ export default async function Page() {
         id, provider_name, concept, amount, refund, refund_pct, plan_name, requested_on, flag, receipt_path, receipt_no,
         bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias,
         profiles(member_no, full_name, dni),
-        pets(name, type, breed, age_years, weight_kg, vaccinations(name, status, applied_on, due_on))
+        pets(name, type, breed, age_years, birth_date, weight_kg, vaccinations(name, status, applied_on, due_on))
       `)
       .eq('status', 'en_revision')
       .order('requested_on', { ascending: true }),
@@ -252,7 +252,7 @@ export default async function Page() {
       mascota: m
         ? {
             nombre: m.name,
-            info: [m.type, m.breed, m.age_years != null ? `${m.age_years} años` : null, m.weight_kg != null ? `${m.weight_kg} kg` : null].filter(Boolean).join(' · '),
+            info: [m.type, m.breed, edadDeMascota({ birthDate: m.birth_date, ageYears: m.age_years }), m.weight_kg != null ? `${m.weight_kg} kg` : null].filter(Boolean).join(' · '),
             vacunas: ((m.vaccinations ?? []) as VacRow[])
               .slice()
               .sort((a, b) => (b.applied_on ?? b.due_on ?? '').localeCompare(a.applied_on ?? a.due_on ?? ''))

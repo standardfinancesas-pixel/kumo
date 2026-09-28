@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, destinoParaMostrar, RUBROS, DESTINOS_AVISO } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, destinoParaMostrar, RUBROS, DESTINOS_AVISO, edadDeMascota } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 import { prepararFoto } from '@/lib/foto';
@@ -303,7 +303,7 @@ type FichaData = {
   // A dónde transferirle los reintegros, y con qué se le cobra la cuota.
   bank: { holder: string | null; holderDni: string | null; cuit: string | null; name: string | null; cbu: string | null; alias: string | null };
   card: { brand: string | null; last4: string | null; exp: string | null; holder: string | null };
-  pets: { id: string; name: string; type: string; breed: string | null; ageYears: number | null; microchip: string | null }[];
+  pets: { id: string; name: string; type: string; breed: string | null; ageYears: number | null; fnac: string | null; microchip: string | null }[];
   /** Si además ofrece servicios en el club: en Kumo un prestador es un socio con
    *  un negocio, así que la ficha tiene que decirlo (lo pide el prototipo). */
   negocios: { id: string; name: string; category: string; zone: string; status: string }[];
@@ -330,7 +330,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
     (async () => {
       const [perfil, mascotas, reint, declas, negocios] = await Promise.all([
         supabase.from('profiles').select('email, phone, address, city, province, dni, joined_on, addon_odonto, monthly_fee_agreed, pay_method, mp_subscription_status, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, card_exp, card_holder, plans(name, base_price)').eq('id', socio.id).single(),
-        supabase.from('pets').select('id, name, type, breed, age_years, microchip').eq('owner_id', socio.id),
+        supabase.from('pets').select('id, name, type, breed, age_years, birth_date, microchip').eq('owner_id', socio.id),
         supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, status').eq('member_id', socio.id).order('requested_on', { ascending: false }),
         supabase.from('health_declarations').select('id, pet_name, signature, signed_at, answers, sanitary').eq('member_id', socio.id).order('signed_at', { ascending: false }),
         supabase.from('providers').select('id, name, category, zone, status').eq('owner_id', socio.id),
@@ -352,7 +352,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
           answers: (d.answers ?? []) as { pregunta: string; respuesta: string }[],
           sanitary: (d.sanitary ?? []) as { pregunta: string; respuesta: string }[],
         })),
-        pets: (mascotas.data ?? []).map((m) => ({ id: m.id, name: m.name, type: m.type, breed: m.breed, ageYears: m.age_years, microchip: m.microchip })),
+        pets: (mascotas.data ?? []).map((m) => ({ id: m.id, name: m.name, type: m.type, breed: m.breed, ageYears: m.age_years, fnac: m.birth_date, microchip: m.microchip })),
         negocios: negocios.data ?? [],
         reintegros: (reint.data ?? []).map((r) => ({ id: r.id, providerName: r.provider_name, concept: r.concept, amount: r.amount, refund: r.refund, status: r.status })),
       });
@@ -447,7 +447,7 @@ function FichaSocioModal({ socio, onClose }: { socio: SocioRow; onClose: () => v
                   <div key={m.id} style={{ padding: '10px 0', borderBottom: '1px solid #eeecf5' }}>
                     <div style={{ fontWeight: 600, fontSize: 14 }}>{m.name} <span style={{ fontWeight: 400, color: '#8781a0', fontSize: 13 }}>· {m.type}</span></div>
                     <div style={{ fontSize: 12.5, color: '#8781a0' }}>
-                      {[m.breed, m.ageYears != null ? `${m.ageYears} años` : null, m.microchip ? `chip ${m.microchip}` : null].filter(Boolean).join(' · ') || 'sin datos'}
+                      {[m.breed, edadDeMascota({ birthDate: m.fnac, ageYears: m.ageYears }), m.microchip ? `chip ${m.microchip}` : null].filter(Boolean).join(' · ') || 'sin datos'}
                     </div>
                   </div>
                 ))}

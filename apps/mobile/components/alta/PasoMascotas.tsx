@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Image, TouchableOpacity, View } from 'react-native';
-import { colors, MAX_MASCOTAS_ALTA, motivoFotosDelAltaPesan, type MascotaBorrador } from '@kumo/shared';
+import { colors, formatFecha, MAX_MASCOTAS_ALTA, motivoFotosDelAltaPesan, type MascotaBorrador } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, MUTED } from '../ui/Texto';
 import { Campo, Segmentado } from '../ui/Controles';
 import { elegirFoto, type FotoElegida } from '../../lib/subirFoto';
@@ -106,7 +106,7 @@ function FilaMascota({
       <Campo label="Raza" valor={d.raza} onCambio={(v) => set({ raza: v })} placeholder="Ej. Mestizo" />
       <View style={{ flexDirection: 'row', gap: 12 }}>
         <View style={{ flex: 1 }}>
-          <Campo label="Edad aprox." valor={d.edad} onCambio={(v) => set({ edad: v })} placeholder="4 años" />
+          <Campo label="Nacimiento" valor={d.fnac} onCambio={(v) => set({ fnac: formatFecha(v) })} placeholder="dd/mm/aaaa" keyboardType="numeric" />
         </View>
         <View style={{ flex: 1 }}>
           <Campo label="Peso" valor={d.peso} onCambio={(v) => set({ peso: v })} placeholder="12 kg" />
