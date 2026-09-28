@@ -15,6 +15,9 @@ export type Plan = {
   tagline: string;
   perks: string[];
   featured?: boolean;
+  /** Qué porcentaje del gasto se reintegra con este plan. Lo edita el club en el
+   *  panel y lo aplica el trigger de `reimbursements`: ver `porcentajeReintegro`. */
+  refundPct: number;
 };
 
 export type PetType = 'perro' | 'gato' | 'otro';

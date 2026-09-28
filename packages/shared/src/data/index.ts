@@ -17,6 +17,7 @@ export const plans: Plan[] = [
   {
     id: 'plan-amigo',
     name: 'AMIGO',
+    refundPct: 30,
     basePrice: 18000,
     tagline: 'Lo esencial para empezar',
     perks: [
@@ -31,6 +32,7 @@ export const plans: Plan[] = [
   {
     id: 'plan-familia',
     name: 'FAMILIA',
+    refundPct: 50,
     basePrice: 32000,
     tagline: 'El favorito de los socios',
     featured: true,
@@ -46,6 +48,7 @@ export const plans: Plan[] = [
   {
     id: 'plan-vip',
     name: 'VIP',
+    refundPct: 60,
     basePrice: 55000,
     tagline: 'Cobertura máxima',
     perks: [

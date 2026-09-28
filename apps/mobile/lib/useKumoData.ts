@@ -16,6 +16,8 @@ export type Profile = {
   // `planPrice` es la cuota que aceptó al firmar (plan + add-ons), no el precio
   // de lista: con la cobertura odontológica paga $12.000 más.
   planPrice: number; addonOdonto: boolean;
+  /** El porcentaje de reintegro de su plan, de `plans.refund_pct`. Null sin plan. */
+  planRefundPct: number | null;
   email: string; phone: string; address: string; city: string; province: string; dni: string;
   /** La cuenta donde el club le transfiere los reintegros: se pide en el alta y
    *  el formulario de reintegro la prefija. */
@@ -237,7 +239,7 @@ export function useKumoData(userId: string | null) {
     if (!userId) { setData(null); setError(null); setLoading(false); return; }
 
     const [profileRes, petsRes, reintRes, provRes, benefRes, bloqueosRes, postsRes, negocioRes, favRes, revRes, plikeRes, alikeRes, planesRes, contactosRes, pagosRes, foroRes, fotosRes, avisosClubRes] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price)').eq('id', userId).single(),
+      supabase.from('profiles').select('id, full_name, member_no, email, phone, address, city, province, lat, lng, geo_origen, dni, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price, refund_pct)').eq('id', userId).single(),
       supabase.from('pets').select('id, name, type, breed, age_years, birth_date, weight_kg, microchip, neutered, photo_url, vaccinations(id, name, kind, status, applied_on, due_on, file_path)').eq('owner_id', userId),
       supabase.from('reimbursements').select('id, provider_name, concept, amount, refund, refund_pct, status, requested_on, resolved_at, created_at, receipt_no, receipt_path, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, pets(name)').eq('member_id', userId).order('requested_on', { ascending: false }),
       supabase.from('providers').select('id, name, category, zone, rating, reviews, price, price_unit, phone, photo_url, logo_url, lat, lng, about, address, instagram, website, status').eq('status', 'verificado'),
@@ -366,6 +368,7 @@ export function useKumoData(userId: string | null) {
     const profile: Profile | null = p ? {
       id: p.id, firstName: p.full_name.split(' ')[0] ?? p.full_name, fullName: p.full_name, memberNo,
       planName, planPrice: p.monthly_fee_agreed ?? plan?.base_price ?? 0,
+      planRefundPct: plan?.refund_pct ?? null,
       addonOdonto: p.addon_odonto ?? false, email: p.email, phone: p.phone ?? '—',
       address: p.address ?? '—', city: p.city ?? '—', province: p.province ?? '—', dni: p.dni ?? '—',
       banco: { holder: p.bank_holder, holderDni: p.bank_holder_dni, cuit: p.bank_cuit, banco: p.bank_name, cbu: p.bank_cbu, alias: p.bank_alias },

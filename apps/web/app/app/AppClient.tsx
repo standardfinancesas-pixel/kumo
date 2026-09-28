@@ -9,6 +9,7 @@ import {
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, puedeEstarCerca, edadDeMascota, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
+  porcentajeReintegro, montoReintegro,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -189,7 +190,7 @@ export type ProfileBanco = { holder: string | null; holderDni: string | null; cu
 
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
-export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null; /** Su foto de perfil, o null si no subió ninguna. */ foto: string | null };
+export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; /** El % de reintegro de su plan (`plans.refund_pct`). Null sin plan. */ planRefundPct: number | null; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null; /** Su foto de perfil, o null si no subió ninguna. */ foto: string | null };
 
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
 export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; odonto: boolean; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
@@ -1880,7 +1881,7 @@ function ReintegroDetalle({ r, planName, onVolver }: { r: Reint; planName: strin
 }
 
 /* ── Pantalla: Reintegros ──────────────────────────────────────── */
-function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { initialReintegros: Reint[]; planName: string; memberId: string; pets: Pet[]; banco: ProfileBanco }) {
+function Reintegros({ initialReintegros, planName, planRefundPct, memberId, pets, banco }: { initialReintegros: Reint[]; planName: string; planRefundPct: number | null; memberId: string; pets: Pet[]; banco: ProfileBanco }) {
   const router = useRouter();
   const items = initialReintegros;
   const [selId, setSelId] = useState<string | null>(null);
@@ -1929,7 +1930,7 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
     const { data: nuevo, error: insErr } = await supabase.from('reimbursements').insert({
       member_id: memberId, pet_id: petId || null, plan_name: planName,
       provider_name: place || 'Comprobante', concept: detail || 'Comprobante',
-      amount: s, refund: Math.round(s * 0.5), refund_pct: 50, status: 'en_revision', receipt_path: path,
+      amount: s, refund: montoReintegro(s, planRefundPct), refund_pct: porcentajeReintegro(planRefundPct), status: 'en_revision', receipt_path: path,
       bank_holder: titular.trim() || null, bank_holder_dni: titularDni.replace(/\D/g, '') || null,
       bank_cuit: cuit.trim() || null, bank_name: nombreBanco.trim() || null,
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
@@ -2012,6 +2013,14 @@ function Reintegros({ initialReintegros, planName, memberId, pets, banco }: { in
             <input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder="Concepto (ej: Consulta)" style={{ ...sheetInput, flex: '1 1 150px', width: 'auto' }} />
             <input value={spent} onChange={(e) => setSpent(e.target.value)} type="number" inputMode="numeric" placeholder="Monto gastado" style={{ ...sheetInput, flex: '1 1 120px', width: 'auto' }} />
           </div>
+          {/* Cuánto le vuelve, antes de mandar. La app ya lo decía y la webapp no,
+              y ahora importa más: el porcentaje sale del plan, así que un socio
+              AMIGO ve 30% donde la web le mostraba 50% en el historial. */}
+          {Number(spent) > 0 && (
+            <p style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '-4px 0 12px', lineHeight: 1.5 }}>
+              Plan {planName} · reintegro {porcentajeReintegro(planRefundPct)}%: te correspondería <strong style={{ color: 'rgb(93,84,145)' }}>{m$(montoReintegro(Number(spent), planRefundPct))}</strong>.
+            </p>
+          )}
           {/* Con una sola mascota no hay nada que elegir y el reintegro va a la
               única que tiene. Con más de una hay que preguntarlo: el club reparte
               los reintegros por mascota, así que atribuirlo mal desordena el
@@ -4745,7 +4754,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} />}
-          {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} memberId={profile.id} pets={pets} banco={profile.banco} />}
+          {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} planRefundPct={profile.planRefundPct} memberId={profile.id} pets={pets} banco={profile.banco} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} profile={profile} />}
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
           {pantalla === 'negocio' && <Negocio go={go} negocios={negocios} profile={profile} misReviews={negocios.flatMap((n) => reviews[n.id] ?? [])} />}

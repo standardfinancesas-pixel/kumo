@@ -13,6 +13,7 @@ import {
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, fnacAISO, isoAFnac, formatFecha, edadDeMascota, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
+  porcentajeReintegro, montoReintegro,
   destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, pareceCbu, parchePerfilBancario, hayDatosBancarios,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
@@ -3639,7 +3640,6 @@ function Negocio({ negocios, userId, reload, onAlta }: { negocios: MiNegocio[]; 
 }
 
 /* ── Sub-pantalla: Reintegros ──────────────────────────────────── */
-const REFUND_PCT: Record<string, number> = { AMIGO: 30, FAMILIA: 50, VIP: 70 };
 const NOTA_REINT = 'Los reintegros se acreditan en tu CVU/CBU dentro de los 30 días corridos. Podés pedir 1 reintegro de consultas cada 2 meses.';
 const reintTone = (raw: string) => REINT_TONE[raw] ?? REINT_TONE.en_revision!;
 
@@ -3776,7 +3776,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
   /* Mismo clamp que la pantalla principal: si borra una mascota con el
      formulario abierto, el índice queda apuntando afuera de la lista. */
   const idxMascota = Math.min(petIdx, Math.max(pets.length - 1, 0));
-  const pct = REFUND_PCT[profile?.planName ?? ''] ?? 30;
+  const pct = porcentajeReintegro(profile?.planRefundPct);
   const sel = reintegros.find((r) => r.id === selId);
   if (sel) return <ReintegroDetalle r={sel} planName={profile?.planName ?? '—'} onVolver={() => setSelId(null)} />;
 
@@ -3813,7 +3813,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
     const { data: nuevo, error: insErr } = await supabase.from('reimbursements').insert({
       member_id: userId, pet_id: pets[idxMascota]?.id ?? null, plan_name: profile.planName,
       provider_name: place.trim(), concept: concept.trim(), amount: n,
-      refund: Math.round((n * pct) / 100), refund_pct: pct, status: 'en_revision', receipt_path: path,
+      refund: montoReintegro(n, profile.planRefundPct), refund_pct: pct, status: 'en_revision', receipt_path: path,
       bank_holder: titular.trim() || null, bank_holder_dni: titularDni.replace(/\D/g, '') || null,
       bank_cuit: cuit.trim() || null, bank_name: nombreBanco.trim() || null,
       // El alias y el CBU van al mismo campo: el socio pone uno de los dos.
@@ -3892,7 +3892,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
           <TextInput value={place} onChangeText={(v) => { setPlace(v); setError(''); }} placeholder="Veterinaria o comercio" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
           <TextInput value={concept} onChangeText={(v) => { setConcept(v); setError(''); }} placeholder="Concepto (consulta, vacuna…)" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
           <TextInput value={amount} onChangeText={(v) => { setAmount(v); setError(''); }} placeholder="Monto gastado" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 8 }} />
-          <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 16 }}>Te correspondería {money(Math.round((Number(amount.replace(/\D/g, '')) * pct) / 100))} de reintegro.</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 16 }}>Te correspondería {money(montoReintegro(Number(amount.replace(/\D/g, '')), profile?.planRefundPct))} de reintegro.</Text>
 
           {/* Las mismas chips que Inicio y Carnet, que ya se esconden solas cuando
               hay una sola mascota. Acá no había selector: la solicitud se imputaba

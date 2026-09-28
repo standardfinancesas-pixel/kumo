@@ -6,6 +6,41 @@
  * compartida para que la webapp y la app móvil no cuenten historias distintas.
  */
 
+/* ── Cuánto se reintegra ───────────────────────────────────────── */
+
+/**
+ * El piso, para cuando no se sabe el plan.
+ *
+ * Es el más bajo de los publicados (AMIGO, 30%). Se usa en un solo caso: el
+ * socio que está al día pero sin plan escrito —pasa cuando el cobro se acredita
+ * y el plan no se llega a guardar—. Dejarlo en cero convertiría un reintegro
+ * legítimo en uno de $0; dejarlo alto sería regalar plata. En cualquier caso es
+ * sólo lo que se le MUESTRA: el número que se guarda lo decide el servidor.
+ */
+export const PISO_REINTEGRO = 30;
+
+/**
+ * El porcentaje que le toca a un socio, según su plan.
+ *
+ * El número sale de `plans.refund_pct`, que edita el club en el panel. NO hay
+ * una tabla de porcentajes en el código, y es a propósito: hasta el 28/09/2026
+ * había tres —la app con 30/50/70, la webapp con 50 fijo para todos, y los
+ * textos publicados de los planes con 30/50/60—, así que el mismo socio AMIGO
+ * pedía $3.000 desde el teléfono y $5.000 desde el navegador por el mismo gasto.
+ *
+ * Esto es para mostrar. Lo que se guarda lo calcula el trigger de
+ * `reimbursements` leyendo el mismo campo, así que una app vieja que mande otro
+ * número no puede torcerlo.
+ */
+export function porcentajeReintegro(planRefundPct?: number | null): number {
+  return planRefundPct && planRefundPct > 0 ? planRefundPct : PISO_REINTEGRO;
+}
+
+/** Lo que le corresponde por un gasto, redondeado al peso. */
+export function montoReintegro(gasto: number, planRefundPct?: number | null): number {
+  return Math.round((gasto * porcentajeReintegro(planRefundPct)) / 100);
+}
+
 export type ReintPaso = {
   label: string;
   /** Cuándo pasó, o "Pendiente" si todavía no. */

@@ -122,7 +122,12 @@ create table if not exists plans (
   base_price  integer   not null,        -- ARS/mes, IVA incluido
   tagline     text      not null,
   perks       text[]    not null default '{}',
-  featured    boolean   not null default false
+  featured    boolean   not null default false,
+  -- Qué porcentaje del gasto se le reintegra a este plan. Es una columna y no una
+  -- constante del código porque el club edita los planes desde el panel: antes
+  -- podía cambiar el texto que dice "Reintegro 30%" sin que la cuenta se moviera.
+  -- Lo aplica el trigger de `reimbursements`, no el cliente.
+  refund_pct  integer   not null default 0
 );
 
 alter table profiles
