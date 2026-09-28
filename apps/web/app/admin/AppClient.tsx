@@ -1551,7 +1551,9 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
         <div>
           <label style={fieldLabel}>BENEFICIOS · UNO POR LÍNEA</label>
           <textarea value={perks} onChange={(e) => setPerks(e.target.value)} rows={7} style={{ ...inp, resize: 'vertical', fontFamily: '"DM Sans"', lineHeight: 1.6 }} />
-          <p style={{ fontSize: 12, color: '#a29dba', margin: '6px 0 0' }}>{perks.split('\n').filter((l) => l.trim()).length} beneficios</p>
+          <p style={{ fontSize: 12, color: '#a29dba', margin: '6px 0 0' }}>
+            {perks.split('\n').filter((l) => l.trim()).length} beneficios · la línea del reintegro no se escribe acá: se arma sola con el número de arriba y va primera.
+          </p>
         </div>
         {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600 }}>{error}</div>}
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 4 }}>

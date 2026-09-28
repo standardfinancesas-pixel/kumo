@@ -7,7 +7,7 @@ import {
   data, FOTO_TIPOS, HEALTH_Q, SANITARIO_Q, ODONTO_PRECIO, cuotaMensual,
   PROVINCIAS, formatDni, formatTel, formatFecha, validarSocio, avisoFnac, hoyISO, pasoOk, payloadAlta,
   borradorVacio, conIdentidad, conArranque, mascotaVacia, pasosDelAlta, esGratis, planElegido, declaracionDeMascotaOk,
-  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador, motivoFotosDelAltaPesan, fnacAISO, isoAFnac } from '@kumo/shared';
+  MAX_MASCOTAS_ALTA, PLAN_GRATUITO, type BorradorAlta, type MascotaBorrador, motivoFotosDelAltaPesan, fnacAISO, isoAFnac, perksDelPlan } from '@kumo/shared';
 import { prepararFoto } from '@/lib/foto';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoClave } from '@/components/CampoClave';
@@ -544,7 +544,7 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
                         por encima a lo que el club escribía. */}
                     <div style={{ fontSize: 13.5, color: '#5b5670', margin: '4px 0 12px' }}>{p.tagline}</div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: 4 }}>
-                      {(p.perks ?? []).map((perk) => (
+                      {perksDelPlan(p.perks ?? [], p.refundPct).map((perk) => (
                         <div key={perk} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13.5, color: '#4a4560' }}>
                           <span style={{ color: '#5D5491', fontWeight: 700, flex: '0 0 auto' }}>✓</span><span>{perk}</span>
                         </div>
