@@ -54,3 +54,20 @@ export function diasHasta(fechaIso: string): number {
   const dias = (iso: string) => Math.floor(Date.parse(iso + 'T00:00:00Z') / 86400000);
   return dias(fechaIso) - dias(hoyISO());
 }
+
+/** El primer día del mes que viene, como "YYYY-MM-01". Es el borde de arriba de
+ *  un mes: se usa con `>= mesActualISO()` y `< mesQueVieneISO()`. */
+export function mesQueVieneISO(): string {
+  const [a, m] = hoyISO().split('-').map(Number) as [number, number];
+  return m === 12 ? `${a + 1}-01-01` : `${a}-${String(m + 1).padStart(2, '0')}-01`;
+}
+
+/** El 1 de enero del año argentino en curso, como "YYYY-01-01". */
+export function anioActualISO(): string {
+  return `${hoyISO().slice(0, 4)}-01-01`;
+}
+
+/** El 1 de enero del año que viene: el borde de arriba del año. */
+export function anioQueVieneISO(): string {
+  return `${Number(hoyISO().slice(0, 4)) + 1}-01-01`;
+}

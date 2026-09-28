@@ -9,7 +9,7 @@ import {
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, puedeEstarCerca, edadDeMascota, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
-  porcentajeReintegro, montoReintegro,
+  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -190,7 +190,7 @@ export type ProfileBanco = { holder: string | null; holderDni: string | null; cu
 
 /** `planPrice` es la cuota que el socio aceptó al firmar (plan + add-ons), no el
  *  precio de lista del plan: con la cobertura odontológica paga $12.000 más. */
-export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; /** El % de reintegro de su plan (`plans.refund_pct`). Null sin plan. */ planRefundPct: number | null; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null; /** Su foto de perfil, o null si no subió ninguna. */ foto: string | null };
+export type Profile = { id: string; firstName: string; fullName: string; memberNo: number | null; planName: string; planPrice: number; /** El % de reintegro de su plan (`plans.refund_pct`). Null sin plan. */ planRefundPct: number | null; /** Los topes de su plan, en ARS. 0 = sin tope. */ planTopeMensual: number; planTopeAnual: number; addonOdonto: boolean; email: string; phone: string | null; address: string | null; city: string | null; province: string | null; dni: string | null; banco: ProfileBanco; tarjeta: string | null; /** Última vez que abrió la campanita, o null si nunca. Sale del perfil y no del  *  navegador: marcarlas leídas acá tiene que valer también en el teléfono. */ notifsVisto: string | null; /** Su foto de perfil, o null si no subió ninguna. */ foto: string | null };
 
 /** El estado de la cuota, calculado en el servidor (`paid_until` contra hoy). */
 export type CuotaVM = { debePagar: boolean; hasta: string | null; monto: number; planName: string; odonto: boolean; enCurso: boolean; suscripcion: 'pending' | 'authorized' | 'paused' | 'cancelled' | null };
@@ -1881,7 +1881,7 @@ function ReintegroDetalle({ r, planName, onVolver }: { r: Reint; planName: strin
 }
 
 /* ── Pantalla: Reintegros ──────────────────────────────────────── */
-function Reintegros({ initialReintegros, planName, planRefundPct, memberId, pets, banco }: { initialReintegros: Reint[]; planName: string; planRefundPct: number | null; memberId: string; pets: Pet[]; banco: ProfileBanco }) {
+function Reintegros({ initialReintegros, planName, planRefundPct, topeMensual, topeAnual, memberId, pets, banco }: { initialReintegros: Reint[]; planName: string; planRefundPct: number | null; topeMensual: number; topeAnual: number; memberId: string; pets: Pet[]; banco: ProfileBanco }) {
   const router = useRouter();
   const items = initialReintegros;
   const [selId, setSelId] = useState<string | null>(null);
@@ -1905,6 +1905,14 @@ function Reintegros({ initialReintegros, planName, planRefundPct, memberId, pets
   const total = items.filter((i) => i.status === 'Aprobado').reduce((a, i) => a + i.refund, 0);
 
   const sel = items.find((i) => i.id === selId);
+  /* Lo que le queda de tope. Se cuenta acá con lo que ya está cargado en pantalla
+     —el mismo criterio que el trigger: todo lo que no esté rechazado— para poder
+     decírselo ANTES de que suba la factura. El que decide igual es el servidor. */
+  const paraTope = items.map((r) => ({ refund: r.refund, status: r.statusRaw, requestedOn: r.requestedOn }));
+  const restanteMes = topeRestante(paraTope, topeMensual, mesActualISO(), mesQueVieneISO());
+  const restanteAnio = topeRestante(paraTope, topeAnual, anioActualISO(), anioQueVieneISO());
+  const cupo = reintegroDisponible({ gasto: Number(spent) || 0, planRefundPct, restanteMes, restanteAnio });
+
   if (sel) return <ReintegroDetalle r={sel} planName={planName} onVolver={() => setSelId(null)} />;
 
   const submit = async (e: FormEvent) => {
@@ -1913,6 +1921,7 @@ function Reintegros({ initialReintegros, planName, planRefundPct, memberId, pets
     const falta = motivoDatosBancariosIncompletos({ titular, titularDni, banco: nombreBanco, destino: cbu });
     if (falta) { setError(falta); return; }
     const s = Number(spent) || 0;
+    if (cupo.sinCupo) { setError(`Llegaste al tope de reintegros de tu plan (${m$(topeMensual)} por mes). Se renueva el 1°.`); return; }
     setBusy(true);
     setError('');
 
@@ -2018,7 +2027,8 @@ function Reintegros({ initialReintegros, planName, planRefundPct, memberId, pets
               AMIGO ve 30% donde la web le mostraba 50% en el historial. */}
           {Number(spent) > 0 && (
             <p style={{ fontSize: 12.5, color: 'rgb(135,129,160)', margin: '-4px 0 12px', lineHeight: 1.5 }}>
-              Plan {planName} · reintegro {porcentajeReintegro(planRefundPct)}%: te correspondería <strong style={{ color: 'rgb(93,84,145)' }}>{m$(montoReintegro(Number(spent), planRefundPct))}</strong>.
+              Plan {planName} · reintegro {porcentajeReintegro(planRefundPct)}%: te correspondería <strong style={{ color: 'rgb(93,84,145)' }}>{m$(cupo.monto)}</strong>.
+              {cupo.recortado && <> Es lo que te queda de tope este mes; el resto no entra.</>}
             </p>
           )}
           {/* Con una sola mascota no hay nada que elegir y el reintegro va a la
@@ -4754,7 +4764,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} />}
-          {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} planRefundPct={profile.planRefundPct} memberId={profile.id} pets={pets} banco={profile.banco} />}
+          {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} planRefundPct={profile.planRefundPct} topeMensual={profile.planTopeMensual} topeAnual={profile.planTopeAnual} memberId={profile.id} pets={pets} banco={profile.banco} />}
           {pantalla === 'beneficios' && pago && <Beneficios benefits={benefits} go={go} centro={centro} profile={profile} />}
           {pantalla === 'foros' && <Foros initialPosts={posts} profile={profile} misLikes={misLikes} abrirHilo={hiloDesdeAviso} onHiloAbierto={() => setHiloDesdeAviso(null)} />}
           {pantalla === 'negocio' && <Negocio go={go} negocios={negocios} profile={profile} misReviews={negocios.flatMap((n) => reviews[n.id] ?? [])} />}

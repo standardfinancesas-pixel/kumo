@@ -110,7 +110,7 @@ export default async function Page() {
     supabase.from('benefits').select('id, name, category, discount, plan_requirement, status, description, zone, address, hours, valid_until, days, phone, instagram, website'),
     // Por precio: da AMIGO → FAMILIA → VIP. Sin orden explícito, editar un plan lo
     // manda al final de la lista (Postgres reubica la fila al hacer update).
-    supabase.from('plans').select('id, name, tagline, base_price, perks, featured, refund_pct').order('base_price'),
+    supabase.from('plans').select('id, name, tagline, base_price, perks, featured, refund_pct, tope_mensual, tope_anual').order('base_price'),
     supabase.from('faqs').select('id, question, answer').order('order', { ascending: true }),
     supabase.from('club_settings').select('whatsapp, email').eq('id', 1).single(),
     // Con la ficha: el subtítulo de la pantalla dice "validá la identidad y la
@@ -277,7 +277,7 @@ export default async function Page() {
     phone: b.phone, instagram: b.instagram, website: b.website,
   }));
 
-  const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perks: p.perks ?? [], featured: p.featured, refundPct: p.refund_pct ?? 0 }));
+  const plans: PlanAdminVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, tagline: p.tagline, basePrice: p.base_price, perks: p.perks ?? [], featured: p.featured, refundPct: p.refund_pct ?? 0, topeMensual: p.tope_mensual ?? 0, topeAnual: p.tope_anual ?? 0 }));
 
   const faqs: FaqVM[] = faqRows ?? [];
 

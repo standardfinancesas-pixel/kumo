@@ -42,7 +42,7 @@ export type BenefitAdminVM = {
   address: string | null; id: string; name: string; category: string; discount: string; planRequirement: string; status: string; description: string; zone: string; hours: string; validUntil: string | null; days: string[];
   /** Cómo contactar al comercio, para la ficha del socio. */
   phone: string | null; instagram: string | null; website: string | null };
-export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perks: string[]; featured: boolean; /** El % de reintegro del plan: es el que se aplica de verdad. */ refundPct: number };
+export type PlanAdminVM = { id: string; name: string; tagline: string; basePrice: number; perks: string[]; featured: boolean; /** El % de reintegro del plan: es el que se aplica de verdad. */ refundPct: number; /** Topes en ARS, 0 = sin tope. Los aplica el trigger. */ topeMensual: number; topeAnual: number };
 export type FaqVM = { id: string; question: string; answer: string };
 export type SettingsVM = { whatsapp: string; email: string };
 /** Un prestador con lo que hace falta para validarlo sin salir de la pantalla. */
@@ -1465,6 +1465,8 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
   const [perks, setPerks] = useState(plan.perks.join('\n'));
   const [featured, setFeatured] = useState(plan.featured);
   const [reintegro, setReintegro] = useState(String(plan.refundPct));
+  const [topeMes, setTopeMes] = useState(String(plan.topeMensual));
+  const [topeAnio, setTopeAnio] = useState(String(plan.topeAnual));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -1476,13 +1478,19 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
        haber borrado el campo sin querer. */
     const pct = Number(reintegro.replace(/\D/g, ''));
     if (reintegro.trim() === '' || !Number.isFinite(pct) || pct > 100) { setError('El reintegro va de 0 a 100.'); return; }
+    /* 0 es "sin tope" y es válido, así que se exige que haya algo escrito: un
+       campo vacío no puede significar "sin límite" por descuido. */
+    const tm = Number(topeMes.replace(/\D/g, ''));
+    const ta = Number(topeAnio.replace(/\D/g, ''));
+    if (topeMes.trim() === '' || topeAnio.trim() === '') { setError('Poné los topes. 0 significa sin tope.'); return; }
+    if (ta > 0 && tm > 0 && ta < tm) { setError('El tope anual no puede ser menor que el mensual.'); return; }
     setBusy(true); setError('');
     const lista = perks.split('\n').map((l) => l.trim()).filter(Boolean);
     // El precio NO va acá: pasa por la API, que además de guardarlo actualiza el
     // débito de los ya suscriptos y les avisa por mail. Un update directo dejaría
     // el precio nuevo en la web con todo el mundo debitando el viejo.
     const { error: e } = await supabase.from('plans')
-      .update({ tagline: tagline.trim(), perks: lista, featured, refund_pct: pct })
+      .update({ tagline: tagline.trim(), perks: lista, featured, refund_pct: pct, tope_mensual: tm, tope_anual: ta })
       .eq('id', plan.id);
     if (e) { setError('No pudimos guardar los cambios.'); setBusy(false); return; }
     if (n !== plan.basePrice) {
@@ -1544,6 +1552,17 @@ function EditarPlanModal({ plan, onClose, onSaved }: { plan: PlanAdminVM; onClos
               éste, y "Reintegro 30%" escrito en la lista es sólo una frase. */}
           <p style={{ fontSize: 12, color: '#a29dba', margin: '6px 0 0' }}>Es el que se aplica: con 30, un gasto de $10.000 pide $3.000. Lo que escribas abajo en los beneficios es sólo texto.</p>
         </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label style={fieldLabel}>TOPE MENSUAL · $</label>
+            <input value={topeMes} onChange={(e) => setTopeMes(e.target.value)} inputMode="numeric" style={inp} placeholder="5400" />
+          </div>
+          <div>
+            <label style={fieldLabel}>TOPE ANUAL · $</label>
+            <input value={topeAnio} onChange={(e) => setTopeAnio(e.target.value)} inputMode="numeric" style={inp} placeholder="0" />
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: '#a29dba', margin: '-6px 0 0' }}>0 = sin tope. Cuando un socio llega al techo, el reintegro se recorta hasta ahí; si no le queda nada, no puede pedir hasta que se renueve.</p>
         <div>
           <label style={fieldLabel}>BAJADA</label>
           <input value={tagline} onChange={(e) => setTagline(e.target.value)} style={inp} placeholder="El favorito de los socios" />

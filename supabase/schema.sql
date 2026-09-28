@@ -127,7 +127,12 @@ create table if not exists plans (
   -- constante del código porque el club edita los planes desde el panel: antes
   -- podía cambiar el texto que dice "Reintegro 30%" sin que la cuenta se moviera.
   -- Lo aplica el trigger de `reimbursements`, no el cliente.
-  refund_pct  integer   not null default 0
+  refund_pct  integer   not null default 0,
+  -- Techo de reintegros del socio con este plan, en ARS. 0 = sin tope. Los aplica
+  -- el trigger de `reimbursements`, y las líneas que el socio lee se arman con
+  -- ellos: antes eran una frase suelta que no verificaba nadie.
+  tope_mensual integer  not null default 0,
+  tope_anual   integer  not null default 0
 );
 
 alter table profiles

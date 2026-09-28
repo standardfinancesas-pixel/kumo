@@ -13,7 +13,7 @@ import {
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, fnacAISO, isoAFnac, formatFecha, edadDeMascota, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
-  porcentajeReintegro, montoReintegro,
+  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
   destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, pareceCbu, parchePerfilBancario, hayDatosBancarios,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
@@ -3777,6 +3777,16 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
      formulario abierto, el índice queda apuntando afuera de la lista. */
   const idxMascota = Math.min(petIdx, Math.max(pets.length - 1, 0));
   const pct = porcentajeReintegro(profile?.planRefundPct);
+  /* Lo que le queda de tope, con el mismo criterio que el trigger —todo lo que no
+     esté rechazado— para poder decírselo antes de que saque la foto de la factura.
+     El que decide igual es el servidor. */
+  const paraTope = reintegros.map((r) => ({ refund: r.refund, status: r.estadoRaw, requestedOn: r.requestedOn }));
+  const cupo = reintegroDisponible({
+    gasto: Number(amount.replace(/\D/g, '')) || 0,
+    planRefundPct: profile?.planRefundPct,
+    restanteMes: topeRestante(paraTope, profile?.planTopeMensual ?? 0, mesActualISO(), mesQueVieneISO()),
+    restanteAnio: topeRestante(paraTope, profile?.planTopeAnual ?? 0, anioActualISO(), anioQueVieneISO()),
+  });
   const sel = reintegros.find((r) => r.id === selId);
   if (sel) return <ReintegroDetalle r={sel} planName={profile?.planName ?? '—'} onVolver={() => setSelId(null)} />;
 
@@ -3793,6 +3803,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
     const n = Number(amount.replace(/\D/g, ''));
     if (!place.trim() || !concept.trim() || !n || !profile) { setError('Completá el comercio, el concepto y el monto.'); return; }
     if (!photo) { setError('Cargá la factura: sin comprobante el club no puede validar el gasto.'); return; }
+    if (cupo.sinCupo) { setError(`Llegaste al tope de reintegros de tu plan (${money(profile.planTopeMensual)} por mes). Se renueva el 1°.`); return; }
     const falta = motivoDatosBancariosIncompletos({ titular, titularDni, banco: nombreBanco, destino: cbu });
     if (falta) { setError(falta); return; }
     setBusy(true);
@@ -3892,7 +3903,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
           <TextInput value={place} onChangeText={(v) => { setPlace(v); setError(''); }} placeholder="Veterinaria o comercio" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
           <TextInput value={concept} onChangeText={(v) => { setConcept(v); setError(''); }} placeholder="Concepto (consulta, vacuna…)" placeholderTextColor={colors.violet[400]} style={{ ...field, marginBottom: 10 }} />
           <TextInput value={amount} onChangeText={(v) => { setAmount(v); setError(''); }} placeholder="Monto gastado" placeholderTextColor={colors.violet[400]} keyboardType="numeric" style={{ ...field, marginBottom: 8 }} />
-          <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 16 }}>Te correspondería {money(montoReintegro(Number(amount.replace(/\D/g, '')), profile?.planRefundPct))} de reintegro.</Text>
+          <Text style={{ fontSize: 12.5, color: MUTED, marginBottom: 16 }}>Te correspondería {money(cupo.monto)} de reintegro.{cupo.recortado ? ' Es lo que te queda de tope este mes; el resto no entra.' : ''}</Text>
 
           {/* Las mismas chips que Inicio y Carnet, que ya se esconden solas cuando
               hay una sola mascota. Acá no había selector: la solicitud se imputaba

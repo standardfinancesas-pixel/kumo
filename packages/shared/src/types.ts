@@ -18,6 +18,9 @@ export type Plan = {
   /** Qué porcentaje del gasto se reintegra con este plan. Lo edita el club en el
    *  panel y lo aplica el trigger de `reimbursements`: ver `porcentajeReintegro`. */
   refundPct: number;
+  /** Techo de reintegros por mes y por año, en ARS. 0 = sin tope. */
+  topeMensual: number;
+  topeAnual: number;
 };
 
 export type PetType = 'perro' | 'gato' | 'otro';

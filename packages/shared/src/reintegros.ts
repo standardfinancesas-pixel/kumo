@@ -41,6 +41,52 @@ export function montoReintegro(gasto: number, planRefundPct?: number | null): nu
   return Math.round((gasto * porcentajeReintegro(planRefundPct)) / 100);
 }
 
+/**
+ * Cuánto le queda a un socio del tope, mirando lo que ya pidió.
+ *
+ * Cuenta TODO lo que no esté rechazado, incluido lo que está en revisión: un
+ * pedido pendiente ya es un compromiso contra el tope. La misma regla corre en
+ * el trigger, que es el que manda; esto existe para poder decírselo ANTES de que
+ * cargue la factura y no después.
+ *
+ * `null` cuando el plan no tiene tope, que no es lo mismo que cero.
+ */
+export function topeRestante(
+  reintegros: { refund: number; status: string; requestedOn: string }[],
+  tope: number,
+  desdeISO: string,
+  hastaISO: string,
+): number | null {
+  if (!tope || tope <= 0) return null;
+  const usado = reintegros
+    .filter((r) => r.status !== 'rechazado' && r.requestedOn >= desdeISO && r.requestedOn < hastaISO)
+    .reduce((a, r) => a + r.refund, 0);
+  return Math.max(0, tope - usado);
+}
+
+/**
+ * Lo que se le puede reintegrar HOY por un gasto: el porcentaje de su plan,
+ * recortado por lo que le queda de los topes.
+ *
+ * Decidido con el club el 28/09/2026: pasarse no rechaza el pedido, lo recorta.
+ * Si a un AMIGO le corresponden $6.000 y le quedan $5.400 de tope, cobra $5.400;
+ * rechazárselo entero lo dejaría sin lo que sí le corresponde. Sin cupo, en
+ * cambio, no hay nada que pedir y conviene decirlo antes de que cargue la
+ * factura. La misma regla corre en el trigger, que es el que manda.
+ */
+export function reintegroDisponible(opts: {
+  gasto: number;
+  planRefundPct?: number | null;
+  restanteMes: number | null;
+  restanteAnio: number | null;
+}): { monto: number; techo: number | null; recortado: boolean; sinCupo: boolean } {
+  const techos = [opts.restanteMes, opts.restanteAnio].filter((t): t is number => t !== null);
+  const techo = techos.length > 0 ? Math.min(...techos) : null;
+  const pleno = montoReintegro(opts.gasto, opts.planRefundPct);
+  const monto = techo === null ? pleno : Math.min(pleno, techo);
+  return { monto, techo, recortado: techo !== null && pleno > techo, sinCupo: techo === 0 };
+}
+
 export type ReintPaso = {
   label: string;
   /** Cuándo pasó, o "Pendiente" si todavía no. */

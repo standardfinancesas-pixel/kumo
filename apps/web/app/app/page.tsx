@@ -230,7 +230,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price, refund_pct)')
+      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price, refund_pct, tope_mensual, tope_anual)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -371,6 +371,8 @@ export default async function Page() {
     // odontológica paga $12.000 más y antes acá se mostraba de menos.
     planPrice: profileRow.monthly_fee_agreed ?? plan?.base_price ?? 0,
     planRefundPct: plan?.refund_pct ?? null,
+    planTopeMensual: plan?.tope_mensual ?? 0,
+    planTopeAnual: plan?.tope_anual ?? 0,
     addonOdonto: profileRow.addon_odonto ?? false,
     email: profileRow.email,
     phone: profileRow.phone,

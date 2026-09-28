@@ -2,7 +2,7 @@
 import type { CSSProperties, FormEvent, ReactNode } from 'react';
 
 import { createContext, useContext, useState, useEffect } from 'react';
-import { data, urls, waLink, INSTAGRAM, EMPRESA, APP_STORE, PLAY_STORE, perksDelPlan } from '@kumo/shared';
+import { data, urls, waLink, INSTAGRAM, EMPRESA, APP_STORE, PLAY_STORE, perksDelPlan, resumenDePlanes } from '@kumo/shared';
 import type { Faq, Plan } from '@kumo/shared';
 import { Onboarding } from '@/components/Onboarding';
 import { PrestadoresPage } from '@/components/PrestadoresPage';
@@ -438,7 +438,7 @@ function Plans() {
                     hacerle repetir la decisión que ya tomó. */}
                 <button onClick={() => openAuth('register', { plan: p.name })} className="scpf" style={{ display: 'block', textAlign: 'center', width: '100%', border: 'none', background: m.btnBg, color: m.btnColor, fontFamily: '"DM Sans"', fontWeight: 700, fontSize: 15, padding: 13, borderRadius: 12, marginBottom: 22, boxSizing: 'border-box', transition: 'filter 0.15s', cursor: 'pointer' }}>Elegir {p.name}</button>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-                  {perksDelPlan(p.perks, p.refundPct).filter((perk) => !/^Tope anual/i.test(perk)).map((perk) => (
+                  {perksDelPlan(p).filter((perk) => !/^Tope anual/i.test(perk)).map((perk) => (
                     <div key={perk} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 14, color: feat ? 'rgb(232,228,245)' : 'rgb(74,69,96)' }}>
                       <span style={{ color: feat ? 'rgb(225,251,98)' : 'rgb(93,84,145)', fontWeight: 700, flex: '0 0 auto' }}>✓</span>
                       <span>{perk}</span>
@@ -450,7 +450,7 @@ function Plans() {
           );
         })}
       </div>
-      <p style={{ textAlign: 'center', color: 'rgb(135,129,160)', fontSize: 14, margin: '26px 0 0' }}>Reintegros de 30% a 60% según plan · Topes mensuales de $5.400 a $15.000 · Consultá carencias abajo.</p>
+      <p style={{ textAlign: 'center', color: 'rgb(135,129,160)', fontSize: 14, margin: '26px 0 0' }}>{resumenDePlanes(plans)} · Consultá carencias abajo.</p>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 18, flexWrap: 'wrap', background: 'rgb(33,30,51)', borderRadius: 22, padding: '24px 30px', margin: '38px 0 0', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ flex: '1 1 0%', minWidth: 220 }}>
           <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, color: '#fff', lineHeight: 1.2 }}>¿Ofrecés servicios para mascotas?</div>
