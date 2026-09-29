@@ -9,7 +9,7 @@ import {
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, puedeEstarCerca, edadDeMascota, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
-  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
+  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, motivoDelRechazo, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -1954,7 +1954,7 @@ function Reintegros({ initialReintegros, planName, planRefundPct, topeMensual, t
     if (insErr) {
       // Si falla la solicitud, no dejamos el archivo huérfano en el bucket.
       await supabase.storage.from('receipts').remove([path]);
-      setError('No pudimos registrar la solicitud. Probá de nuevo.');
+      setError(motivoDelRechazo(insErr) ?? 'No pudimos registrar la solicitud. Probá de nuevo.');
       setBusy(false);
       return;
     }

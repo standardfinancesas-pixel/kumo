@@ -13,7 +13,7 @@ import {
   buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, fnacAISO, isoAFnac, formatFecha, edadDeMascota, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   ratingLabel, urlSitio, urlInstagram, urlTel, consultaMapa, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory, type PetEvento,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, cbuValido, MOTIVOS_REPORTE, SITIO, ODONTO_PRECIO, distanciaKm,
-  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
+  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, motivoDelRechazo, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
   destinoDeTransferencia, destinoParaMostrar, motivoDatosBancariosIncompletos, pareceCbu, parchePerfilBancario, hayDatosBancarios,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, INVITACION_PLAN, BANNER_PLAN, etiquetaPlan,
@@ -3833,7 +3833,7 @@ function Reintegros({ profile, pets, reintegros, reintTotal, userId, reload, go 
     if (insErr) {
       // No dejamos el archivo huérfano si falla la solicitud.
       await supabase.storage.from('receipts').remove([path]);
-      setError('No pudimos registrar la solicitud. Probá de nuevo.');
+      setError(motivoDelRechazo(insErr) ?? 'No pudimos registrar la solicitud. Probá de nuevo.');
       setBusy(false);
       return;
     }

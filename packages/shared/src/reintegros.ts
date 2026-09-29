@@ -143,3 +143,23 @@ export function reintPasos(status: string, pedidoLabel: string, resueltoLabel = 
 
 /** Texto del pie de cada paso. */
 export const pasoWhen = (p: ReintPaso) => (p.when ? `✓ ${p.when}` : p.done ? 'Listo' : 'Pendiente');
+
+/**
+ * El motivo que manda la BASE cuando rechaza una solicitud a propósito.
+ *
+ * El trigger de `reimbursements` corta con un mensaje escrito para que lo lea una
+ * persona ("Llegaste al tope de reintegros de tu plan para este mes") y hasta hoy
+ * las dos pantallas lo tiraban: mostraban "No pudimos registrar la solicitud.
+ * Probá de nuevo", que manda a repetir algo que nunca va a funcionar. Es el mismo
+ * error que el de la contraseña el 24/09/2026 — tapar el motivo real deja a la
+ * persona probando a ciegas.
+ *
+ * Se mira el CÓDIGO y no el texto: `23514` es `check_violation`, el que usa el
+ * trigger a propósito. Cualquier otro error es de verdad inesperado —la conexión,
+ * un permiso— y ahí el mensaje técnico no le sirve a nadie, así que sigue el
+ * genérico. Verificado contra producción: la base devuelve exactamente
+ * `{ code: '23514', message: '…' }`.
+ */
+export function motivoDelRechazo(error?: { code?: string; message?: string } | null): string | null {
+  return error?.code === '23514' && error.message ? error.message : null;
+}
