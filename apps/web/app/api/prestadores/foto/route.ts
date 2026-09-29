@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { motivoFotoInvalida } from '@kumo/shared';
+import { motivoFotoInvalida, motivoDeSubida } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import { getServiceClient } from '@/lib/supabase-service';
 
@@ -58,7 +58,9 @@ export async function POST(req: Request) {
   const { error: eSubida } = await svc.storage.from('pet-photos').upload(ruta, archivo, { contentType: archivo.type });
   if (eSubida) {
     console.error('[prestadores/foto] no se pudo subir', eSubida);
-    return NextResponse.json({ error: 'No pudimos subir la imagen. Probá de nuevo.' }, { status: 500 });
+    /* El motivo viaja al panel: acá adentro el que lo lee es el club, y "probá de
+       nuevo" lo deja repitiendo lo mismo que acaba de fallar. */
+    return NextResponse.json({ error: motivoDeSubida(eSubida, 'la imagen') }, { status: 500 });
   }
   const url = svc.storage.from('pet-photos').getPublicUrl(ruta).data.publicUrl;
 

@@ -149,6 +149,39 @@ export function motivoFotoInvalida(tipo: string, tamaño: number): string | null
 }
 
 /**
+ * Por qué no se pudo subir un archivo, dicho para que sirva.
+ *
+ * Hasta hoy los ocho lugares que suben algo contestaban "No pudimos subir la
+ * foto. Probá de nuevo" y tiraban el motivo que venía del servidor. Eso mandaba
+ * a repetir lo mismo que acaba de fallar, y del lado nuestro dejaba un reporte
+ * imposible de diagnosticar: hay socios que no pueden cargar su foto de perfil
+ * desde el 17/09/2026 y seguimos sin saber por qué, porque el único mensaje que
+ * podía decirlo es el que se descartaba.
+ *
+ * Los motivos conocidos van traducidos; cualquier otro se muestra tal como vino.
+ * Es feo, pero es accionable: con el texto exacto se sabe qué mirar. El original
+ * queda siempre en el log.
+ */
+export function motivoDeSubida(error: { message?: string } | null | undefined, queEs = 'la foto'): string {
+  const crudo = error?.message ?? '';
+  if (crudo) console.error('[subida] falló', crudo);
+  const t = crudo.toLowerCase();
+  const razon =
+    /row-level security|unauthorized|403/.test(t)
+      ? 'No tenemos permiso para guardarla. Si venís de antes, cerrá sesión y volvé a entrar.'
+      : /exceeded the maximum|payload too large|413/.test(t)
+        ? 'Pesa más de lo que aceptamos. Probá con una más chica.'
+        : /mime type|not supported|invalid_mime/.test(t)
+          ? 'Ese formato no lo podemos guardar. Probá con JPG, PNG o WEBP.'
+          : /jwt|expired|session/.test(t)
+            ? 'Se cerró tu sesión. Volvé a entrar y probá de nuevo.'
+            : /failed to fetch|network|timeout/.test(t)
+              ? 'Se cortó la conexión. Probá de nuevo.'
+              : crudo || 'Probá de nuevo.';
+  return `No pudimos subir ${queEs}. ${razon}`;
+}
+
+/**
  * Cuánto pueden pesar TODAS las fotos del alta juntas.
  *
  * Es un límite distinto del de arriba, y hace falta porque el alta es el único

@@ -9,7 +9,7 @@ import {
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
   ratingLabel, puedeEstarCerca, edadDeMascota, urlSitio, urlInstagram, urlTel, urlWhatsapp, urlMapaWeb, precioTexto, reviewTiempo, reintPasos, pasoWhen, REINT_TONE, buildPetHistory,
-  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, motivoDelRechazo, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
+  porcentajeReintegro, montoReintegro, topeRestante, reintegroDisponible, motivoDelRechazo, motivoDeSubida, mesActualISO, mesQueVieneISO, anioActualISO, anioQueVieneISO,
   HEALTH_Q, SANITARIO_Q, armarDeclaracion, rutaFoto, MOTIVOS_REPORTE,
   type CalCell, type VaccineKind, type Review,
   FEATURES_PAGAS, tieneFeaturesPagas, estadoCuota, copyCuota, ESPERA_PAGO, INVITACION_PLAN, BANNER_PLAN,
@@ -743,7 +743,7 @@ function Carnet({ petIdx, setPetIdx, pets, profile, contacts }: { petIdx: number
     const path = `${profile.id}/${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
     if (upErr) {
-      setFotoError('No pudimos subir la foto. Probá de nuevo.');
+      setFotoError(motivoDeSubida(upErr));
       setFotoBusy(false);
       return;
     }
@@ -1931,7 +1931,7 @@ function Reintegros({ initialReintegros, planName, planRefundPct, topeMensual, t
     const path = `${memberId}/${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from('receipts').upload(path, file, { contentType: file.type || 'image/jpeg' });
     if (upErr) {
-      setError('No pudimos subir la factura. Probá de nuevo.');
+      setError(motivoDeSubida(upErr, 'la factura'));
       setBusy(false);
       return;
     }
@@ -2784,7 +2784,7 @@ function Componer({ profile, onVolver }: { profile: Profile; onVolver: () => voi
     setFotoBusy(true); setError('');
     const path = rutaFoto(profile.id, f.name.split('.').pop() ?? 'jpg', 'foro-');
     const { error: subida } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
-    if (subida) { setError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    if (subida) { setError(motivoDeSubida(subida)); setFotoBusy(false); return; }
     setFotoUrl(supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl);
     setFotoBusy(false);
   };
@@ -3073,7 +3073,7 @@ function Negocio({ go, negocios, profile, misReviews }: { go: (s: Screen) => voi
     // Carpeta por socio: la RLS del bucket exige que la primera carpeta sea su id.
     const path = `${profile.id}/negocio${cual === 'logo' ? '-logo' : ''}-${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
-    if (upErr) { setFotoError('No pudimos subir la imagen. Probá de nuevo.'); setFotoBusy(null); return; }
+    if (upErr) { setFotoError(motivoDeSubida(upErr, 'la imagen')); setFotoBusy(null); return; }
     const url = supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl;
     const { error: e } = await supabase.from('providers').update(cual === 'logo' ? { logo_url: url } : { photo_url: url }).eq('id', negocio.id);
     if (e) { setFotoError('Subimos la imagen pero no pudimos guardarla. Probá de nuevo.'); setFotoBusy(null); return; }
@@ -3425,7 +3425,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
     const ext = f.name.split('.').pop()?.toLowerCase() || 'jpg';
     const path = `${profile.id}/${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from('member-photos').upload(path, f, { contentType: f.type });
-    if (upErr) { setFotoError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    if (upErr) { setFotoError(motivoDeSubida(upErr)); setFotoBusy(false); return; }
     const url = supabase.storage.from('member-photos').getPublicUrl(path).data.publicUrl;
     /* `.select('id')` y mirar las filas: un update que la RLS no deja pasar
        devuelve 200 con cero filas, así que sin esto "no se guardó" se vería igual
@@ -4249,7 +4249,7 @@ function AgregarMascotaSheet({ ownerId, petId, onClose, onListo }: { ownerId: st
     setFotoBusy(true); setError('');
     const path = rutaFoto(ownerId, f.name.split('.').pop() ?? 'jpg', 'mascota-');
     const { error: subida } = await supabase.storage.from('pet-photos').upload(path, f, { contentType: f.type });
-    if (subida) { setError('No pudimos subir la foto. Probá de nuevo.'); setFotoBusy(false); return; }
+    if (subida) { setError(motivoDeSubida(subida)); setFotoBusy(false); return; }
     setFotoUrl(supabase.storage.from('pet-photos').getPublicUrl(path).data.publicUrl);
     setFotoBusy(false);
   };
@@ -4477,7 +4477,7 @@ function CarnetSheet({ petName, ownerId, vac, onClose, onSave, onBorrar }: {
     setSubiendo(true);
     const path = rutaFoto(ownerId, f.name.split('.').pop() ?? (esPdf ? 'pdf' : 'jpg'), 'estudio-');
     const { error: subida } = await supabase.storage.from('carnet').upload(path, f, { contentType: f.type });
-    if (subida) { setErrorArchivo('No pudimos subir el archivo. Probá de nuevo.'); setSubiendo(false); return; }
+    if (subida) { setErrorArchivo(motivoDeSubida(subida, 'el archivo')); setSubiendo(false); return; }
     setArchivo(path);
     setSubiendo(false);
   };

@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { FOTO_CALIDAD, FOTO_LADO_MAX, motivoFotoInvalida, rutaFoto } from '@kumo/shared';
+import { FOTO_CALIDAD, FOTO_LADO_MAX, motivoFotoInvalida, rutaFoto, motivoDeSubida } from '@kumo/shared';
 import { supabase } from './supabase';
 
 /**
@@ -173,7 +173,7 @@ export async function elegirYSubirFoto(ownerId: string, prefijo = '', bucket: Bu
 
   const path = rutaFoto(ownerId, ext, prefijo);
   const { error: subida } = await supabase.storage.from(bucket).upload(path, bytes, { contentType: tipo });
-  if (subida) return { error: 'No pudimos subir la foto. Probá de nuevo.' };
+  if (subida) return { error: motivoDeSubida(subida) };
 
   return { url: supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl, path };
 }
