@@ -52,17 +52,21 @@ export const APP_STORE = 'https://apps.apple.com/ar/app/id6805949148';
 /**
  * La ficha de la app en Google Play, o `null` mientras no exista.
  *
- * Hoy es null porque la versión sigue en revisión de producción: hasta que
- * Google la apruebe, `play.google.com/store/apps/details?id=pet.kumo.app`
- * devuelve 404 —la ficha pública recién nace con la versión en Producción, no
- * con la prueba cerrada— y un botón que lleva a un error es peor que uno que
- * lleva a la webapp.
+ * Estuvo en null desde el 17/09/2026 y hasta el 29/09/2026, mientras la app vivía
+ * en prueba cerrada: la ficha pública recién nace con la versión en Producción, y
+ * hasta entonces la URL devolvía 404. Un botón que lleva a un error es peor que
+ * uno que lleva a la webapp, así que apuntaba ahí.
  *
- * Cuando salga, se pone la URL ACÁ y los dos lugares que la usan —la landing y
- * la pantalla de bienvenida del alta— la toman solos. Antes estaba escrita a
- * mano en la landing, que es como se terminan teniendo dos verdades.
+ * El 29/09/2026 Google aprobó producción y la ficha respondió por primera vez
+ * (200, con el id y el nombre de la app). Verificar eso ANTES de escribir la URL
+ * es el punto: que la consola diga "publicado" no alcanza, porque lo dice por
+ * canal y una versión en prueba cerrada figura publicada igual.
+ *
+ * Sigue siendo el único lugar donde vive: la landing y la pantalla de bienvenida
+ * del alta la toman de acá. Antes estaba escrita a mano en la landing, que es
+ * como se terminan teniendo dos verdades.
  */
-export const PLAY_STORE: string | null = null;
+export const PLAY_STORE: string | null = 'https://play.google.com/store/apps/details?id=pet.kumo.app';
 
 /**
  * Quién administra Kumo, para el pie de página.
