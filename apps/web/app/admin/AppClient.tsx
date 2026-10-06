@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 
 import { useCallback, useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, avisoZona, destinoParaMostrar, RUBROS, DESTINOS_AVISO, edadDeMascota } from '@kumo/shared';
+import { subscribeTable, urls, fmtFechaCorta, mesActualISO, partirZona, avisoZona, coincideBusqueda, destinoParaMostrar, RUBROS, DESTINOS_AVISO, edadDeMascota } from '@kumo/shared';
 import { supabase } from '@/lib/supabase-browser';
 import { CampoDomicilio, CampoZona } from '@/components/CampoDomicilio';
 import { prepararFoto } from '@/lib/foto';
@@ -21,7 +21,7 @@ export type AdminProfile = { id: string; fullName: string };
  *  entraron están pagando. */
 export type KpiVM = { totalSocios: number; activos: number; nuevosEsteMes: number; mrr: number; reintPendCount: number; reintPendSum: number; churnPct: number; bajas: number; pagantes: number; gratuitos: number };
 export type DistRow = { plan: string; socios: number; pct: number };
-export type SocioRow = { id: string; n: string; nombre: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string; cuotaHasta: string | null; cuotaAlDia: boolean; sinPlan: boolean; cuotaSugerida: number | null };
+export type SocioRow = { id: string; n: string; /** El número sin el `#`, para ordenar. */ nNum: number; nombre: string; /** Sólo para el buscador: no se muestra en la tabla. */ email: string; mascota: string; plan: string; desde: string; estado: string; estadoRaw: string; cuotaHasta: string | null; cuotaAlDia: boolean; sinPlan: boolean; cuotaSugerida: number | null };
 /**
  * Una solicitud en la cola. Trae todo lo que el club necesita para resolverla sin
  * salir de la pantalla: antes había que ir a Socios, buscar a la persona y abrir
@@ -741,6 +741,12 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
   const [plan, setPlan] = useState('Todos');
   const [estado, setEstado] = useState('Todos');
   const [cuotaF, setCuotaF] = useState('Todas');
+  const [q, setQ] = useState('');
+  /* Ascendente por defecto: el número es el orden en que entraron, así que de
+     menor a mayor es "los de siempre primero", que es como el club nombra a su
+     gente. Se invierte desde la flecha del encabezado, para ver a los últimos que
+     se sumaron. */
+  const [asc, setAsc] = useState(true);
   const [ficha, setFicha] = useState<SocioRow | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [aviso, setAviso] = useState('');
@@ -848,7 +854,11 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
         : plan === 'Sin plan' ? s.sinPlan && s.cuotaAlDia
         : s.plan === plan && s.cuotaAlDia))
     && (estado === 'Todos' || s.estado === estado)
-    && (cuotaF === 'Todas' || (cuotaF === 'Al día' ? s.cuotaAlDia : !s.cuotaAlDia)));
+    && (cuotaF === 'Todas' || (cuotaF === 'Al día' ? s.cuotaAlDia : !s.cuotaAlDia))
+    /* Busca en el número, el nombre, la mascota y el mail. El mail no está en la
+       tabla pero sí en la cabeza del club, que muchas veces llega por ahí. */
+    && coincideBusqueda(q, [s.n, s.nombre, s.mascota, s.email]))
+    .sort((a, b) => (asc ? a.nNum - b.nNum : b.nNum - a.nNum));
   const chip = (active: boolean): CSSProperties => ({ border: 'none', cursor: 'pointer', fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '7px 14px', borderRadius: 100, background: active ? 'rgb(93,84,145)' : '#fff', color: active ? '#fff' : '#5b5670', boxShadow: active ? 'none' : '0 0 0 1px #e6e3f0' });
   return (
     <div>
@@ -863,7 +873,35 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
       )}
       {cobro && <DialogoCobro socio={cobro} planes={planes} onCerrar={() => setCobro(null)} onRegistrar={(monto, detalle, plan) => registrarPago(cobro, monto, detalle, plan)} />}
       <h1 className="adm-h1" style={h1}>Socios</h1>
-      <p style={sub}>{socios.length.toLocaleString('es-AR')} socios · hacé clic en un socio para ver su ficha</p>
+      {/* Cuando hay filtro se dicen los DOS números: "3 de 33" evita el susto de
+          entrar, ver tres filas y creer que se perdieron socios. */}
+      <p style={sub}>
+        {list.length === socios.length
+          ? `${socios.length.toLocaleString('es-AR')} socios`
+          : `${list.length.toLocaleString('es-AR')} de ${socios.length.toLocaleString('es-AR')} socios`}
+        {' · hacé clic en un socio para ver su ficha'}
+      </p>
+      {/* El buscador va ARRIBA de los chips y no entre ellos: es lo primero que
+          hace el club cuando ya sabe a quién busca, y los chips son para cuando
+          está mirando el conjunto. */}
+      <div style={{ marginBottom: 16, maxWidth: 420, position: 'relative' }}>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar por nombre, número, mascota o mail"
+          aria-label="Buscar socios"
+          style={{ ...inp, paddingRight: q ? 38 : 13 }}
+        />
+        {q && (
+          <button
+            onClick={() => setQ('')}
+            aria-label="Limpiar la búsqueda"
+            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'none', cursor: 'pointer', color: '#a29dba', fontSize: 18, lineHeight: 1, padding: '4px 8px' }}
+          >
+            ×
+          </button>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: 24, marginBottom: 16, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', letterSpacing: '0.04em', marginBottom: 8 }}>PLAN</div>
@@ -884,7 +922,23 @@ function Socios({ socios, planes }: { socios: SocioRow[]; planes: PlanAdminVM[] 
       <Aviso texto={aviso} />
       <div className="adm-tablewrap" style={{ ...card, padding: 0 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'CUOTA', 'ESTADO', 'ACCIÓN'].map((hd) => <th key={hd} style={th}>{hd}</th>)}</tr></thead>
+          {/* El orden vive en el encabezado de la columna y no en un chip aparte:
+              es donde la gente ya sabe buscarlo, y la flecha dice de una qué está
+              ordenado y para qué lado. */}
+          <thead><tr>{['N°', 'NOMBRE', 'MASCOTA', 'PLAN', 'DESDE', 'CUOTA', 'ESTADO', 'ACCIÓN'].map((hd) => (
+            hd === 'N°' ? (
+              <th key={hd} style={th} aria-sort={asc ? 'ascending' : 'descending'}>
+                <button
+                  onClick={() => setAsc((v) => !v)}
+                  title={asc ? 'Ordenado del menor al mayor. Tocá para invertir.' : 'Ordenado del mayor al menor. Tocá para invertir.'}
+                  style={{ ...th, padding: 0, border: 'none', background: 'none', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: '"DM Sans"' }}
+                >
+                  {hd}
+                  <span aria-hidden style={{ color: 'rgb(93,84,145)', fontSize: 12 }}>{asc ? '↑' : '↓'}</span>
+                </button>
+              </th>
+            ) : <th key={hd} style={th}>{hd}</th>
+          ))}</tr></thead>
           <tbody>
             {list.map((s) => (
               <tr key={s.n} className="adm-row" onClick={() => setFicha(s)} style={{ cursor: 'pointer' }}>

@@ -18,5 +18,6 @@ export * from './pagos';
 export * from './clave';
 export * from './alta';
 export * from './cerca';
+export * from './texto';
 export * from "./acceso";
 export * as data from './data';

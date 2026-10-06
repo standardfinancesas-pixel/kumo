@@ -85,8 +85,12 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('id, member_no, full_name, status, joined_on, paid_until, monthly_fee_agreed, plans(name, base_price), pets(name)')
-      .eq('role', 'socio'),
+      .select('id, member_no, full_name, email, status, joined_on, paid_until, monthly_fee_agreed, plans(name, base_price), pets(name)')
+      .eq('role', 'socio')
+      /* Con un orden explícito y no el que devuelva la base: sin esto el orden de
+         la tabla podía cambiar de una carga a otra, y el club perdía de vista la
+         fila que estaba mirando. El número de socio es el orden en que entraron. */
+      .order('member_no', { ascending: true }),
     supabase.from('reimbursements').select('refund').eq('status', 'en_revision'),
     // Se piden también los datos de la transferencia, el DNI del socio y la
     // mascota con su carnet: es lo que hay que mirar para resolver, y estaba a dos
@@ -217,7 +221,14 @@ export default async function Page() {
     .sort((a, b) => PLAN_ORDER.indexOf(a.plan) - PLAN_ORDER.indexOf(b.plan));
 
   const socios: SocioRow[] = socioList.map((s) => ({
-    id: s.id, n: `#${s.member_no}`, nombre: s.full_name, mascota: (s.pets ?? []).map((p: { name: string }) => p.name).join(' + ') || '—',
+    id: s.id, n: `#${s.member_no}`,
+    /* El número suelto, para poder ordenar: `n` es texto con `#` adelante y
+       ordenarlo como texto pone el #10 antes que el #2. */
+    nNum: s.member_no ?? 0,
+    nombre: s.full_name,
+    /* No se muestra en la tabla; está para el buscador. El club suele tener el
+       mail de la persona —le escribió— y no su número de socio. */
+    email: s.email ?? '', mascota: (s.pets ?? []).map((p: { name: string }) => p.name).join(' + ') || '—',
     plan: planOf(s)?.name ?? 'Gratuito', desde: s.joined_on ? fmtShort(s.joined_on) : '—', estado: ESTADO_SOCIO[s.status] ?? s.status,
     // Sin plan no es un dato faltante: es un socio gratuito, que ahora es un estado
     // normal. El guion de antes hacía parecer que faltaba cargar algo.

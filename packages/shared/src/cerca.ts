@@ -1,4 +1,5 @@
 import { PROVINCIAS } from './alta';
+import { sinAcentos } from './texto';
 
 /**
  * Kumo · qué queda cerca de quién
@@ -117,7 +118,6 @@ export function partirZona(zona?: string | null): { localidad?: string; provinci
   return { localidad: texto };
 }
 
-const sinAcentos = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 /* ── Prestadores sin coordenadas ───────────────────────────────────── */
 
