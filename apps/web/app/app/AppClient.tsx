@@ -4182,7 +4182,7 @@ const EXTRA_ARCADAS = 'Tiene arcadas sin llegar a vomitar';
 
 type Burbuja = { de: 'kumi' | 'socio'; texto: string };
 
-function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profile; pets: Pet[]; pago: boolean; onPlan: () => void; subido: boolean; centro: { lat: number; lng: number; etiqueta: string | null } }) {
+function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }: { profile: Profile; pets: Pet[]; pago: boolean; onPlan: () => void; subido: boolean; centro: { lat: number; lng: number; etiqueta: string | null }; deslindeAceptado: boolean }) {
   const [abierto, setAbierto] = useState(false);
   /* Arranca preguntando por cuál mascota si tiene alguna cargada: de ahí salen la
      especie, la edad EXACTA en meses y el peso, que son justo los datos de los que
@@ -4206,7 +4206,10 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
   const [animo, setAnimo] = useState<'normal' | 'decaido' | 'muy_decaido' | null>(null);
   const [comida, setComida] = useState<'normal' | 'come_menos' | 'no_come' | 'no_toma_agua' | null>(null);
   const [relato, setRelato] = useState('');
-  const [acepto, setAcepto] = useState(false);
+  /* Si ya aceptó esta versión, no se le vuelve a pedir: queda como una línea que
+     puede abrir para releerla. Volver a pedir lo mismo cada vez no agrega respaldo
+     legal —la constancia está guardada— y entrena a tildar sin leer. */
+  const [acepto, setAcepto] = useState(deslindeAceptado);
   const [verDeslinde, setVerDeslinde] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
@@ -4288,19 +4291,24 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
     : 'https://www.google.com/maps/search/veterinaria+de+urgencias+24h';
 
   /** La pregunta de cada paso y sus respuestas. */
+  /* Con el nombre de la mascota adentro: "¿Ves alguna de estas señales?" es una
+     pregunta de formulario; "¿Nina tiene alguna de estas señales?" es una
+     conversación, y además confirma que KUMI entendió de quién se habla. */
+  const elegida = pets.find((m) => m.id === petId)?.name ?? null;
+  const suyo = elegida ? elegida : 'tu mascota';
   const PREGUNTA: Record<PasoId, string> = {
     mascota: '¿Por cuál de tus mascotas consultás?',
     especie: '¿Qué animal es?',
     peso: '¿Cuánto pesa, más o menos?',
-    senales: '¿Ves alguna de estas señales?',
-    toxicos: '¿Pudo haber comido o tocado algo de esto?',
+    senales: `¿${suyo} tiene alguna de estas señales?`,
+    toxicos: `¿${suyo} pudo haber comido o tocado algo de esto?`,
     edad: '¿Qué edad tiene?',
-    cuando: '¿Hace cuánto que está así?',
-    sintomas: '¿Qué le ves? Podés marcar varias.',
+    cuando: `¿Hace cuánto que ${elegida ? `${elegida} está` : 'está'} así?`,
+    sintomas: '¿Qué le ves? Podés marcar varias cosas.',
     antecedente: '¿Le había pasado antes?',
-    come: '¿Come y toma agua?',
-    animo: '¿Cómo lo ves de ánimo?',
-    relato: 'Contame con tus palabras qué le pasa.',
+    come: '¿Está comiendo y tomando agua?',
+    animo: `¿Cómo ${elegida ? 'la' : 'lo'} ves de ánimo?`,
+    relato: 'Por último: contame con tus palabras qué le pasa. Si no tenés nada que agregar, mandá así.',
   };
 
   return (
@@ -4336,7 +4344,7 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
             </div>
 
             <div style={{ alignSelf: 'flex-start', maxWidth: '88%', background: 'rgb(247,246,250)', borderRadius: 14, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5 }}>
-              Hola {profile.firstName}, soy KUMI. Te hago unas preguntas y te oriento.
+              Hola {profile.firstName}, soy KUMI. Te hago unas preguntas cortas y te oriento. No reemplazo al veterinario.
             </div>
 
             {burbujas.map((b, i) => (
@@ -4402,6 +4410,14 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
             <div style={{ borderTop: '1px solid rgb(238,236,245)', padding: 14, background: '#fff' }}>
               {error && <div style={{ fontSize: 12, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 8 }}>{error}</div>}
 
+              {acepto && deslindeAceptado && (
+                /* Ya aceptado: queda a la vista para releerlo, sin volver a pedirlo. */
+                <div style={{ fontSize: 11, color: 'rgb(135,129,160)', marginBottom: 9, lineHeight: 1.4 }}>
+                  Orientación, no diagnóstico ·{' '}
+                  <button type="button" onClick={() => setVerDeslinde(true)} style={{ background: 'none', border: 'none', padding: 0, color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 11, cursor: 'pointer', textDecoration: 'underline', fontFamily: '"DM Sans"' }}>releer el deslinde</button>
+                </div>
+              )}
+
               {!acepto ? (
                 /* El deslinde primero: que sepa qué está usando ANTES de contarle
                    nada, no después de haber contado todo. */
@@ -4462,7 +4478,7 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
                           decir('socio', senales.join(', '));
                           void evaluar(hechosDe({ especie: especie ?? 'otro' }));
                         } else { decir('socio', 'Ninguna de esas'); seguirA('toxicos'); }
-                      }}>{senales.length > 0 ? `Listo (${senales.length})` : 'Ninguna de esas'}</Rapida>
+                      }}>{senales.length > 0 ? `Seguir con ${senales.length}` : 'Ninguna de esas'}</Rapida>
                     </>
                   )}
 
@@ -4474,7 +4490,7 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
                       <Rapida onClick={() => {
                         if (toxicos.length > 0) { decir('socio', toxicos.join(', ')); void evaluar(hechosDe()); }
                         else { decir('socio', 'Nada de eso'); seguirA('edad'); }
-                      }}>{toxicos.length > 0 ? `Listo (${toxicos.length})` : 'Nada de eso'}</Rapida>
+                      }}>{toxicos.length > 0 ? `Seguir con ${toxicos.length}` : 'Nada de eso'}</Rapida>
                     </>
                   )}
 
@@ -5095,7 +5111,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
 
 /* ── Shell ─────────────────────────────────────────────────────── */
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, bloqueados, guardados, reviews, misLikes, planes, cuota, pagos, centro }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; /** A quién bloqueó el socio, para poder deshacerlo desde Mi perfil. */ bloqueados: Bloqueado[]; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, bloqueados, guardados, reviews, misLikes, planes, cuota, pagos, centro, deslindeAceptado }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; /** A quién bloqueó el socio, para poder deshacerlo desde Mi perfil. */ bloqueados: Bloqueado[]; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** Si ya aceptó la versión vigente del deslinde de KUMI: la constancia sale de sus consultas anteriores. */ deslindeAceptado: boolean; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -5220,7 +5236,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           en cualquier pantalla, no ser un lugar al que hay que ir. `subido` lo
           corre para arriba en Foros, que ya tiene su propio botón flotante en esa
           esquina. */}
-      <Kumi profile={profile} pets={pets} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} centro={centro} />
+      <Kumi profile={profile} pets={pets} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} centro={centro} deslindeAceptado={deslindeAceptado} />
     </div>
   );
 }

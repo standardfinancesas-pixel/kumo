@@ -238,9 +238,17 @@ export function evaluarTriaje(h: HechosTriaje): Veredicto {
   const motivos: string[] = [];
   const reglas: string[] = [];
 
-  const senales = new Set([...(h.senales ?? []), ...senalesEnTexto(h.relato ?? '')]);
-  for (const s of senales) {
+  /* Marcadas y detectadas en el texto se tratan igual para decidir, pero NO se
+     dicen igual: "marcaste convulsiones" a alguien que escribió "convulsionó" y
+     no tocó ninguna pastilla suena a que el sistema no lo escuchó. */
+  const marcadas = new Set(h.senales ?? []);
+  const escritas = senalesEnTexto(h.relato ?? '').filter((s) => !marcadas.has(s));
+  for (const s of marcadas) {
     motivos.push(`Marcaste "${s}", que es una señal de urgencia.`);
+    reglas.push(`senal:${s}`);
+  }
+  for (const s of escritas) {
+    motivos.push(`Por lo que contaste, hay algo que no espera: ${s.toLowerCase()}.`);
     reglas.push(`senal:${s}`);
   }
 

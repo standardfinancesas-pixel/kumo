@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { esDestino, edadDeMascota, urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, mesesDeVida, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
+import { DESLINDE_VERSION, esDestino, edadDeMascota, urls, sinBloqueados, diaISO, hoyISO, diasHasta, providerBadge, tarjetaLabel, etiquetaPlan, etiquetaOdonto, mesesDeVida, selloCarnet, pagoEnHistorial, distanciaKm, origenDelSocio, textoDistancia, etiquetaCentro, type NotifInput, type VaccineKind, type Review, type Punto, type OrigenDistancia, type EstadoPago, type MedioPago } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import AppClient, { type PlanVM, type Profile, type Pet, type SelloVM, type Vac, type Reint, type EmergencyContact, type ProviderVM, type BenefitVM, type ForumPost, type MiNegocio, type CuotaVM, type PagoVM } from './AppClient';
 
@@ -527,8 +527,20 @@ export default async function Page() {
     })),
   };
 
+  /* ¿Ya aceptó ESTA versión del deslinde? La constancia está en sus consultas
+     anteriores, así que no hace falta guardarlo aparte. Si el texto cambia,
+     cambia la versión y se le vuelve a pedir, que es justo lo que corresponde. */
+  const { data: deslindeRow } = await supabase
+    .from('triage_consultas')
+    .select('id')
+    .eq('member_id', auth.user.id)
+    .eq('deslinde_version', DESLINDE_VERSION)
+    .limit(1)
+    .maybeSingle();
+  const deslindeAceptado = !!deslindeRow;
+
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} bloqueados={bloqueados} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} />;
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} bloqueados={bloqueados} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} deslindeAceptado={deslindeAceptado} />;
 }
