@@ -241,12 +241,51 @@ export function evaluarTriaje(h: HechosTriaje): Veredicto {
 
   if (motivos.length > 0) return { nivel: 'guardia', motivos, reglas };
 
-  // Sin señales rojas: el nivel sale de cuánto está afectado el estado general.
-  if (h.animo === 'muy_decaido' || h.comida === 'no_toma_agua' || h.comida === 'no_come') {
+  /*
+   * Sin señales rojas marcadas, hay cuadros que igual no esperan. Estos salen del
+   * motor de reglas del diseño de KUMI, no de criterio mío:
+   */
+
+  // Un gato que no come más de un día puede hacer lipidosis hepática. Es la regla
+  // menos obvia de todas y la que más veces salva: "no come" suena a capricho.
+  if (h.especie === 'gato' && h.comida === 'no_come' && (h.horasDeEvolucion ?? 0) > 24) {
+    return {
+      nivel: 'guardia',
+      motivos: ['Es un gato que no come hace más de un día. Eso necesita revisión presencial: se le puede complicar el hígado.'],
+      reglas: ['gato-sin-comer-mas-de-24h'],
+    };
+  }
+
+  // Decaimiento fuerte o sin tomar agua: se deshidrata rápido.
+  if (h.animo === 'muy_decaido' || h.comida === 'no_toma_agua') {
+    return {
+      nivel: 'guardia',
+      motivos: ['Lo ves muy decaído o no está tomando agua. Puede deshidratarse rápido, así que conviene verlo hoy en una veterinaria.'],
+      reglas: ['decaimiento-fuerte-o-sin-agua'],
+    };
+  }
+
+  // Los extremos de edad aguantan menos: con cualquier cosa, que lo vea alguien.
+  if (h.edadMeses != null && h.edadMeses >= 84 && h.animo != null && h.animo !== 'normal') {
     return {
       nivel: 'videoconsulta',
-      motivos: ['No está comiendo o lo ves muy decaído. No es una emergencia, pero sí algo para que lo vea un profesional hoy.'],
-      reglas: ['estado-general-afectado'],
+      motivos: ['Tiene más de 7 años y lo ves decaído. A esa edad el decaimiento siempre conviene que lo vea un veterinario.'],
+      reglas: ['mayor-de-7-decaido'],
+    };
+  }
+  if (h.edadMeses != null && h.edadMeses < 3) {
+    return {
+      nivel: 'videoconsulta',
+      motivos: ['Es menor de 3 meses: a esa edad cualquier síntoma conviene que lo vea un veterinario.'],
+      reglas: ['menor-de-3-meses'],
+    };
+  }
+
+  if (h.comida === 'no_come' || h.comida === 'come_menos') {
+    return {
+      nivel: 'videoconsulta',
+      motivos: ['No está comiendo como siempre. No es una emergencia, pero sí algo para que lo vea un profesional.'],
+      reglas: ['come-menos'],
     };
   }
 
@@ -259,12 +298,61 @@ export function evaluarTriaje(h: HechosTriaje): Veredicto {
     };
   }
 
+  if ((h.sintomas ?? []).length > 0) {
+    return {
+      nivel: 'videoconsulta',
+      motivos: ['Hay síntomas que conviene que vea un profesional, pero sin signos de urgencia.'],
+      reglas: ['sintomas-sin-urgencia'],
+    };
+  }
+
   return {
     nivel: 'casa',
-    motivos: ['Por lo que contás no hay señales de urgencia.'],
+    motivos: ['Por lo que contás no hay señales de alarma.'],
     reglas: ['sin-senales'],
   };
 }
+
+/**
+ * Qué hacer y qué no, según el desenlace, y cuándo volver a consultar.
+ *
+ * Salen del diseño de KUMI, igual que las reglas. Importan más de lo que parecen:
+ * sin esto, un "se puede seguir en casa" se lee como "no pasa nada" y la persona
+ * no sabe qué tiene que mirar ni cuándo preocuparse. Las dos cosas que más daño
+ * hacen entre la consulta y el veterinario —provocar el vómito y dar un remedio
+ * de persona— están nombradas en todos los niveles a propósito.
+ */
+export const CUIDADOS: Record<NivelUrgencia, { hacer: string[]; noHacer: string[]; volverSi: string[] }> = {
+  guardia: {
+    hacer: [
+      'Llamá a la guardia mientras vas en camino.',
+      'Trasladalo con cuidado, abrigado y sin forzarlo.',
+      'Si comió algo, llevá el envase o una foto de lo que comió.',
+    ],
+    noHacer: [
+      'No le provoques el vómito sin indicación de un veterinario.',
+      'No le des medicamentos de uso humano.',
+      'No esperes a ver si mejora.',
+    ],
+    volverSi: [],
+  },
+  videoconsulta: {
+    hacer: [
+      'Tené a mano las fotos y lo que observaste.',
+      'Anotá si come, toma agua, orina y defeca normal.',
+    ],
+    noHacer: ['No lo automediques.'],
+    volverSi: [
+      'Deja de comer o de tomar agua.',
+      'Aparece decaimiento fuerte, vómitos repetidos o sangre.',
+    ],
+  },
+  casa: {
+    hacer: ['Observalo durante 24 a 48 horas.', 'Anotá si come, toma agua, orina y defeca normal.'],
+    noHacer: ['No lo automediques.'],
+    volverSi: ['Empeora o aparece cualquiera de las señales de urgencia.'],
+  },
+};
 
 /* ── El deslinde ───────────────────────────────────────────────── */
 
