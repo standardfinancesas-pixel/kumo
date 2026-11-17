@@ -192,6 +192,7 @@ type Cuerpo = {
   modo?: 'charla';
   mensajes?: Mensaje[];
   conocido?: Record<string, unknown>;
+  ficha?: Record<string, unknown>;
   petId?: string | null;
   consentimiento?: boolean;
 } & Record<string, unknown>;
@@ -238,22 +239,35 @@ async function charla(body: Cuerpo, memberId: string, petId: string | null) {
   const mensajes = (body.mensajes ?? []).filter((m) => m && typeof m.texto === 'string').slice(-20);
   if (mensajes.length === 0) return NextResponse.json({ error: 'Contanos qué le pasa.' }, { status: 400 });
 
-  const ultimo = [...mensajes].reverse().find((m) => m.rol === 'socio')?.texto ?? '';
-
   /* Lo que ya se sabe por la ficha de la mascota: especie, edad exacta en meses y
      peso. Se le pasa al modelo para que no vuelva a preguntar lo que Kumo ya
      tiene, y se conserva aunque el modelo no lo repita en la ficha. */
   const conocido = (body.conocido ?? {}) as Record<string, unknown>;
   const especieConocida = unaEspecie(conocido.especie);
 
+  /* Lo que ya se juntó en las vueltas anteriores. Viaja por el cliente y se
+     filtra contra las listas conocidas como todo lo demás. Sirve solo para el
+     atajo, que es el único momento en que no se le pregunta al modelo. */
+  const previa = (body.ficha ?? {}) as Record<string, unknown>;
+
+  /* El relato es lo que la persona escribió, entero y con sus palabras. Es lo
+     que va a leer un veterinario si revisa la consulta, y es sobre lo que corre
+     la red de frases rojas: un resumen de una línea del modelo perdería justo la
+     frase que importa. El hilo completo igual se guarda aparte. */
+  const narracion = mensajes.filter((m) => m.rol === 'socio').map((m) => m.texto).join('. ').slice(0, 2000);
+
   /* El atajo de emergencia: antes del modelo, antes de la clave, antes de todo.
      Si lo que escribió ya dice "no respira", no hay nada que conversar. */
-  const rojas = senalesEnTexto(ultimo);
+  const rojas = senalesEnTexto(narracion);
   if (rojas.length > 0) {
+    /* Con lo que ya se había juntado, no desde cero. Si la señal roja aparece en
+       la quinta vuelta, tirar las cuatro anteriores deja una constancia sin
+       síntomas, sin horas y sin relato justo en la consulta más grave de todas. */
+    const base = hechosDe({ ...previa, ...conocido }, especieConocida ?? unaEspecie(previa.especie) ?? 'otro');
     const hechos: HechosTriaje = {
-      ...hechosDe(conocido, especieConocida ?? 'otro'),
-      senales: rojas,
-      relato: texto(ultimo),
+      ...base,
+      senales: [...new Set([...(base.senales ?? []), ...rojas])],
+      relato: narracion,
     };
     const veredicto = evaluarTriaje(hechos);
     await guardar(memberId, hechos, veredicto, mensajes, petId);
@@ -317,7 +331,7 @@ async function charla(body: Cuerpo, memberId: string, petId: string | null) {
     ...hechosDe(crudo, especieConocida ?? unaEspecie(crudo.especie) ?? 'otro'),
     edadMeses: numero(conocido.edadMeses) ?? numero(crudo.edadMeses),
     pesoKg: numero(conocido.pesoKg) ?? numero(crudo.pesoKg),
-    relato: texto(crudo.relato) || texto(ultimo),
+    relato: narracion || texto(crudo.relato),
   };
 
   const cierra = crudo.listo === true || vueltas >= MAX_VUELTAS;

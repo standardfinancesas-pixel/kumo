@@ -4228,6 +4228,10 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
   const [modo, setModo] = useState<Modo>('charla');
   const [entrada, setEntrada] = useState('');
   const [pensando, setPensando] = useState(false);
+  /* La ficha que viene armando el modelo, vuelta a vuelta. Se la devolvemos al
+     servidor para que el atajo de emergencia —que no llama al modelo— no arranque
+     de cero si una señal roja aparece recién en la quinta respuesta. */
+  const [fichaIA, setFichaIA] = useState<Record<string, unknown> | null>(null);
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<{ nivel: NivelUrgencia; motivos: string[]; accion: { titulo: string; bajada: string } } | null>(null);
   const fin = useRef<HTMLDivElement>(null);
@@ -4320,13 +4324,18 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
         modo: 'charla',
         mensajes: hilo.map((b) => ({ rol: b.de, texto: b.texto })),
         conocido: conocidoDeLaFicha(),
+        ficha: fichaIA,
         petId, consentimiento: acepto,
       }),
     }).then((res) => res.json()).catch(() => null);
     setPensando(false);
     if (!r) { setError('No pudimos conectarnos. Si es urgente, andá a una guardia.'); return; }
     if (r.tipo === 'veredicto') { setResultado({ nivel: r.veredicto.nivel, motivos: r.veredicto.motivos, accion: r.accion }); return; }
-    if (r.tipo === 'pregunta') { setBurbujas((b) => [...b, { de: 'kumi', texto: r.texto }]); return; }
+    if (r.tipo === 'pregunta') {
+      if (r.hechos) setFichaIA(r.hechos);
+      setBurbujas((b) => [...b, { de: 'kumi', texto: r.texto }]);
+      return;
+    }
     if (r.tipo === 'formulario') {
       /* La IA no puede seguir. No se avisa con un error rojo: se avisa cambiando
          de forma de preguntar, que es lo único que le importa a quien está del
@@ -4344,7 +4353,7 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
     setPaso(pets.length > 0 ? 'mascota' : 'especie'); setAtras([]); setPetId(null); setBurbujas([]); setEspecie(null); setEdadMeses(null); setHoras(null);
     setSenales([]); setToxicos([]); setSintomas([]); setPuja(false); setArcadas(false); setPesoKg(null); setAntecedente(null);
     setAnimo(null); setComida(null); setRelato(''); setResultado(null); setError('');
-    setModo('charla'); setEntrada(''); setPensando(false);
+    setModo('charla'); setEntrada(''); setPensando(false); setFichaIA(null);
     if (pets.length === 0) abrirCharla();
   };
 

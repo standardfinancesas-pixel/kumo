@@ -209,7 +209,9 @@ const FRASES_ROJAS: { frase: string; senal: string }[] = [
   { frase: 'raticida', senal: 'Comió algo tóxico' },
   { frase: 'tomo lavandina', senal: 'Comió algo tóxico' },
   { frase: 'sangre', senal: 'Sangrado que no para' },
-  { frase: 'sangrando', senal: 'Sangrado que no para' },
+  /* "sangra" y no "sangrando": cubre sangra, sangrar y sangrando de una. Con
+     "sangrando" solo, "no para de sangrar" no disparaba nada. */
+  { frase: 'sangra', senal: 'Sangrado que no para' },
   { frase: 'encias blancas', senal: 'Encías pálidas o azuladas' },
   { frase: 'encias palidas', senal: 'Encías pálidas o azuladas' },
   { frase: 'golpe de calor', senal: 'Golpe de calor' },
@@ -218,11 +220,35 @@ const FRASES_ROJAS: { frase: string; senal: string }[] = [
 /** Sin tildes y en minúscula, para que "convulsión" y "convulsion" pesen igual. */
 const plano = (t: string) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
+/**
+ * Lo que viene justo después de una negación clara no cuenta.
+ *
+ * Nació de una conversación real: KUMI preguntó "¿los vómitos tienen sangre?",
+ * la persona contestó "no tiene sangre" y el triaje la mandó a la guardia por
+ * sangrado. Cuando era un formulario esto casi no pasaba —se tildan pastillas—
+ * pero en una charla KUMI pregunta por CADA señal de alarma, así que las
+ * respuestas negativas son la mayoría de lo que escribe la gente. Sin esto, casi
+ * toda consulta termina en guardia y el triaje deja de distinguir nada.
+ *
+ * El patrón es deliberadamente angosto: exige la negación pegada a la frase, con
+ * a lo sumo un verbo de los de abajo en el medio. Lo que queda afuera se sigue
+ * tomando como señal, que es el lado por el que hay que errar:
+ *
+ * - "no para de sangrar" → "para de" no está en la lista: SIGUE escalando.
+ * - "no sé si tiene sangre" → hay texto de más entre medio: SIGUE escalando.
+ * - "no tiene sangre", "sin sangre", "no vomitó sangre" → no escalan.
+ */
+const NEGADO = /\b(no|sin|ningun[ao]?|tampoco|nunca|nada de)\s+(tiene|tienen|tuvo|tenia|hay|hubo|sale|le sale|veo|vi|note|noto|se ve|es|era|vomito|vomita|vomitaron|echo|echa|larga|largo|con|de)?\s*$/;
+
 export function senalesEnTexto(texto: string): string[] {
   const t = plano(texto);
   const encontradas = new Set<string>();
   for (const { frase, senal } of FRASES_ROJAS) {
-    if (t.includes(frase)) encontradas.add(senal);
+    /* Se miran TODAS las apariciones: alcanza con que una no esté negada.
+       "No tiene sangre pero sangra la pata" tiene que escalar igual. */
+    for (let i = t.indexOf(frase); i !== -1; i = t.indexOf(frase, i + frase.length)) {
+      if (!NEGADO.test(t.slice(Math.max(0, i - 28), i))) { encontradas.add(senal); break; }
+    }
   }
   return [...encontradas];
 }
