@@ -4182,6 +4182,19 @@ const EXTRA_ARCADAS = 'Tiene arcadas sin llegar a vomitar';
 
 type Burbuja = { de: 'kumi' | 'socio'; texto: string };
 
+/**
+ * Dos formas de la misma consulta, y la segunda es el piso de la primera.
+ *
+ * - `charla`: la persona escribe con sus palabras y KUMI pregunta lo que falta.
+ *   Es lo que se pidió desde el principio y lo que la gente hace sola cuando
+ *   está preocupada: contar, no completar.
+ * - `guion`: las pastillas de siempre. Se usa cuando el servidor avisa que no
+ *   puede conversar —sin clave, con error, con el tope pasado— y pregunta
+ *   exactamente lo mismo. Nadie se queda sin orientación porque un proveedor
+ *   no contestó.
+ */
+type Modo = 'charla' | 'guion';
+
 function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }: { profile: Profile; pets: Pet[]; pago: boolean; onPlan: () => void; subido: boolean; centro: { lat: number; lng: number; etiqueta: string | null }; deslindeAceptado: boolean }) {
   const [abierto, setAbierto] = useState(false);
   /* Arranca preguntando por cuál mascota si tiene alguna cargada: de ahí salen la
@@ -4212,11 +4225,14 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
   const [acepto, setAcepto] = useState(deslindeAceptado);
   const [verDeslinde, setVerDeslinde] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [modo, setModo] = useState<Modo>('charla');
+  const [entrada, setEntrada] = useState('');
+  const [pensando, setPensando] = useState(false);
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<{ nivel: NivelUrgencia; motivos: string[]; accion: { titulo: string; bajada: string } } | null>(null);
   const fin = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [burbujas, resultado, abierto]);
+  useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [burbujas, resultado, abierto, pensando]);
 
   /** Avanzar guardando de dónde se viene, para poder volver. */
   const seguirA = (siguiente: PasoId) => { setAtras((a) => [...a, paso]); setPaso(siguiente); };
@@ -4265,10 +4281,71 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
     ...extra,
   });
 
+  /* Mientras se elige la mascota seguimos en el guion aunque el modo sea charla:
+     es un toque y resuelve especie, edad exacta y peso de una. Después sí, el
+     teclado. */
+  const enCharla = modo === 'charla' && !(pets.length > 0 && paso === 'mascota');
+
+  /** Lo que Kumo ya sabe de esa mascota, para que KUMI no lo vuelva a preguntar. */
+  const conocidoDeLaFicha = () => {
+    const m = pets.find((p) => p.id === petId);
+    return m ? { especie: m.especie, edadMeses: m.edadMeses, pesoKg: m.pesoKg ?? null, nombre: m.name } : {};
+  };
+
+  const abrirCharla = (nombre?: string | null) =>
+    setBurbujas((b) => [...b, {
+      de: 'kumi' as const,
+      texto: `Contame con tus palabras qué le pasa${nombre ? ` a ${nombre}` : ''}. Escribí como te salga, yo te voy preguntando lo que falte.`,
+    }]);
+
+  /* Sin mascotas cargadas la charla arranca sola al abrir: no hay nada que elegir
+     antes. */
+  useEffect(() => {
+    if (modo === 'charla' && pets.length === 0 && burbujas.length === 0) abrirCharla();
+    /* Una sola vez, al montar: sin dependencias a propósito, es el saludo. */
+  }, []);
+
+  /** Una vuelta de la conversación. El servidor contesta pregunta, veredicto o
+   *  "seguí con el formulario", que es la caída cuando la IA no está. */
+  const mandar = async (txt: string) => {
+    const limpio = txt.trim();
+    if (!limpio || pensando) return;
+    const hilo: Burbuja[] = [...burbujas, { de: 'socio', texto: limpio }];
+    setBurbujas(hilo);
+    setEntrada('');
+    setPensando(true); setError('');
+    const r = await fetch('/api/kumi', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modo: 'charla',
+        mensajes: hilo.map((b) => ({ rol: b.de, texto: b.texto })),
+        conocido: conocidoDeLaFicha(),
+        petId, consentimiento: acepto,
+      }),
+    }).then((res) => res.json()).catch(() => null);
+    setPensando(false);
+    if (!r) { setError('No pudimos conectarnos. Si es urgente, andá a una guardia.'); return; }
+    if (r.tipo === 'veredicto') { setResultado({ nivel: r.veredicto.nivel, motivos: r.veredicto.motivos, accion: r.accion }); return; }
+    if (r.tipo === 'pregunta') { setBurbujas((b) => [...b, { de: 'kumi', texto: r.texto }]); return; }
+    if (r.tipo === 'formulario') {
+      /* La IA no puede seguir. No se avisa con un error rojo: se avisa cambiando
+         de forma de preguntar, que es lo único que le importa a quien está del
+         otro lado. El relato que ya escribió se conserva. */
+      setModo('guion');
+      setRelato((v) => v || hilo.filter((b) => b.de === 'socio').map((b) => b.texto).join('. '));
+      setBurbujas((b) => [...b, { de: 'kumi', texto: 'Dale, sigo con unas preguntas cortas.' }]);
+      if (r.error) setError(r.error);
+      return;
+    }
+    if (r.error) setError(r.error);
+  };
+
   const reiniciar = () => {
     setPaso(pets.length > 0 ? 'mascota' : 'especie'); setAtras([]); setPetId(null); setBurbujas([]); setEspecie(null); setEdadMeses(null); setHoras(null);
     setSenales([]); setToxicos([]); setSintomas([]); setPuja(false); setArcadas(false); setPesoKg(null); setAntecedente(null);
     setAnimo(null); setComida(null); setRelato(''); setResultado(null); setError('');
+    setModo('charla'); setEntrada(''); setPensando(false);
+    if (pets.length === 0) abrirCharla();
   };
 
   const wa = urlWhatsapp(data.clubSettings.whatsapp);
@@ -4341,7 +4418,9 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
             {/* Volver un paso. Solo aparece cuando hay a dónde volver y la consulta
                 no terminó: después del veredicto, lo que corresponde es "Otra
                 consulta" y no editar la respuesta que lo produjo. */}
-            {atras.length > 0 && !resultado && (
+            {/* Volver es del guion, que tiene pasos. En la charla no hay a dónde
+                volver: si se equivocó, lo dice y KUMI lo corrige. */}
+            {atras.length > 0 && !resultado && !enCharla && (
               <button onClick={volver} aria-label="Volver a la pregunta anterior" style={{ background: 'rgba(255,255,255,0.18)', border: 'none', color: '#fff', fontSize: 15, cursor: 'pointer', lineHeight: 1, padding: '4px 9px', borderRadius: 8 }}>←</button>
             )}
             <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: '#fff' }}>KUMI</div>
@@ -4364,12 +4443,18 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
               </div>
             ))}
 
-            {!resultado && !enviando && (
+            {/* La pregunta pendiente es del guion: en la charla, lo que KUMI
+                pregunta ya está en el hilo como una burbuja más. */}
+            {!resultado && !enviando && !pensando && !enCharla && (
               <div style={{ alignSelf: 'flex-start', maxWidth: '88%', background: 'rgb(247,246,250)', borderRadius: 14, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5 }}>
                 {PREGUNTA[paso]}
               </div>
             )}
-            {enviando && <div style={{ alignSelf: 'flex-start', color: 'rgb(135,129,160)', fontSize: 12.5 }}>Evaluando…</div>}
+            {(enviando || pensando) && (
+              <div style={{ alignSelf: 'flex-start', color: 'rgb(135,129,160)', fontSize: 12.5 }}>
+                {pensando ? 'KUMI está escribiendo…' : 'Evaluando…'}
+              </div>
+            )}
 
             {resultado && tono && (
               <div style={{ background: tono.fondo, border: `1px solid ${tono.borde}`, borderRadius: 16, padding: 15 }}>
@@ -4442,6 +4527,26 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                     </span>
                   </label>
                 </>
+              ) : enCharla ? (
+                /* La charla: un cuadro de texto y nada más. Enter manda, shift+Enter
+                   hace un salto de línea, como en cualquier chat. */
+                <div style={{ display: 'flex', gap: 7, width: '100%' }}>
+                  <textarea
+                    value={entrada}
+                    onChange={(e) => setEntrada(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void mandar(entrada); } }}
+                    rows={2}
+                    disabled={pensando}
+                    placeholder="Desde anoche tiembla y no quiere salir…"
+                    style={{ ...sheetInput, resize: 'none', flex: 1, fontSize: 13 }}
+                  />
+                  <button
+                    onClick={() => void mandar(entrada)}
+                    disabled={pensando || entrada.trim() === ''}
+                    style={{ ...sheetBtn(true), width: 44, flex: 'none', padding: 0, opacity: pensando || entrada.trim() === '' ? 0.5 : 1, cursor: pensando || entrada.trim() === '' ? 'default' : 'pointer' }}
+                    aria-label="Enviar"
+                  >↑</button>
+                </div>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
                   {paso === 'mascota' && (
@@ -4453,11 +4558,14 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                           setEdadMeses(m.edadMeses);
                           responder(m.name);
                           /* Con la ficha ya sabemos especie, edad y peso: se saltean
-                             los tres pasos y se va directo a lo que no sabemos. */
+                             los tres pasos y se va directo a lo que no sabemos. El
+                             paso igual avanza aunque sigamos en charla, para que la
+                             caída al guion arranque donde corresponde. */
                           seguirA('senales');
+                          if (modo === 'charla') abrirCharla(m.name);
                         }}>{m.name}</Rapida>
                       ))}
-                      <Rapida onClick={() => { responder('Otra mascota'); seguirA('especie'); }}>Otra mascota</Rapida>
+                      <Rapida onClick={() => { responder('Otra mascota'); seguirA('especie'); if (modo === 'charla') abrirCharla(); }}>Otra mascota</Rapida>
                     </>
                   )}
 
