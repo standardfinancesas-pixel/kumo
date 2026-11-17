@@ -4169,7 +4169,7 @@ const EXTRA_ARCADAS = 'Tiene arcadas sin llegar a vomitar';
 
 type Burbuja = { de: 'kumi' | 'socio'; texto: string };
 
-function Kumi({ profile, pago, onPlan, subido }: { profile: Profile; pago: boolean; onPlan: () => void; subido: boolean }) {
+function Kumi({ profile, pago, onPlan, subido, centro }: { profile: Profile; pago: boolean; onPlan: () => void; subido: boolean; centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [abierto, setAbierto] = useState(false);
   const [paso, setPaso] = useState<PasoId>('especie');
   const [burbujas, setBurbujas] = useState<Burbuja[]>([]);
@@ -4230,6 +4230,22 @@ function Kumi({ profile, pago, onPlan, subido }: { profile: Profile; pago: boole
 
   const wa = urlWhatsapp(data.clubSettings.whatsapp);
   const tono = resultado ? TONO_NIVEL[resultado.nivel] : null;
+
+  /**
+   * A dónde manda "Buscar una guardia cerca".
+   *
+   * Con las coordenadas del socio cuando se sabe dónde vive —las geocodificamos
+   * en el alta—, así la búsqueda sale centrada en su casa y no donde Google
+   * adivine por IP, que en Argentina puede errarle por provincias enteras.
+   *
+   * Y SIN coordenadas cuando `etiqueta` es null, que es la señal de que no se
+   * pudo resolver el domicilio y `centro` es el centro de CABA. Mandar a alguien
+   * de Mendoza al Obelisco es peor que dejar que Google adivine: la adivinanza
+   * al menos puede acertar, y el Obelisco seguro que no.
+   */
+  const buscarGuardia = centro.etiqueta
+    ? `https://www.google.com/maps/search/veterinaria+de+urgencias+24h/@${centro.lat},${centro.lng},14z`
+    : 'https://www.google.com/maps/search/veterinaria+de+urgencias+24h';
 
   /** La pregunta de cada paso y sus respuestas. */
   const PREGUNTA: Record<PasoId, string> = {
@@ -4295,7 +4311,7 @@ function Kumi({ profile, pago, onPlan, subido }: { profile: Profile; pago: boole
                   {resultado.motivos.map((m, i) => <li key={i}>{m}</li>)}
                 </ul>
                 {resultado.nivel === 'guardia' && (
-                  <a href="https://www.google.com/maps/search/veterinaria+de+urgencias+24h" target="_blank" rel="noopener noreferrer" style={{ ...sheetBtn(true), display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 13.5, padding: 11 }}>Buscar una guardia cerca</a>
+                  <a href={buscarGuardia} target="_blank" rel="noopener noreferrer" style={{ ...sheetBtn(true), display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 13.5, padding: 11 }}>Buscar una guardia cerca</a>
                 )}
                 {resultado.nivel === 'videoconsulta' && (
                   pago && wa
@@ -5101,7 +5117,7 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           en cualquier pantalla, no ser un lugar al que hay que ir. `subido` lo
           corre para arriba en Foros, que ya tiene su propio botón flotante en esa
           esquina. */}
-      <Kumi profile={profile} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} />
+      <Kumi profile={profile} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} centro={centro} />
     </div>
   );
 }
