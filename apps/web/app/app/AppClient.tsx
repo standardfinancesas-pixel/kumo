@@ -4218,8 +4218,6 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
 
   useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [burbujas, resultado, abierto]);
 
-  const decir = (de: Burbuja['de'], texto: string) => setBurbujas((b) => [...b, { de, texto }]);
-
   /** Avanzar guardando de dónde se viene, para poder volver. */
   const seguirA = (siguiente: PasoId) => { setAtras((a) => [...a, paso]); setPaso(siguiente); };
 
@@ -4230,8 +4228,10 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
     setAtras((a) => a.slice(0, -1));
     setPaso(previo);
     setBurbujas((b) => {
-      const i = b.map((x) => x.de).lastIndexOf('socio');
-      return i === -1 ? b : b.slice(0, i);
+      /* Saca el par entero: la pregunta de KUMI y la respuesta. Si sacara solo
+         la respuesta, la pregunta quedaría dos veces al rehacerse el paso. */
+      const i = b.map((x) => x.de).lastIndexOf('kumi');
+      return i <= 0 ? b.slice(0, 0) : b.slice(0, i);
     });
     setError('');
   };
@@ -4310,6 +4310,17 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
     animo: `¿Cómo ${elegida ? 'la' : 'lo'} ves de ánimo?`,
     relato: 'Por último: contame con tus palabras qué le pasa. Si no tenés nada que agregar, mandá así.',
   };
+
+  /**
+   * Contestar deja en el hilo la PREGUNTA y la respuesta, en ese orden.
+   *
+   * Antes solo se guardaban las respuestas y la pregunta vivía abajo de todo,
+   * reemplazándose: al scrollear se leía "Nina", "Ninguna de esas", "Nada de eso"
+   * sin saber qué le habían preguntado. Una lista de respuestas sueltas no es una
+   * conversación, y encima hace imposible revisar lo que uno contestó.
+   */
+  const responder = (texto: string) =>
+    setBurbujas((b) => [...b, { de: 'kumi' as const, texto: PREGUNTA[paso] }, { de: 'socio' as const, texto }]);
 
   return (
     <>
@@ -4440,18 +4451,18 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                           setPetId(m.id);
                           setEspecie(m.especie);
                           setEdadMeses(m.edadMeses);
-                          decir('socio', m.name);
+                          responder(m.name);
                           /* Con la ficha ya sabemos especie, edad y peso: se saltean
                              los tres pasos y se va directo a lo que no sabemos. */
                           seguirA('senales');
                         }}>{m.name}</Rapida>
                       ))}
-                      <Rapida onClick={() => { decir('socio', 'Otra mascota'); seguirA('especie'); }}>Otra mascota</Rapida>
+                      <Rapida onClick={() => { responder('Otra mascota'); seguirA('especie'); }}>Otra mascota</Rapida>
                     </>
                   )}
 
                   {paso === 'especie' && ESPECIES.map((e) => (
-                    <Rapida key={e.id} onClick={() => { setEspecie(e.id); decir('socio', e.label); seguirA(e.id === 'perro' ? 'peso' : 'senales'); }}>{e.label}</Rapida>
+                    <Rapida key={e.id} onClick={() => { setEspecie(e.id); responder(e.label); seguirA(e.id === 'perro' ? 'peso' : 'senales'); }}>{e.label}</Rapida>
                   ))}
 
                   {/* El peso solo se pregunta cuando NO salió de una ficha y es un
@@ -4459,11 +4470,11 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                       arcadas. Preguntárselo al dueño de un gato sería pedir un dato
                       que no va a cambiar nada. */}
                   {paso === 'peso' && ([['Menos de 10 kg', 6], ['Entre 10 y 20 kg', 15], ['Más de 20 kg', 30]] as const).map(([l, kg]) => (
-                    <Rapida key={l} onClick={() => { setPesoKg(kg); decir('socio', l); seguirA('senales'); }}>{l}</Rapida>
+                    <Rapida key={l} onClick={() => { setPesoKg(kg); responder(l); seguirA('senales'); }}>{l}</Rapida>
                   ))}
 
                   {paso === 'antecedente' && ANTECEDENTES.map((a) => (
-                    <Rapida key={a.id} onClick={() => { setAntecedente(a.id); decir('socio', a.label); seguirA('come'); }}>{a.label}</Rapida>
+                    <Rapida key={a.id} onClick={() => { setAntecedente(a.id); responder(a.label); seguirA('come'); }}>{a.label}</Rapida>
                   ))}
 
                   {paso === 'senales' && (
@@ -4475,9 +4486,9 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                         if (senales.length > 0) {
                           /* Hay señal roja: se corta acá. Nada de lo que venga
                              después puede bajarle el nivel, así que no se pregunta. */
-                          decir('socio', senales.join(', '));
+                          responder(senales.join(', '));
                           void evaluar(hechosDe({ especie: especie ?? 'otro' }));
-                        } else { decir('socio', 'Ninguna de esas'); seguirA('toxicos'); }
+                        } else { responder('Ninguna de esas'); seguirA('toxicos'); }
                       }}>{senales.length > 0 ? `Seguir con ${senales.length}` : 'Ninguna de esas'}</Rapida>
                     </>
                   )}
@@ -4488,18 +4499,18 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                         <Rapida key={t} activa={toxicos.includes(t)} onClick={() => setToxicos((xs) => xs.includes(t) ? xs.filter((y) => y !== t) : [...xs, t])}>{t}</Rapida>
                       ))}
                       <Rapida onClick={() => {
-                        if (toxicos.length > 0) { decir('socio', toxicos.join(', ')); void evaluar(hechosDe()); }
-                        else { decir('socio', 'Nada de eso'); seguirA('edad'); }
+                        if (toxicos.length > 0) { responder(toxicos.join(', ')); void evaluar(hechosDe()); }
+                        else { responder('Nada de eso'); seguirA('edad'); }
                       }}>{toxicos.length > 0 ? `Seguir con ${toxicos.length}` : 'Nada de eso'}</Rapida>
                     </>
                   )}
 
                   {paso === 'edad' && EDADES.map((e) => (
-                    <Rapida key={e.label} onClick={() => { setEdadMeses(e.meses); decir('socio', e.label); seguirA('cuando'); }}>{e.label}</Rapida>
+                    <Rapida key={e.label} onClick={() => { setEdadMeses(e.meses); responder(e.label); seguirA('cuando'); }}>{e.label}</Rapida>
                   ))}
 
                   {paso === 'cuando' && CUANDOS.map((c) => (
-                    <Rapida key={c.label} onClick={() => { setHoras(c.horas); decir('socio', c.label); seguirA('sintomas'); }}>{c.label}</Rapida>
+                    <Rapida key={c.label} onClick={() => { setHoras(c.horas); responder(c.label); seguirA('sintomas'); }}>{c.label}</Rapida>
                   ))}
 
                   {paso === 'sintomas' && (
@@ -4510,18 +4521,18 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                       <Rapida onClick={() => {
                         setPuja(sintomas.includes(EXTRA_PUJA));
                         setArcadas(sintomas.includes(EXTRA_ARCADAS));
-                        decir('socio', sintomas.length ? sintomas.join(', ') : 'No sabría decir');
+                        responder(sintomas.length ? sintomas.join(', ') : 'No sabría decir');
                         seguirA('antecedente');
                       }}>Listo</Rapida>
                     </>
                   )}
 
                   {paso === 'come' && ([['normal', 'Come normal'], ['come_menos', 'Come menos'], ['no_come', 'No come'], ['no_toma_agua', 'No toma agua']] as const).map(([v, l]) => (
-                    <Rapida key={v} onClick={() => { setComida(v); decir('socio', l); seguirA('animo'); }}>{l}</Rapida>
+                    <Rapida key={v} onClick={() => { setComida(v); responder(l); seguirA('animo'); }}>{l}</Rapida>
                   ))}
 
                   {paso === 'animo' && ([['normal', 'Normal, activo'], ['decaido', 'Algo decaído'], ['muy_decaido', 'Muy decaído']] as const).map(([v, l]) => (
-                    <Rapida key={v} onClick={() => { setAnimo(v); decir('socio', l); seguirA('relato'); }}>{l}</Rapida>
+                    <Rapida key={v} onClick={() => { setAnimo(v); responder(l); seguirA('relato'); }}>{l}</Rapida>
                   ))}
 
                   {paso === 'relato' && (
@@ -4529,12 +4540,12 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                       <textarea
                         value={relato}
                         onChange={(e) => setRelato(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); decir('socio', relato || 'Nada más'); void evaluar(hechosDe({ relato })); } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); responder(relato || 'Nada más'); void evaluar(hechosDe({ relato })); } }}
                         rows={2}
                         placeholder="Desde anoche tiembla y no quiere salir…"
                         style={{ ...sheetInput, resize: 'none', flex: 1, fontSize: 13 }}
                       />
-                      <button onClick={() => { decir('socio', relato || 'Nada más'); void evaluar(hechosDe({ relato })); }} style={{ ...sheetBtn(true), width: 44, flex: 'none', padding: 0 }} aria-label="Enviar">↑</button>
+                      <button onClick={() => { responder(relato || 'Nada más'); void evaluar(hechosDe({ relato })); }} style={{ ...sheetBtn(true), width: 44, flex: 'none', padding: 0 }} aria-label="Enviar">↑</button>
                     </div>
                   )}
                 </div>
