@@ -216,10 +216,30 @@ export async function geocodificarDomicilio(partes: {
     const conLocalidad = enCABA
       ? await buscarDirecciones(calle, partes.province ?? undefined)
       : await buscarDirecciones(calle, partes.province ?? undefined, partes.city ?? undefined);
-    // Sin la localidad también, porque a veces está escrita como no figura en el
-    // callejero ("caba" para una dirección de Palermo) y filtra de más.
-    const [mejor] = conLocalidad.length ? conLocalidad : await buscarDirecciones(calle, partes.province ?? undefined);
-    if (mejor) return { lat: mejor.lat, lng: mejor.lng, origen: 'domicilio' };
+    if (conLocalidad[0]) {
+      const m = conLocalidad[0];
+      return { lat: m.lat, lng: m.lng, origen: 'domicilio' };
+    }
+
+    /*
+     * El reintento sin la localidad existe porque a veces está escrita como no
+     * figura en el callejero ("caba" para una dirección de Palermo) y filtra de
+     * más. Pero sin filtro, Georef devuelve esa calle EN CUALQUIER CIUDAD de la
+     * provincia, y se quedaba con la primera: "Rawson 975" declarada en Pehuajó
+     * terminó en Merlo, a 315 km. Pasó con 4 socios reales, y desde que KUMI
+     * manda a una guardia "cerca" eso dejó de ser un detalle de ordenamiento.
+     *
+     * Así que el resultado del reintento solo se acepta si la ciudad que
+     * devuelve se parece a la declarada. Si no, se deja seguir a Nominatim, que
+     * al menos lleva la ciudad ADENTRO de la consulta; y si tampoco, queda sin
+     * coordenadas, que es la respuesta honesta.
+     */
+    const sinLocalidad = await buscarDirecciones(calle, partes.province ?? undefined);
+    const declarada = sinTildes(partes.city ?? '').toLowerCase().trim();
+    const coincide = sinLocalidad.find(
+      (s) => !declarada || sinTildes(s.localidad).toLowerCase().includes(declarada) || declarada.includes(sinTildes(s.localidad).toLowerCase()),
+    );
+    if (coincide) return { lat: coincide.lat, lng: coincide.lng, origen: 'domicilio' };
   }
   return correr(consultasDeDomicilio(partes));
 }
