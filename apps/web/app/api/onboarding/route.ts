@@ -1,6 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import { getServiceClient } from '@/lib/supabase-service';
-import { geocodificarDomicilio } from '@/lib/geocodificar';
+import { cercaDeSuCiudad, geocodificarDomicilio } from '@/lib/geocodificar';
 import { quienPide } from '@/lib/quien-pide';
 import { FOTO_TIPOS, FOTO_MAX, armarDeclaraciones, leerBodyAlta, cuotaMensual, MAX_MASCOTAS_ALTA, type BodyAlta, type BancoAlta, claveValida, fnacValida, fnacAISO, avisoFnac, EDAD_MINIMA, hoyISO, CLAVE_MINIMA } from '@kumo/shared';
 import { sendAdminAltaNueva, sendBienvenida } from '@/lib/mail';
@@ -385,7 +385,13 @@ export async function POST(req: Request) {
    * centrado en CABA, no un alta fallida.
    */
   after(async () => {
-    const ubicacion = await geocodificarDomicilio({
+    /* El punto que eligió de la lista gana, si cae cerca de la ciudad que
+       declaró: es el que le mostró el callejero. Si escribió a mano, o si el
+       punto no cierra con su ciudad, se geocodifica como siempre. */
+    const elegido = socio.punto && (await cercaDeSuCiudad(socio.punto, socio.localidad, socio.provincia))
+      ? { lat: socio.punto.lat, lng: socio.punto.lng, origen: 'domicilio' as const }
+      : null;
+    const ubicacion = elegido ?? await geocodificarDomicilio({
       address: socio.domicilio, city: socio.localidad, province: socio.provincia,
     });
     if (!ubicacion) return;

@@ -26,7 +26,16 @@ import { useEffect, useRef, useState } from 'react';
  * La búsqueda va contra `/api/lugares`, que es un pasamanos con caché: así el
  * domicilio de alguien no viaja desde su navegador a un tercero.
  */
-export type LugarElegido = { domicilio: string; localidad: string; provincia: string };
+/**
+ * Lo que queda cuando alguien elige una dirección de la lista.
+ *
+ * Incluye el PUNTO, y no es un extra: hasta que se agregó, elegir de la lista
+ * guardaba solo el texto y el servidor volvía a adivinar las coordenadas desde
+ * ese texto. Cuando el callejero no encontraba la calle en la ciudad declarada,
+ * esa segunda vuelta terminaba en otra ciudad — hubo 7 socios así, uno a 315 km.
+ * El punto correcto ya lo teníamos acá y lo estábamos tirando.
+ */
+export type LugarElegido = { domicilio: string; localidad: string; provincia: string; lat: number; lng: number };
 export type ZonaElegida = { zona: string; localidad: string; provincia: string };
 type Fila = { id: string; etiqueta: string };
 /** La sugerencia de dirección trae el punto: hace falta para preguntar el barrio. */
@@ -197,7 +206,7 @@ export function CampoDomicilio({
       onCambio={onCambio}
       onElegir={(f) => {
         busqueda.cerrar(f.domicilio, f.etiqueta);
-        onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
+        onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia, lat: f.lat, lng: f.lng });
         /* En CABA el callejero oficial devuelve la comuna, y nadie dice que vive en la
            Comuna 13: dice Belgrano. El barrio se pregunta aparte —una consulta, recién
            cuando ya eligió— y llega un instante después. El campo se llena primero con
@@ -206,7 +215,7 @@ export function CampoDomicilio({
           fetch(`/api/lugares/barrio?lat=${f.lat}&lng=${f.lng}`)
             .then((r) => (r.ok ? r.json() : null))
             .then((d: { barrio?: string } | null) => {
-              if (d?.barrio) onElegir({ domicilio: f.domicilio, localidad: d.barrio, provincia: f.provincia });
+              if (d?.barrio) onElegir({ domicilio: f.domicilio, localidad: d.barrio, provincia: f.provincia, lat: f.lat, lng: f.lng });
             })
             .catch(() => {});
         }

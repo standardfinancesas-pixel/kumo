@@ -78,7 +78,7 @@ export default function Paso2Socio({
         provincia={socio.provincia || undefined}
         localidad={socio.localidad || undefined}
         onCambio={(t) => set({ domicilio: t })}
-        onElegir={(l) => set({ domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
+        onElegir={(l) => set({ domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia, punto: { lat: l.lat, lng: l.lng } })}
       />
 
       <View style={{ flexDirection: 'row', gap: 12 }}>

@@ -215,14 +215,17 @@ export async function confirmarSuscripcion(preapprovalId?: string | null): Promi
  * mandar. Si falla no se avisa: lo único que queda mal es el centro del mapa, y se
  * arregla la próxima vez que edite sus datos.
  */
-export async function recalcularUbicacion(): Promise<void> {
+/** `punto` es el que eligió de la lista, si eligió: el servidor lo prefiere al que
+ *  derivaría del texto, y lo acepta solo si cae cerca de la ciudad que declaró. */
+export async function recalcularUbicacion(punto?: { lat: number; lng: number } | null): Promise<void> {
   try {
     const { data: ses } = await supabase.auth.getSession();
     const token = ses.session?.access_token;
     if (!token) return;
     await fetch(`${apiKumo}/api/perfil/ubicacion`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(punto ?? {}),
     });
   } catch {
     // sin ubicación nueva: el mapa sigue centrado donde estaba

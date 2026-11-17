@@ -27,7 +27,7 @@
  * dice ("del centro" en vez de "de tu casa").
  */
 import { buscarDirecciones, esCABA } from './lugares';
-import { partirZona } from '@kumo/shared';
+import { distanciaKm, partirZona } from '@kumo/shared';
 
 const NOMINATIM = 'https://nominatim.openstreetmap.org/search';
 /* Quién consulta y a dónde escribirle: lo exige la política de Nominatim. El sitio
@@ -191,6 +191,51 @@ async function preguntar(consulta: string): Promise<{ lat: number; lng: number }
  * devuelve CUÁL de los dos contestó, porque la pantalla dice "de tu casa" solo
  * cuando resolvió la calle.
  */
+/** Cuánto se le permite a un punto alejarse de la ciudad declarada. Generoso a
+ *  propósito: hay partidos enormes y gente que vive en las afueras. Lo que tiene
+ *  que frenar es "declaré Pehuajó y el punto está en Merlo", no un suburbio. */
+const LEJOS_DE_SU_CIUDAD_KM = 25;
+
+/**
+ * ¿Este punto puede ser de alguien que vive en esta ciudad?
+ *
+ * Existe para poder aceptar el punto que la persona eligió en la lista sin
+ * resignar lo que protegía la regla vieja —que nadie se escriba las coordenadas
+ * a mano—. Un socio puede corregir su casa unas cuadras; no puede mudarse a otra
+ * provincia desde el navegador.
+ *
+ * Sin ciudad declarada no hay con qué comparar, y ahí se acepta: es el caso de
+ * quien todavía no completó el domicilio, no el de alguien mintiendo.
+ */
+export async function cercaDeSuCiudad(
+  punto: { lat: number; lng: number },
+  ciudad?: string | null,
+  provincia?: string | null,
+): Promise<boolean> {
+  const nombre = (ciudad ?? '').trim();
+  if (!nombre) return true;
+  /* "Capital" no es el nombre de ninguna ciudad: es la capital de su provincia.
+     Sin esto, "Capital, Mendoza" busca "Capitán Montoya" y da cualquier cosa. */
+  const buscar = sinTildes(nombre) === 'capital' ? (provincia ?? nombre) : nombre;
+  const u = new URL('https://apis.datos.gob.ar/georef/api/localidades');
+  u.searchParams.set('nombre', buscar);
+  u.searchParams.set('campos', 'centroide.lat,centroide.lon');
+  u.searchParams.set('max', '1');
+  if (provincia) u.searchParams.set('provincia', provincia);
+  try {
+    const j = (await fetch(u, { signal: AbortSignal.timeout(5000), cache: 'no-store' }).then((r) => (r.ok ? r.json() : null))) as
+      | { localidades?: { centroide?: { lat: number; lon: number } }[] }
+      | null;
+    const c = j?.localidades?.[0]?.centroide;
+    // Si el callejero no conoce la ciudad, no hay con qué desmentir al punto.
+    if (!c) return true;
+    return distanciaKm(punto, { lat: c.lat, lng: c.lon }) <= LEJOS_DE_SU_CIUDAD_KM;
+  } catch {
+    // Si no se pudo consultar, no se castiga a la persona: se acepta.
+    return true;
+  }
+}
+
 export async function geocodificarDomicilio(partes: {
   address?: string | null;
   city?: string | null;

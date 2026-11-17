@@ -457,7 +457,7 @@ export function Onboarding({ open, onClose, arranque, plans = data.plans, identi
                 provincia={socio.provincia || undefined}
                 localidad={socio.localidad || undefined}
                 onCambio={(t) => setB({ ...b, socio: { ...socio, domicilio: t } })}
-                onElegir={(l) => setB({ ...b, socio: { ...socio, domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia } })}
+                onElegir={(l) => setB({ ...b, socio: { ...socio, domicilio: l.domicilio, localidad: l.localidad, provincia: l.provincia, punto: { lat: l.lat, lng: l.lng } } })}
                 placeholder="Calle y número"
                 style={input}
               />

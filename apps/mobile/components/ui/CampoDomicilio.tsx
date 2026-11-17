@@ -21,7 +21,9 @@ import { apiKumo } from '../../lib/api';
  * desplegable absoluto queda debajo del teclado o tapa el campo siguiente, y las
  * pantallas donde vive esto ya scrollean.
  */
-export type LugarElegido = { domicilio: string; localidad: string; provincia: string };
+/** Incluye el PUNTO: elegir de la lista y después volver a adivinar las
+ *  coordenadas desde el texto es lo que mandó a 7 socios a otra ciudad. */
+export type LugarElegido = { domicilio: string; localidad: string; provincia: string; lat: number; lng: number };
 export type ZonaElegida = { zona: string; localidad: string; provincia: string };
 type Fila = { id: string; etiqueta: string };
 /** La sugerencia de dirección trae el punto: hace falta para preguntar el barrio. */
@@ -168,7 +170,7 @@ export function CampoDomicilio({
       tono={tono}
       onElegir={(f) => {
         cerrar(f.domicilio, f.etiqueta);
-        onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia });
+        onElegir({ domicilio: f.domicilio, localidad: f.localidad, provincia: f.provincia, lat: f.lat, lng: f.lng });
         /* En CABA el callejero oficial devuelve la comuna, y nadie dice que vive en la
            Comuna 13: dice Belgrano. El barrio se pregunta aparte —una consulta, recién
            cuando ya eligió— y llega un instante después. El campo se llena primero con
@@ -177,7 +179,7 @@ export function CampoDomicilio({
           fetch(`${apiKumo}/api/lugares/barrio?lat=${f.lat}&lng=${f.lng}`)
             .then((r) => (r.ok ? r.json() : null))
             .then((d: { barrio?: string } | null) => {
-              if (d?.barrio) onElegir({ domicilio: f.domicilio, localidad: d.barrio, provincia: f.provincia });
+              if (d?.barrio) onElegir({ domicilio: f.domicilio, localidad: d.barrio, provincia: f.provincia, lat: f.lat, lng: f.lng });
             })
             .catch(() => {});
         }

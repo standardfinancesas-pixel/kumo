@@ -3394,7 +3394,9 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [editando, setEditando] = useState(false);
-  const [datos, setDatos] = useState({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email,
+  /* `punto` solo se llena si eligió el domicilio de la lista: es el que mostró el
+     callejero. Si escribió a mano queda undefined y lo resuelve el servidor. */
+  const [datos, setDatos] = useState<{ nombre: string; dni: string; dom: string; localidad: string; provincia: string; tel: string; email: string; bancoTitular: string; bancoTitularDni: string; bancoCuit: string; bancoNombre: string; bancoCbu: string; punto?: { lat: number; lng: number } }>({ nombre: profile.fullName, dni: profile.dni ?? '', dom: profile.address ?? '', localidad: profile.city ?? '', provincia: profile.province ?? '', tel: profile.phone ?? '', email: profile.email,
     bancoTitular: profile.banco.holder ?? '', bancoTitularDni: profile.banco.holderDni ?? '', bancoCuit: profile.banco.cuit ?? '',
     bancoNombre: profile.banco.banco ?? '', bancoCbu: destinoParaMostrar(profile.banco.cbu, profile.banco.alias) });
   const [bajaOpen, setBajaOpen] = useState(false);
@@ -3474,7 +3476,14 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
        ya no vive. Se pide solo cuando el domicilio cambió, y no se espera la
        respuesta: es el centro de un mapa, no parte de guardar los datos. */
     if (datos.dom.trim() !== (profile.address ?? '') || datos.localidad.trim() !== (profile.city ?? '') || datos.provincia.trim() !== (profile.province ?? '')) {
-      void fetch('/api/perfil/ubicacion', { method: 'POST' });
+      /* Con el punto que eligió de la lista, si eligió: es el que mostró el
+         callejero, y es mejor que volver a derivarlo del texto. El servidor lo
+         acepta solo si cae cerca de la ciudad declarada. */
+      void fetch('/api/perfil/ubicacion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos.punto ?? {}),
+      });
     }
     setEditando(false);
     router.refresh();
@@ -3752,7 +3761,7 @@ function Perfil({ go, profile, pets, reintegradoTotal, negocios, cuota, pago, pa
                 provincia={datos.provincia || undefined}
                 localidad={datos.localidad || undefined}
                 onCambio={(t) => setDatos((d) => ({ ...d, dom: t }))}
-                onElegir={(l) => setDatos((d) => ({ ...d, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia }))}
+                onElegir={(l) => setDatos((d) => ({ ...d, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia, punto: { lat: l.lat, lng: l.lng } }))}
                 placeholder="Calle y número"
                 style={{ ...inputEdit, marginBottom: 0 }}
               />

@@ -63,6 +63,14 @@ export const formatFecha = (raw: string) => {
 export type SocioAlta = {
   nombre: string; dni: string; fnac: string; domicilio: string; localidad: string;
   provincia: string; tel: string; email: string; password: string;
+  /**
+   * El punto que mostró el callejero cuando eligió el domicilio de la lista.
+   *
+   * Opcional porque el campo acepta texto libre a propósito: quien escribe a mano
+   * no lo tiene y lo resuelve el servidor. Cuando SÍ está, se usa tal cual — volver
+   * a derivarlo del texto es lo que mandó a 7 socios a otra ciudad.
+   */
+  punto?: { lat: number; lng: number } | null;
 };
 
 /**
@@ -172,7 +180,7 @@ export function mascotaVacia(inicial?: { nombre?: string; especie?: string }): M
 export function borradorVacio(inicial?: { nombre?: string; email?: string; mascota?: string; especie?: string }): BorradorAlta {
   return {
     socio: {
-      nombre: inicial?.nombre ?? '', dni: '', fnac: '', domicilio: '', localidad: '',
+      nombre: inicial?.nombre ?? '', dni: '', fnac: '', domicilio: '', localidad: '', punto: null,
       provincia: '', tel: '', email: inicial?.email ?? '', password: '',
     },
     mascotas: [mascotaVacia({ nombre: inicial?.mascota, especie: inicial?.especie })],

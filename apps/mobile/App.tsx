@@ -1826,9 +1826,16 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
     reload();
     setFotoBusy(false);
   };
-  const [datos, setDatos] = useState({
+  /* `punto` solo se llena si eligió el domicilio de la lista: es el que le mostró
+     el callejero. Si escribió a mano queda null y lo resuelve el servidor. */
+  const [datos, setDatos] = useState<{
+    nombre: string; dni: string; dom: string; localidad: string; provincia: string; tel: string;
+    bancoTitular: string; bancoTitularDni: string; bancoCuit: string; bancoNombre: string; bancoCbu: string;
+    punto?: { lat: number; lng: number } | null;
+  }>({
     nombre: '', dni: '', dom: '', localidad: '', provincia: '', tel: '',
     bancoTitular: '', bancoTitularDni: '', bancoCuit: '', bancoNombre: '', bancoCbu: '',
+    punto: null,
   });
 
   /** Se carga al abrir la edición y no en el render: los "—" del display no son
@@ -1879,7 +1886,7 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
     if (datos.dom.trim() !== (profile.address === '—' ? '' : profile.address)
       || datos.localidad.trim() !== (profile.city === '—' ? '' : profile.city)
       || datos.provincia.trim() !== (profile.province === '—' ? '' : profile.province)) {
-      void recalcularUbicacion();
+      void recalcularUbicacion(datos.punto);
     }
     setEditando(false);
     await reload();
@@ -2145,7 +2152,7 @@ function Perfil({ profile, pagos, bloqueados, go, reload, pago, onPlan }: { prof
             provincia={datos.provincia || undefined}
             localidad={datos.localidad || undefined}
             onCambio={(v) => { setDatos({ ...datos, dom: v }); setError(''); }}
-            onElegir={(l) => setDatos({ ...datos, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia })}
+            onElegir={(l) => setDatos({ ...datos, dom: l.domicilio, localidad: l.localidad, provincia: l.provincia, punto: { lat: l.lat, lng: l.lng } })}
           />
           {campo('Teléfono', datos.tel, (v) => setDatos({ ...datos, tel: v }), { keyboardType: 'phone-pad' })}
 
