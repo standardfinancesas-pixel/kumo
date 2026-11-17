@@ -240,14 +240,43 @@ const plano = (t: string) => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g
  */
 const NEGADO = /\b(no|sin|ningun[ao]?|tampoco|nunca|nada de)\s+(tiene|tienen|tuvo|tenia|hay|hubo|sale|le sale|veo|vi|note|noto|se ve|es|era|vomito|vomita|vomitaron|echo|echa|larga|largo|con|de)?\s*$/;
 
+/** Ya lo vio alguien y lo descartó: "vino el veterinario y descartó veneno". */
+const DESCARTADO = /\b(descart\w*|dio negativo para)\s+(el|la|lo|un|una)?\s*$/;
+
+/**
+ * Lo que pasó hace mucho no es lo que está pasando ahora.
+ *
+ * "Convulsionó cuando era cachorro, ahora está con tos" mandaba a la guardia por
+ * convulsiones. Es la misma falla que "no tiene sangre" —mirar la palabra sin
+ * mirar lo que tiene al lado— y le pega justo a quien cuenta bien la historia de
+ * su mascota.
+ *
+ * Solo cuenta el pasado LEJANO, y pegado a la frase. "Hace dos horas" no entra
+ * acá, ni "ayer", ni "anoche": esos son el presente de un triaje. Y la marca
+ * tiene que estar al lado, porque si se mirara todo el texto, "hace un año que
+ * no come bien y hoy convulsionó" se taparía con el año y se perdería el hoy.
+ */
+const LEJOS = '(hace (un|dos|tres|cuatro|cinco|seis|siete|ocho|varios|muchos|unos) (anos?|meses)|hace (mucho|tiempo)|el ano pasado|(anos|meses) atras|cuando era (cachorr[oa]|bebe|chiquit[oa]|chic[oa]|joven)|de (cachorr[oa]|bebe|chiquit[oa]))';
+const PASADO_ANTES = new RegExp(`\\b${LEJOS}\\s+(lo|la|le|se)?\\s*$`);
+const PASADO_DESPUES = new RegExp(`^[\\s,]*${LEJOS}\\b`);
+
 export function senalesEnTexto(texto: string): string[] {
   const t = plano(texto);
   const encontradas = new Set<string>();
   for (const { frase, senal } of FRASES_ROJAS) {
-    /* Se miran TODAS las apariciones: alcanza con que una no esté negada.
+    /* Se miran TODAS las apariciones: alcanza con que una no esté descartada.
        "No tiene sangre pero sangra la pata" tiene que escalar igual. */
     for (let i = t.indexOf(frase); i !== -1; i = t.indexOf(frase, i + frase.length)) {
-      if (!NEGADO.test(t.slice(Math.max(0, i - 28), i))) { encontradas.add(senal); break; }
+      const antes = t.slice(Math.max(0, i - 30), i);
+      /* Hasta el final de la PALABRA, no de la frase buscada: "convuls" matchea
+         dentro de "convulsiono", y lo que interesa es lo que viene después de la
+         palabra entera. */
+      let fin = i + frase.length;
+      while (fin < t.length && /[a-z0-9]/.test(t[fin] ?? '')) fin++;
+      const despues = t.slice(fin, fin + 34);
+      const descartada =
+        NEGADO.test(antes) || DESCARTADO.test(antes) || PASADO_ANTES.test(antes) || PASADO_DESPUES.test(despues);
+      if (!descartada) { encontradas.add(senal); break; }
     }
   }
   return [...encontradas];
