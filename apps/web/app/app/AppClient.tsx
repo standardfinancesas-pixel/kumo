@@ -75,16 +75,11 @@ const pillPath = <><path d="M10.5 20.5 3.5 13.5a5 5 0 0 1 7-7l7 7a5 5 0 0 1-7 7z
 const bellPath = <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.7 21a2 2 0 0 1-3.4 0" /></>;
 
 /** `notif` no va en el sidebar: se llega por la campanita, como en el prototipo. */
-type Screen = 'inicio' | 'carnet' | 'kumi' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif' | 'prestar' | 'mismascotas';
+type Screen = 'inicio' | 'carnet' | 'servicios' | 'reintegros' | 'beneficios' | 'foros' | 'negocio' | 'perfil' | 'notif' | 'prestar' | 'mismascotas';
 
 const NAV_TODO: { key: Screen; label: string; icon: ReactNode }[] = [
   { key: 'inicio', label: 'Inicio', icon: ic(house) },
   { key: 'carnet', label: 'Carnet', icon: ic(plusCircle) },
-  /* KUMI va para TODOS, pagos y gratuitos: es orientación de salud, y poner la
-     urgencia atrás de la cuota seria cobrarle a alguien por enterarse de que
-     tiene que salir para la guardia. Lo que sí es del plan es la videoconsulta,
-     y eso lo dice la tarjeta del resultado. */
-  { key: 'kumi', label: 'KUMI', icon: ic(chat) },
   { key: 'servicios', label: 'Servicios', icon: ic(paw, true) },
   { key: 'reintegros', label: 'Reintegros', icon: ic(wallet) },
   { key: 'beneficios', label: 'Beneficios', icon: ic(idCard) },
@@ -4108,31 +4103,30 @@ function Sheet({ onClose, children }: { onClose: () => void; children: ReactNode
     </div>
   );
 }
-/* ── Pantalla: KUMI ────────────────────────────────────────────── */
+/* ── KUMI, la burbuja flotante ─────────────────────────────────── */
 
 /** Los colores de cada desenlace. El rojo es solo para la guardia: si todo
- *  alarma, nada alarma. */
-/* Con `satisfies` y no `Record<...>`: el proyecto tiene `noUncheckedIndexedAccess`,
-   que convierte cualquier lectura de un Record en "puede ser undefined". Así las
-   tres claves siguen siendo propiedades conocidas y el tipo se verifica igual. */
+ *  alarma, nada alarma.
+ *  Con `satisfies` y no `Record<...>` porque el proyecto tiene
+ *  `noUncheckedIndexedAccess`, que vuelve "posiblemente undefined" cada lectura. */
 const TONO_NIVEL = {
   guardia: { fondo: 'rgb(251,232,239)', borde: 'rgb(240,190,205)', tinta: 'rgb(176,72,63)' },
   videoconsulta: { fondo: 'rgb(251,243,226)', borde: 'rgb(240,224,180)', tinta: 'rgb(146,105,10)' },
   casa: { fondo: 'rgb(226,245,234)', borde: 'rgb(168,220,192)', tinta: 'rgb(47,143,91)' },
 } satisfies Record<NivelUrgencia, { fondo: string; borde: string; tinta: string }>;
 
-/** Una pastilla que se prende y se apaga. Es casi toda la interfaz de KUMI. */
-function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => void; children: ReactNode }) {
+/** Una respuesta rápida: la pastilla que el socio toca en vez de escribir. */
+function Rapida({ activa, onClick, children }: { activa?: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
       style={{
-        border: `1.5px solid ${activo ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`,
-        background: activo ? 'rgb(240,237,249)' : '#fff',
-        color: activo ? 'rgb(93,84,145)' : 'rgb(63,58,85)',
-        fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13,
-        padding: '9px 13px', borderRadius: 100, cursor: 'pointer', textAlign: 'left',
+        border: `1.5px solid ${activa ? 'rgb(93,84,145)' : 'rgb(230,227,240)'}`,
+        background: activa ? 'rgb(240,237,249)' : '#fff',
+        color: activa ? 'rgb(93,84,145)' : 'rgb(63,58,85)',
+        fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 12.5,
+        padding: '8px 12px', borderRadius: 100, cursor: 'pointer', textAlign: 'left',
       }}
     >
       {children}
@@ -4140,197 +4134,280 @@ function Chip({ activo, onClick, children }: { activo: boolean; onClick: () => v
   );
 }
 
-const HORAS = [
-  { v: 3, label: 'Menos de 6 horas' },
-  { v: 12, label: 'Hoy' },
-  { v: 36, label: 'Uno o dos días' },
-  { v: 96, label: 'Varios días' },
-  { v: 200, label: 'Más de una semana' },
-];
-
 /**
- * KUMI, la orientación veterinaria.
+ * El guion de KUMI.
  *
- * Es un formulario y no un chat **por ahora**: arrancar sin IA sale más barato,
- * no depende de un servicio de terceros para una respuesta de urgencia y no manda
- * la foto de la mascota a otra empresa. Lo que decide es exactamente lo mismo en
- * los dos casos: las reglas de `@kumo/shared/triaje`, en el servidor.
+ * Es una conversación y NO un modelo: cada paso es una pregunta fija con sus
+ * respuestas. Parece un chat porque pregunta de a una cosa por vez, que es lo que
+ * hace que no se sienta un formulario — pero lo que decide sigue siendo
+ * `evaluarTriaje`, y el recorrido es siempre el mismo. Un guion se lee, se
+ * discute con un veterinario y se versiona; una charla generada, no.
  *
- * Acá no hay NADA de lógica clínica, a propósito. Si alguien quiere entender por
- * qué KUMI dijo lo que dijo, el lugar es `triaje.ts` y no esta pantalla.
- *
- * El aviso de emergencia está SIEMPRE visible, arriba de todo y antes de llenar
- * nada: alguien cuyo perro no respira no tiene que completar un formulario para
- * enterarse de que no tiene que estar completando un formulario.
+ * El orden importa: las señales de urgencia van SEGUNDAS, apenas después de qué
+ * animal es. Si hay una, la consulta se corta ahí y no se pregunta nada más. No
+ * tiene sentido averiguar el ánimo de un perro que convulsiona.
  */
-function Kumi({ profile, pago, onPlan }: { profile: Profile; pago: boolean; onPlan: () => void }) {
+type PasoId = 'especie' | 'senales' | 'toxicos' | 'edad' | 'cuando' | 'sintomas' | 'come' | 'animo' | 'relato';
+
+const EDADES: { label: string; meses: number }[] = [
+  { label: 'Menos de 3 meses', meses: 2 },
+  { label: 'Menos de 1 año', meses: 8 },
+  { label: 'Entre 1 y 7 años', meses: 48 },
+  { label: 'Más de 7 años', meses: 100 },
+];
+const CUANDOS: { label: string; horas: number }[] = [
+  { label: 'Menos de 6 horas', horas: 3 },
+  { label: 'Hoy', horas: 12 },
+  { label: 'Uno o dos días', horas: 36 },
+  { label: 'Varios días', horas: 96 },
+  { label: 'Más de una semana', horas: 200 },
+];
+/* Dos preguntas que destraban reglas combinadas. Van como síntomas más para que
+   no sean un paso aparte: en una conversación, cada paso de más se siente. */
+const EXTRA_PUJA = 'Hace fuerza para orinar y no sale nada';
+const EXTRA_ARCADAS = 'Tiene arcadas sin llegar a vomitar';
+
+type Burbuja = { de: 'kumi' | 'socio'; texto: string };
+
+function Kumi({ profile, pago, onPlan, subido }: { profile: Profile; pago: boolean; onPlan: () => void; subido: boolean }) {
+  const [abierto, setAbierto] = useState(false);
+  const [paso, setPaso] = useState<PasoId>('especie');
+  const [burbujas, setBurbujas] = useState<Burbuja[]>([]);
   const [especie, setEspecie] = useState<Especie | null>(null);
-  const [edadMeses, setEdadMeses] = useState('');
-  const [pesoKg, setPesoKg] = useState('');
+  const [edadMeses, setEdadMeses] = useState<number | null>(null);
   const [horas, setHoras] = useState<number | null>(null);
   const [senales, setSenales] = useState<string[]>([]);
   const [toxicos, setToxicos] = useState<string[]>([]);
   const [sintomas, setSintomas] = useState<string[]>([]);
+  const [puja, setPuja] = useState(false);
+  const [arcadas, setArcadas] = useState(false);
   const [animo, setAnimo] = useState<'normal' | 'decaido' | 'muy_decaido' | null>(null);
   const [comida, setComida] = useState<'normal' | 'come_menos' | 'no_come' | 'no_toma_agua' | null>(null);
-  const [pujaSinOrinar, setPuja] = useState(false);
-  const [arcadas, setArcadas] = useState(false);
   const [relato, setRelato] = useState('');
   const [acepto, setAcepto] = useState(false);
   const [verDeslinde, setVerDeslinde] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState('');
   const [resultado, setResultado] = useState<{ nivel: NivelUrgencia; motivos: string[]; accion: { titulo: string; bajada: string } } | null>(null);
+  const fin = useRef<HTMLDivElement>(null);
 
-  const alternar = (xs: string[], set: (v: string[]) => void) => (x: string) =>
-    set(xs.includes(x) ? xs.filter((y) => y !== x) : [...xs, x]);
+  useEffect(() => { fin.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [burbujas, resultado, abierto]);
 
-  const evaluar = async () => {
-    if (!especie) { setError('Decinos qué animal es.'); return; }
+  const decir = (de: Burbuja['de'], texto: string) => setBurbujas((b) => [...b, { de, texto }]);
+
+  /** Manda los hechos al servidor, que es quien evalúa y deja constancia. */
+  const evaluar = async (hechos: {
+    especie: Especie; edadMeses: number | null; horasDeEvolucion: number | null;
+    senales: string[]; toxicos: string[]; sintomas: string[];
+    animo: string | null; comida: string | null; relato: string;
+    pujaSinOrinar: boolean; arcadasSinVomitar: boolean;
+  }) => {
     setEnviando(true); setError('');
     const r = await fetch('/api/kumi', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        especie,
-        edadMeses: edadMeses ? Number(edadMeses) : null,
-        pesoKg: pesoKg ? Number(pesoKg) : null,
-        horasDeEvolucion: horas,
-        senales, toxicos, sintomas, animo, comida,
-        pujaSinOrinar, arcadasSinVomitar: arcadas,
-        relato, consentimiento: acepto,
-      }),
-    })
-      .then((res) => res.json())
-      .catch(() => ({ error: 'No pudimos conectarnos. Si es urgente, andá a una guardia.' }));
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...hechos, consentimiento: acepto }),
+    }).then((res) => res.json()).catch(() => ({ error: 'No pudimos conectarnos. Si es urgente, andá a una guardia.' }));
     setEnviando(false);
     if (r?.error) { setError(r.error); return; }
     setResultado({ nivel: r.veredicto.nivel, motivos: r.veredicto.motivos, accion: r.accion });
-    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const empezarDeNuevo = () => {
-    setEspecie(null); setEdadMeses(''); setPesoKg(''); setHoras(null);
-    setSenales([]); setToxicos([]); setSintomas([]); setAnimo(null); setComida(null);
-    setPuja(false); setArcadas(false); setRelato(''); setResultado(null); setError('');
+  const hechosDe = (extra: Partial<Parameters<typeof evaluar>[0]> = {}) => ({
+    especie: especie ?? 'otro',
+    edadMeses, horasDeEvolucion: horas,
+    senales, toxicos,
+    sintomas: sintomas.filter((s) => s !== EXTRA_PUJA && s !== EXTRA_ARCADAS),
+    animo, comida, relato,
+    pujaSinOrinar: puja, arcadasSinVomitar: arcadas,
+    ...extra,
+  });
+
+  const reiniciar = () => {
+    setPaso('especie'); setBurbujas([]); setEspecie(null); setEdadMeses(null); setHoras(null);
+    setSenales([]); setToxicos([]); setSintomas([]); setPuja(false); setArcadas(false);
+    setAnimo(null); setComida(null); setRelato(''); setResultado(null); setError('');
   };
 
   const wa = urlWhatsapp(data.clubSettings.whatsapp);
   const tono = resultado ? TONO_NIVEL[resultado.nivel] : null;
 
-  if (resultado && tono) {
-    return (
-      <div style={{ padding: '8px 20px 24px', maxWidth: 720 }}>
-        <div style={{ background: tono.fondo, border: `1px solid ${tono.borde}`, borderRadius: 18, padding: 20, marginBottom: 14 }}>
-          <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 21, color: tono.tinta }}>{resultado.accion.titulo}</div>
-          <p style={{ fontSize: 14, lineHeight: 1.55, margin: '6px 0 14px', color: 'rgb(63,58,85)' }}>{resultado.accion.bajada}</p>
-          <ul style={{ margin: '0 0 16px', paddingLeft: 18, fontSize: 13.5, lineHeight: 1.6, color: 'rgb(63,58,85)' }}>
-            {resultado.motivos.map((m, i) => <li key={i}>{m}</li>)}
-          </ul>
-          {resultado.nivel === 'guardia' && (
-            <a href="https://www.google.com/maps/search/veterinaria+de+urgencias+24h" target="_blank" rel="noopener noreferrer" style={{ ...sheetBtn(true), display: 'block', textAlign: 'center', textDecoration: 'none' }}>Buscar una guardia cerca</a>
-          )}
-          {resultado.nivel === 'videoconsulta' && (
-            pago && wa
-              ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...sheetBtn(true), display: 'block', textAlign: 'center', textDecoration: 'none' }}>Pedir la videoconsulta</a>
-              : <button onClick={onPlan} style={{ ...sheetBtn(true), width: '100%' }}>La videoconsulta viene con el plan</button>
-          )}
-          <button onClick={empezarDeNuevo} style={{ ...sheetBtn(false), width: '100%', marginTop: 8 }}>Empezar de nuevo</button>
-        </div>
-        <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', lineHeight: 1.5 }}>
-          Esto es una orientación y no reemplaza la consulta con un veterinario matriculado. Si empeora, andá a una guardia sin importar lo que diga acá.
-        </p>
-      </div>
-    );
-  }
+  /** La pregunta de cada paso y sus respuestas. */
+  const PREGUNTA: Record<PasoId, string> = {
+    especie: '¿Qué animal es?',
+    senales: '¿Ves alguna de estas señales?',
+    toxicos: '¿Pudo haber comido o tocado algo de esto?',
+    edad: '¿Qué edad tiene?',
+    cuando: '¿Hace cuánto que está así?',
+    sintomas: '¿Qué le ves? Podés marcar varias.',
+    come: '¿Come y toma agua?',
+    animo: '¿Cómo lo ves de ánimo?',
+    relato: 'Contame con tus palabras qué le pasa.',
+  };
 
   return (
-    <div style={{ padding: '8px 20px 24px', maxWidth: 720 }}>
-      <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 22, marginBottom: 2 }}>KUMI</div>
-      <p style={{ color: 'rgb(135,129,160)', fontSize: 14, margin: '0 0 14px' }}>Hola, {profile.firstName}. Contanos qué le pasa a tu mascota y te orientamos. No reemplaza al veterinario.</p>
+    <>
+      {/* La burbuja. Siempre en la esquina, sobre cualquier pantalla. */}
+      {!abierto && (
+        <button
+          onClick={() => setAbierto(true)}
+          aria-label="Abrir KUMI, orientación veterinaria"
+          style={{ position: 'fixed', right: 24, bottom: subido ? 92 : 24, width: 56, height: 56, borderRadius: 28, background: 'rgb(93,84,145)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 10px 24px rgba(93,84,145,0.4)', zIndex: 45 }}
+        >
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">{chat}</svg>
+        </button>
+      )}
 
-      {/* Siempre visible, antes de llenar nada. */}
-      <div style={{ background: TONO_NIVEL.guardia.fondo, border: `1px solid ${TONO_NIVEL.guardia.borde}`, borderRadius: 14, padding: '11px 14px', marginBottom: 18, fontSize: 12.5, lineHeight: 1.5, color: TONO_NIVEL.guardia.tinta }}>
-        <strong>Si no respira, convulsiona, sangra sin parar o se desmayó: andá a una guardia ahora.</strong> No completes esto.
-      </div>
+      {abierto && (
+        <div style={{ position: 'fixed', right: 24, bottom: 24, width: 'min(380px, calc(100vw - 32px))', maxHeight: 'min(620px, calc(100vh - 48px))', background: '#fff', borderRadius: 20, boxShadow: '0 24px 60px rgba(33,30,51,0.28)', border: '1px solid rgb(238,236,245)', display: 'flex', flexDirection: 'column', zIndex: 45, overflow: 'hidden' }}>
+          <div style={{ background: 'rgb(93,84,145)', padding: '13px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 17, color: '#fff' }}>KUMI</div>
+            <div style={{ fontSize: 11.5, color: 'rgb(201,195,227)', flex: 1 }}>orientación, no diagnóstico</div>
+            <button onClick={() => setAbierto(false)} aria-label="Cerrar" style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 0 }}>×</button>
+          </div>
 
-      <label style={sheetLabel}>¿Qué animal es?</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        {ESPECIES.map((e) => <Chip key={e.id} activo={especie === e.id} onClick={() => setEspecie(e.id)}>{e.label}</Chip>)}
-      </div>
+          <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ background: TONO_NIVEL.guardia.fondo, border: `1px solid ${TONO_NIVEL.guardia.borde}`, borderRadius: 12, padding: '9px 12px', fontSize: 11.5, lineHeight: 1.45, color: TONO_NIVEL.guardia.tinta }}>
+              <strong>Si no respira, convulsiona o se desmayó: andá a una guardia ahora.</strong> No esperes a terminar esto.
+            </div>
 
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 150px' }}>
-          <label style={sheetLabel} htmlFor="k-edad">Edad en meses <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-          <input id="k-edad" value={edadMeses} onChange={(e) => setEdadMeses(e.target.value)} inputMode="numeric" placeholder="Ej: 24" style={sheetInput} />
+            <div style={{ alignSelf: 'flex-start', maxWidth: '88%', background: 'rgb(247,246,250)', borderRadius: 14, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5 }}>
+              Hola {profile.firstName}, soy KUMI. Te hago unas preguntas y te oriento.
+            </div>
+
+            {burbujas.map((b, i) => (
+              <div key={i} style={{ alignSelf: b.de === 'socio' ? 'flex-end' : 'flex-start', maxWidth: '88%', background: b.de === 'socio' ? 'rgb(93,84,145)' : 'rgb(247,246,250)', color: b.de === 'socio' ? '#fff' : 'rgb(33,30,51)', borderRadius: 14, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
+                {b.texto}
+              </div>
+            ))}
+
+            {!resultado && !enviando && (
+              <div style={{ alignSelf: 'flex-start', maxWidth: '88%', background: 'rgb(247,246,250)', borderRadius: 14, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5 }}>
+                {PREGUNTA[paso]}
+              </div>
+            )}
+            {enviando && <div style={{ alignSelf: 'flex-start', color: 'rgb(135,129,160)', fontSize: 12.5 }}>Evaluando…</div>}
+
+            {resultado && tono && (
+              <div style={{ background: tono.fondo, border: `1px solid ${tono.borde}`, borderRadius: 16, padding: 15 }}>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 16.5, color: tono.tinta }}>{resultado.accion.titulo}</div>
+                <p style={{ fontSize: 13, lineHeight: 1.5, margin: '5px 0 10px', color: 'rgb(63,58,85)' }}>{resultado.accion.bajada}</p>
+                <ul style={{ margin: '0 0 12px', paddingLeft: 17, fontSize: 12.5, lineHeight: 1.55, color: 'rgb(63,58,85)' }}>
+                  {resultado.motivos.map((m, i) => <li key={i}>{m}</li>)}
+                </ul>
+                {resultado.nivel === 'guardia' && (
+                  <a href="https://www.google.com/maps/search/veterinaria+de+urgencias+24h" target="_blank" rel="noopener noreferrer" style={{ ...sheetBtn(true), display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 13.5, padding: 11 }}>Buscar una guardia cerca</a>
+                )}
+                {resultado.nivel === 'videoconsulta' && (
+                  pago && wa
+                    ? <a href={wa} target="_blank" rel="noopener noreferrer" style={{ ...sheetBtn(true), display: 'block', textAlign: 'center', textDecoration: 'none', fontSize: 13.5, padding: 11 }}>Pedir la videoconsulta</a>
+                    : <button onClick={onPlan} style={{ ...sheetBtn(true), width: '100%', fontSize: 13.5, padding: 11 }}>La videoconsulta viene con el plan</button>
+                )}
+                <button onClick={reiniciar} style={{ ...sheetBtn(false), width: '100%', marginTop: 7, fontSize: 13.5, padding: 11 }}>Otra consulta</button>
+              </div>
+            )}
+            <div ref={fin} />
+          </div>
+
+          {!resultado && (
+            <div style={{ borderTop: '1px solid rgb(238,236,245)', padding: 14, background: '#fff' }}>
+              {error && <div style={{ fontSize: 12, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 8 }}>{error}</div>}
+
+              {!acepto ? (
+                /* El deslinde primero: que sepa qué está usando ANTES de contarle
+                   nada, no después de haber contado todo. */
+                <>
+                  <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12, color: 'rgb(91,86,112)', lineHeight: 1.45, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)} style={{ marginTop: 2, flex: 'none' }} />
+                    <span>
+                      Acepto el{' '}
+                      <button type="button" onClick={(e) => { e.preventDefault(); setVerDeslinde(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12, cursor: 'pointer', textDecoration: 'underline', fontFamily: '"DM Sans"' }}>deslinde</button>
+                      : esto orienta, no reemplaza al veterinario.
+                    </span>
+                  </label>
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+                  {paso === 'especie' && ESPECIES.map((e) => (
+                    <Rapida key={e.id} onClick={() => { setEspecie(e.id); decir('socio', e.label); setPaso('senales'); }}>{e.label}</Rapida>
+                  ))}
+
+                  {paso === 'senales' && (
+                    <>
+                      {SENALES_URGENCIA.map((s) => (
+                        <Rapida key={s} activa={senales.includes(s)} onClick={() => setSenales((xs) => xs.includes(s) ? xs.filter((y) => y !== s) : [...xs, s])}>{s}</Rapida>
+                      ))}
+                      <Rapida onClick={() => {
+                        if (senales.length > 0) {
+                          /* Hay señal roja: se corta acá. Nada de lo que venga
+                             después puede bajarle el nivel, así que no se pregunta. */
+                          decir('socio', senales.join(', '));
+                          void evaluar(hechosDe({ especie: especie ?? 'otro' }));
+                        } else { decir('socio', 'Ninguna de esas'); setPaso('toxicos'); }
+                      }}>{senales.length > 0 ? `Listo (${senales.length})` : 'Ninguna de esas'}</Rapida>
+                    </>
+                  )}
+
+                  {paso === 'toxicos' && (
+                    <>
+                      {TOXICOS.map((t) => (
+                        <Rapida key={t} activa={toxicos.includes(t)} onClick={() => setToxicos((xs) => xs.includes(t) ? xs.filter((y) => y !== t) : [...xs, t])}>{t}</Rapida>
+                      ))}
+                      <Rapida onClick={() => {
+                        if (toxicos.length > 0) { decir('socio', toxicos.join(', ')); void evaluar(hechosDe()); }
+                        else { decir('socio', 'Nada de eso'); setPaso('edad'); }
+                      }}>{toxicos.length > 0 ? `Listo (${toxicos.length})` : 'Nada de eso'}</Rapida>
+                    </>
+                  )}
+
+                  {paso === 'edad' && EDADES.map((e) => (
+                    <Rapida key={e.label} onClick={() => { setEdadMeses(e.meses); decir('socio', e.label); setPaso('cuando'); }}>{e.label}</Rapida>
+                  ))}
+
+                  {paso === 'cuando' && CUANDOS.map((c) => (
+                    <Rapida key={c.label} onClick={() => { setHoras(c.horas); decir('socio', c.label); setPaso('sintomas'); }}>{c.label}</Rapida>
+                  ))}
+
+                  {paso === 'sintomas' && (
+                    <>
+                      {[...SINTOMAS, EXTRA_PUJA, EXTRA_ARCADAS].map((s) => (
+                        <Rapida key={s} activa={sintomas.includes(s)} onClick={() => setSintomas((xs) => xs.includes(s) ? xs.filter((y) => y !== s) : [...xs, s])}>{s}</Rapida>
+                      ))}
+                      <Rapida onClick={() => {
+                        setPuja(sintomas.includes(EXTRA_PUJA));
+                        setArcadas(sintomas.includes(EXTRA_ARCADAS));
+                        decir('socio', sintomas.length ? sintomas.join(', ') : 'No sabría decir');
+                        setPaso('come');
+                      }}>Listo</Rapida>
+                    </>
+                  )}
+
+                  {paso === 'come' && ([['normal', 'Come normal'], ['come_menos', 'Come menos'], ['no_come', 'No come'], ['no_toma_agua', 'No toma agua']] as const).map(([v, l]) => (
+                    <Rapida key={v} onClick={() => { setComida(v); decir('socio', l); setPaso('animo'); }}>{l}</Rapida>
+                  ))}
+
+                  {paso === 'animo' && ([['normal', 'Normal, activo'], ['decaido', 'Algo decaído'], ['muy_decaido', 'Muy decaído']] as const).map(([v, l]) => (
+                    <Rapida key={v} onClick={() => { setAnimo(v); decir('socio', l); setPaso('relato'); }}>{l}</Rapida>
+                  ))}
+
+                  {paso === 'relato' && (
+                    <div style={{ display: 'flex', gap: 7, width: '100%' }}>
+                      <textarea
+                        value={relato}
+                        onChange={(e) => setRelato(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); decir('socio', relato || 'Nada más'); void evaluar(hechosDe({ relato })); } }}
+                        rows={2}
+                        placeholder="Desde anoche tiembla y no quiere salir…"
+                        style={{ ...sheetInput, resize: 'none', flex: 1, fontSize: 13 }}
+                      />
+                      <button onClick={() => { decir('socio', relato || 'Nada más'); void evaluar(hechosDe({ relato })); }} style={{ ...sheetBtn(true), width: 44, flex: 'none', padding: 0 }} aria-label="Enviar">↑</button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
-        <div style={{ flex: '1 1 150px' }}>
-          <label style={sheetLabel} htmlFor="k-peso">Peso en kilos <span style={{ fontWeight: 500, color: 'rgb(162,157,186)' }}>(opcional)</span></label>
-          <input id="k-peso" value={pesoKg} onChange={(e) => setPesoKg(e.target.value)} inputMode="decimal" placeholder="Ej: 8" style={sheetInput} />
-        </div>
-      </div>
-      <p style={{ fontSize: 11.5, color: 'rgb(135,129,160)', margin: '-8px 0 16px', lineHeight: 1.45 }}>La edad y el peso cambian el criterio: un cachorro de dos meses y un perro grande tienen urgencias propias.</p>
-
-      <label style={sheetLabel}>¿Hace cuánto?</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-        {HORAS.map((h) => <Chip key={h.v} activo={horas === h.v} onClick={() => setHoras(h.v)}>{h.label}</Chip>)}
-      </div>
-
-      <label style={{ ...sheetLabel, color: TONO_NIVEL.guardia.tinta }}>¿Alguna de estas señales?</label>
-      <p style={{ fontSize: 12, color: 'rgb(135,129,160)', margin: '-4px 0 8px' }}>Si marcás alguna, es urgencia: no esperes el resultado.</p>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-        {SENALES_URGENCIA.map((s) => <Chip key={s} activo={senales.includes(s)} onClick={() => alternar(senales, setSenales)(s)}>{s}</Chip>)}
-      </div>
-
-      <label style={sheetLabel}>¿Pudo haber comido o tocado algo de esto?</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-        {TOXICOS.map((t) => <Chip key={t} activo={toxicos.includes(t)} onClick={() => alternar(toxicos, setToxicos)(t)}>{t}</Chip>)}
-      </div>
-
-      <label style={sheetLabel}>¿Qué le ves?</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        {SINTOMAS.map((s) => <Chip key={s} activo={sintomas.includes(s)} onClick={() => alternar(sintomas, setSintomas)(s)}>{s}</Chip>)}
-      </div>
-
-      {/* Las dos preguntas que destraban reglas combinadas. Se muestran siempre:
-          esconderlas detrás de "si es macho" obliga a preguntar el sexo para
-          nada, y la respuesta "no" cuesta un toque. */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 18 }}>
-        <Chip activo={pujaSinOrinar} onClick={() => setPuja(!pujaSinOrinar)}>Hace fuerza para orinar y no sale nada</Chip>
-        <Chip activo={arcadas} onClick={() => setArcadas(!arcadas)}>Tiene arcadas sin llegar a vomitar</Chip>
-      </div>
-
-      <label style={sheetLabel}>¿Come y toma agua?</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        {([['normal', 'Sí, normal'], ['come_menos', 'Come menos'], ['no_come', 'No come'], ['no_toma_agua', 'No toma agua']] as const).map(([v, l]) => (
-          <Chip key={v} activo={comida === v} onClick={() => setComida(v)}>{l}</Chip>
-        ))}
-      </div>
-
-      <label style={sheetLabel}>¿Cómo está de ánimo?</label>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-        {([['normal', 'Normal, activo'], ['decaido', 'Algo decaído'], ['muy_decaido', 'Muy decaído / no se levanta']] as const).map(([v, l]) => (
-          <Chip key={v} activo={animo === v} onClick={() => setAnimo(v)}>{l}</Chip>
-        ))}
-      </div>
-
-      <label style={sheetLabel} htmlFor="k-relato">Contalo con tus palabras</label>
-      <textarea id="k-relato" value={relato} onChange={(e) => setRelato(e.target.value)} rows={3} placeholder="Desde anoche está decaída, no come y tiembla…" style={{ ...sheetInput, resize: 'none', marginBottom: 16 }} />
-
-      <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginBottom: 16, fontSize: 12.5, color: 'rgb(91,86,112)', lineHeight: 1.5, cursor: 'pointer' }}>
-        <input type="checkbox" checked={acepto} onChange={(e) => setAcepto(e.target.checked)} style={{ marginTop: 2, flex: 'none' }} />
-        <span>
-          Leí y acepto el{' '}
-          <button type="button" onClick={(e) => { e.preventDefault(); setVerDeslinde(true); }} style={{ background: 'none', border: 'none', padding: 0, color: 'rgb(93,84,145)', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', textDecoration: 'underline', fontFamily: '"DM Sans"' }}>deslinde de responsabilidad</button>
-          . Entiendo que esto es una orientación y no reemplaza la consulta con un veterinario.
-        </span>
-      </label>
-
-      {error && <div style={{ fontSize: 12.5, color: 'rgb(176,72,63)', fontWeight: 600, marginBottom: 12 }}>{error}</div>}
-
-      <button onClick={() => void evaluar()} disabled={!acepto || !especie || enviando} style={{ ...sheetBtn(true), width: '100%', opacity: !acepto || !especie || enviando ? 0.5 : 1 }}>
-        {enviando ? 'Evaluando…' : 'Evaluar ahora'}
-      </button>
+      )}
 
       {verDeslinde && (
         <Sheet onClose={() => setVerDeslinde(false)}>
@@ -4345,7 +4422,7 @@ function Kumi({ profile, pago, onPlan }: { profile: Profile; pago: boolean; onPl
           <button onClick={() => setVerDeslinde(false)} style={{ ...sheetBtn(true), width: '100%' }}>Entendido</button>
         </Sheet>
       )}
-    </div>
+    </>
   );
 }
 
@@ -5009,7 +5086,6 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
         <div style={{ maxWidth: 880, margin: '0 auto', width: '100%', paddingTop: 16 }}>
           {pantalla === 'inicio' && <Inicio go={go} petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} noLeidas={noLeidas} pago={pago} desdePlan={acreditandose ? 0 : desdePlan} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'carnet' && <Carnet petIdx={petIdx} setPetIdx={setPetIdx} pets={pets} profile={profile} contacts={contacts} />}
-          {pantalla === 'kumi' && <Kumi profile={profile} pago={pago} onPlan={() => setPlanAbierto(true)} />}
           {pantalla === 'servicios' && <Servicios go={go} providers={providers} initialGuardados={guardados} profile={profile} reviews={reviews} centro={centro} />}
           {pantalla === 'prestar' && <Prestar go={go} profile={profile} />}
           {pantalla === 'reintegros' && pago && <Reintegros initialReintegros={reintegros} planName={profile.planName} planRefundPct={profile.planRefundPct} topeMensual={profile.planTopeMensual} topeAnual={profile.planTopeAnual} memberId={profile.id} pets={pets} banco={profile.banco} />}
@@ -5021,6 +5097,11 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           {pantalla === 'notif' && <Notificaciones go={go} groups={notifGroups} visto={visto} marcarLeidas={marcarLeidas} onAbrirHilo={setHiloDesdeAviso} />}
         </div>
       </div>
+      {/* Flotante y fuera del contenedor que scrollea: KUMI tiene que estar a mano
+          en cualquier pantalla, no ser un lugar al que hay que ir. `subido` lo
+          corre para arriba en Foros, que ya tiene su propio botón flotante en esa
+          esquina. */}
+      <Kumi profile={profile} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} />
     </div>
   );
 }
