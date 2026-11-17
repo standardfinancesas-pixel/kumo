@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   urls, FOTO_TIPOS, PROVINCIAS, RUBROS, partirZona, avisoZona, avisoZonaLejos,
-  data, CUIDADOS, DESLINDE, ESPECIES, SENALES_URGENCIA, SINTOMAS, TOXICOS, type Especie, type NivelUrgencia,
+  data, ANTECEDENTES, CUIDADOS, DESLINDE, ESPECIES, type Antecedente, SENALES_URGENCIA, SINTOMAS, TOXICOS, type Especie, type NivelUrgencia,
   buildNotifs, contarNoLeidas, esNoLeida, iniciales, notifTiempo, NOTIF_STYLE, type NotifInput, type NotifGroup, type Notif,
   ODONTO_PRECIO, buildCalMes, buildPickerMes, calMesLabel, calDiaLabel, fmtFechaCorta, hoyISO, CAL_TONE, CAL_DIAS, VACUNA_KINDS, KIND_ICON,
   PAGO_ESTADO, PAGO_MEDIO, type EstadoPago, type MedioPago,
@@ -4160,7 +4160,7 @@ function Rapida({ activa, onClick, children }: { activa?: boolean; onClick: () =
  * animal es. Si hay una, la consulta se corta ahí y no se pregunta nada más. No
  * tiene sentido averiguar el ánimo de un perro que convulsiona.
  */
-type PasoId = 'mascota' | 'especie' | 'senales' | 'toxicos' | 'edad' | 'cuando' | 'sintomas' | 'come' | 'animo' | 'relato';
+type PasoId = 'mascota' | 'especie' | 'peso' | 'senales' | 'toxicos' | 'edad' | 'cuando' | 'sintomas' | 'antecedente' | 'come' | 'animo' | 'relato';
 
 const EDADES: { label: string; meses: number }[] = [
   { label: 'Menos de 3 meses', meses: 2 },
@@ -4196,6 +4196,8 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
   const [especie, setEspecie] = useState<Especie | null>(null);
   const [edadMeses, setEdadMeses] = useState<number | null>(null);
   const [horas, setHoras] = useState<number | null>(null);
+  const [pesoKg, setPesoKg] = useState<number | null>(null);
+  const [antecedente, setAntecedente] = useState<Antecedente | null>(null);
   const [senales, setSenales] = useState<string[]>([]);
   const [toxicos, setToxicos] = useState<string[]>([]);
   const [sintomas, setSintomas] = useState<string[]>([]);
@@ -4250,7 +4252,8 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
 
   const hechosDe = (extra: Partial<Parameters<typeof evaluar>[0]> = {}) => ({
     especie: especie ?? 'otro',
-    pesoKg: pets.find((m) => m.id === petId)?.pesoKg ?? null,
+    pesoKg: pets.find((m) => m.id === petId)?.pesoKg ?? pesoKg,
+    antecedente,
     edadMeses, horasDeEvolucion: horas,
     senales, toxicos,
     sintomas: sintomas.filter((s) => s !== EXTRA_PUJA && s !== EXTRA_ARCADAS),
@@ -4261,7 +4264,7 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
 
   const reiniciar = () => {
     setPaso(pets.length > 0 ? 'mascota' : 'especie'); setAtras([]); setPetId(null); setBurbujas([]); setEspecie(null); setEdadMeses(null); setHoras(null);
-    setSenales([]); setToxicos([]); setSintomas([]); setPuja(false); setArcadas(false);
+    setSenales([]); setToxicos([]); setSintomas([]); setPuja(false); setArcadas(false); setPesoKg(null); setAntecedente(null);
     setAnimo(null); setComida(null); setRelato(''); setResultado(null); setError('');
   };
 
@@ -4288,11 +4291,13 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
   const PREGUNTA: Record<PasoId, string> = {
     mascota: '¿Por cuál de tus mascotas consultás?',
     especie: '¿Qué animal es?',
+    peso: '¿Cuánto pesa, más o menos?',
     senales: '¿Ves alguna de estas señales?',
     toxicos: '¿Pudo haber comido o tocado algo de esto?',
     edad: '¿Qué edad tiene?',
     cuando: '¿Hace cuánto que está así?',
     sintomas: '¿Qué le ves? Podés marcar varias.',
+    antecedente: '¿Le había pasado antes?',
     come: '¿Come y toma agua?',
     animo: '¿Cómo lo ves de ánimo?',
     relato: 'Contame con tus palabras qué le pasa.',
@@ -4430,7 +4435,19 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
                   )}
 
                   {paso === 'especie' && ESPECIES.map((e) => (
-                    <Rapida key={e.id} onClick={() => { setEspecie(e.id); decir('socio', e.label); seguirA('senales'); }}>{e.label}</Rapida>
+                    <Rapida key={e.id} onClick={() => { setEspecie(e.id); decir('socio', e.label); seguirA(e.id === 'perro' ? 'peso' : 'senales'); }}>{e.label}</Rapida>
+                  ))}
+
+                  {/* El peso solo se pregunta cuando NO salió de una ficha y es un
+                      perro: la única regla que lo usa es la del perro grande con
+                      arcadas. Preguntárselo al dueño de un gato sería pedir un dato
+                      que no va a cambiar nada. */}
+                  {paso === 'peso' && ([['Menos de 10 kg', 6], ['Entre 10 y 20 kg', 15], ['Más de 20 kg', 30]] as const).map(([l, kg]) => (
+                    <Rapida key={l} onClick={() => { setPesoKg(kg); decir('socio', l); seguirA('senales'); }}>{l}</Rapida>
+                  ))}
+
+                  {paso === 'antecedente' && ANTECEDENTES.map((a) => (
+                    <Rapida key={a.id} onClick={() => { setAntecedente(a.id); decir('socio', a.label); seguirA('come'); }}>{a.label}</Rapida>
                   ))}
 
                   {paso === 'senales' && (
@@ -4478,7 +4495,7 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro }: { profile: Profil
                         setPuja(sintomas.includes(EXTRA_PUJA));
                         setArcadas(sintomas.includes(EXTRA_ARCADAS));
                         decir('socio', sintomas.length ? sintomas.join(', ') : 'No sabría decir');
-                        seguirA('come');
+                        seguirA('antecedente');
                       }}>Listo</Rapida>
                     </>
                   )}

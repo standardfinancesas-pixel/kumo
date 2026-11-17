@@ -108,7 +108,22 @@ export type HechosTriaje = {
   arcadasSinVomitar?: boolean;
   /** Lo que escribió la persona, tal cual. */
   relato?: string;
+  /**
+   * Si ya le había pasado antes y si lo vio un veterinario.
+   *
+   * No es dato de color: algo que pasa por PRIMERA vez, con síntomas, conviene
+   * que lo evalúe alguien aunque no haya ninguna señal roja. Y algo que ya pasó y
+   * nunca se revisó tampoco se resuelve mirándolo otra vez.
+   */
+  antecedente?: Antecedente | null;
 };
+
+export type Antecedente = 'primera_vez' | 'visto_por_vet' | 'sin_ver';
+export const ANTECEDENTES: { id: Antecedente; label: string }[] = [
+  { id: 'primera_vez', label: 'Es la primera vez' },
+  { id: 'visto_por_vet', label: 'Ya le pasó y lo vio un veterinario' },
+  { id: 'sin_ver', label: 'Ya le pasó y nunca lo vio un veterinario' },
+];
 
 /* ── La decisión ───────────────────────────────────────────────── */
 
@@ -295,6 +310,27 @@ export function evaluarTriaje(h: HechosTriaje): Veredicto {
       nivel: 'videoconsulta',
       motivos: ['Ya lleva más de tres días así. Si no mejora solo, conviene que lo vea un veterinario.'],
       reglas: ['lleva-mas-de-72-horas'],
+    };
+  }
+
+  const hayAlgo = (h.sintomas ?? []).length > 0 || (h.relato ?? '').trim().length > 0;
+
+  // Algo que pasa por primera vez conviene que lo vea alguien, aunque sea leve:
+  // nadie sabe todavía si eso es lo normal de ese animal o no.
+  if (h.antecedente === 'primera_vez' && hayAlgo) {
+    return {
+      nivel: 'videoconsulta',
+      motivos: ['Es la primera vez que le pasa: conviene que lo evalúe un veterinario.'],
+      reglas: ['primera-vez'],
+    };
+  }
+
+  // Y lo que ya pasó y nunca se revisó tampoco se resuelve mirándolo de nuevo.
+  if (h.antecedente === 'sin_ver' && hayAlgo) {
+    return {
+      nivel: 'videoconsulta',
+      motivos: ['Ya le había pasado y nunca lo vio un veterinario. Conviene sacarse la duda.'],
+      reglas: ['repetido-sin-ver'],
     };
   }
 

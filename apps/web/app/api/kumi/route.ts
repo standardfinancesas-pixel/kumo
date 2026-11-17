@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
-  ACCION, DESLINDE_VERSION, ESPECIES, SENALES_URGENCIA, SINTOMAS, TOXICOS,
+  ACCION, ANTECEDENTES, DESLINDE_VERSION, ESPECIES, SENALES_URGENCIA, SINTOMAS, TOXICOS,
   evaluarTriaje, type Especie, type HechosTriaje,
 } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
@@ -35,6 +35,7 @@ type Cuerpo = {
   pujaSinOrinar?: boolean;
   arcadasSinVomitar?: boolean;
   relato?: string;
+  antecedente?: string | null;
   petId?: string | null;
   consentimiento?: boolean;
 };
@@ -75,6 +76,7 @@ export async function POST(req: Request) {
     pujaSinOrinar: body.pujaSinOrinar === true,
     arcadasSinVomitar: body.arcadasSinVomitar === true,
     relato: texto(body.relato),
+    antecedente: ANTECEDENTES.some((a) => a.id === body.antecedente) ? (body.antecedente as HechosTriaje['antecedente']) : null,
   };
 
   const veredicto = evaluarTriaje(hechos);
