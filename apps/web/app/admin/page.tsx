@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase-server';
 import AppClient, {
   type AdminProfile, type KpiVM, type DistRow, type SocioRow, type ColaRow, type HistRow,
   type BenefitAdminVM, type PlanAdminVM, type FaqVM, type SettingsVM, type ProviderAdminRow,
-  type ReportRow, type AudienceVM, type SentPushVM, type CobroRow,
+  type ReportRow, type AudienceVM, type SentPushVM, type CobroRow, type TriajeRow,
 } from './AppClient';
 
 const LANDING = urls.landing;
@@ -82,6 +82,7 @@ export default async function Page() {
     { data: sentRows },
     { data: cobroRows },
     { data: tokenRows },
+    { data: triajeRows },
   ] = await Promise.all([
     supabase
       .from('profiles')
@@ -148,7 +149,16 @@ export default async function Page() {
     /* Quién tiene la app con las notificaciones prendidas. Es lo que separa a
        quien va a recibir el push de quien sólo lo va a ver en la campanita. Un
        admin puede leerlos (ver la política "tokens propios - select"). */
-    supabase.from('push_tokens').select('member_id')
+    supabase.from('push_tokens').select('member_id'),
+    /* Las consultas de KUMI. El admin las puede leer por la política
+       "triaje propio - select", que lleva `or is_admin()` justamente para esto.
+       Sin límite de fecha a propósito: mientras las reglas no estén validadas,
+       todas las consultas son material de revisión. */
+    supabase
+      .from('triage_consultas')
+      .select('id, created_at, especie, edad_meses, peso_kg, horas_evolucion, senales, toxicos, sintomas, relato, nivel, motivos, reglas, mensajes, profiles(member_no, full_name), pets(name)')
+      .order('created_at', { ascending: false })
+      .limit(300),
   ]);
   const socioList = profileRows ?? [];
   const planOf = (p: (typeof socioList)[number]) => (Array.isArray(p.plans) ? p.plans[0] : p.plans);
@@ -394,6 +404,36 @@ export default async function Page() {
     };
   });
 
+  /* Las consultas de KUMI. Los embebidos vienen como objeto o como array de uno
+     según la relación, igual que en Cobros: se normaliza acá y no en la pantalla. */
+  type Uno<T> = T | T[] | null;
+  const uno = <T,>(v: Uno<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
+  const triajes: TriajeRow[] = (triajeRows ?? []).map((t) => {
+    const p = uno(t.profiles as Uno<{ full_name: string; member_no: number | null }>);
+    const m = uno(t.pets as Uno<{ name: string }>);
+    return {
+      id: t.id,
+      // Día y hora argentinos: una consulta de triaje a las 23:00 de Buenos Aires
+      // es del día siguiente en UTC, y la fecha es justo lo que se mira al revisar.
+      fecha: `${fmtDay(diaISO(t.created_at))} ${new Date(t.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' })}`,
+      socio: p?.full_name ?? 'Socio dado de baja',
+      memberNo: p?.member_no ?? null,
+      mascota: m?.name ?? null,
+      especie: t.especie,
+      edadMeses: t.edad_meses,
+      pesoKg: t.peso_kg,
+      horas: t.horas_evolucion,
+      senales: t.senales ?? [],
+      toxicos: t.toxicos ?? [],
+      sintomas: t.sintomas ?? [],
+      relato: t.relato,
+      nivel: t.nivel as TriajeRow['nivel'],
+      motivos: t.motivos ?? [],
+      reglas: t.reglas ?? [],
+      mensajes: (t.mensajes ?? []) as { rol: string; texto: string }[],
+    };
+  });
+
   return (
     <AppClient
       // El momento de la consulta viaja con los datos: la pantalla lo muestra ("datos
@@ -402,7 +442,7 @@ export default async function Page() {
       profile={profile} kpi={kpi} dist={dist} socios={socios} cola={cola} hist={hist}
       benefits={benefits} plans={plans} faqs={faqs} settings={settings}
       providers={providers} reports={reports} audiences={audiences} sent={sent}
-      cobros={cobros}
+      cobros={cobros} triajes={triajes}
     />
   );
 }

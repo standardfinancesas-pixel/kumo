@@ -114,10 +114,11 @@ const icons = {
   prestadores: I(<><circle cx="5.5" cy="10" r="1.7" /><circle cx="9.7" cy="6.4" r="1.8" /><circle cx="14.3" cy="6.4" r="1.8" /><circle cx="18.5" cy="10" r="1.7" /><path d="M8 14.2c-1.3 1-1.9 2.4-1.5 3.8.3 1.3 1.5 2 2.9 1.7 1-.2 1.6-.6 2.6-.6s1.6.4 2.6.6c1.4.3 2.6-.4 2.9-1.7.4-1.4-.2-2.8-1.5-3.8-1.1-.9-2.1-1.5-4-1.5s-2.9.6-4 1.5z" /></>),
   moderacion: I(<><path d="M12 3l8 4v5c0 4.4-3.4 7.5-8 9-4.6-1.5-8-4.6-8-9V7z" /><path d="M9.5 12l1.8 1.8L15 10" /></>),
   cobros: I(<><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.6" /><path d="M6 10v4M18 10v4" /></>),
+  triaje: I(<><path d="M5 3v5a4 4 0 0 0 8 0V3" /><path d="M9 12v3a5 5 0 0 0 10 0v-1" /><circle cx="19" cy="10" r="2.2" /></>),
   menu: I(<><line x1="4" y1="7" x2="20" y2="7" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="17" x2="20" y2="17" /></>),
 };
 
-type Screen = 'dashboard' | 'socios' | 'cobros' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'moderacion';
+type Screen = 'dashboard' | 'socios' | 'cobros' | 'reintegros' | 'beneficios' | 'planes' | 'faq' | 'push' | 'ajustes' | 'prestadores' | 'moderacion' | 'triaje';
 const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'dashboard', label: 'Dashboard', icon: icons.dashboard },
   { k: 'socios', label: 'Socios', icon: icons.socios },
@@ -132,6 +133,9 @@ const NAV: { k: Screen; label: string; icon: ReactNode }[] = [
   { k: 'ajustes', label: 'Ajustes', icon: icons.ajustes },
   { k: 'prestadores', label: 'Servicios', icon: icons.prestadores },
   { k: 'moderacion', label: 'Moderación', icon: icons.moderacion },
+  // Último porque no es una tarea del día a día: es la pantalla donde se revisa
+  // el criterio de KUMI, y eso se hace de a ratos y con un veterinario al lado.
+  { k: 'triaje', label: 'KUMI', icon: icons.triaje },
 ];
 
 /* ── Estilos reutilizables ─────────────────────────────────────── */
@@ -2786,15 +2790,242 @@ function Frescura({ traidoEn, conPoll, autoAlVolver }: { traidoEn: string; conPo
   );
 }
 
+/* ── Pantalla: KUMI ────────────────────────────────────────────── */
+
+export type TriajeRow = {
+  id: string; fecha: string; socio: string; memberNo: number | null; mascota: string | null;
+  especie: string; edadMeses: number | null; pesoKg: number | null; horas: number | null;
+  senales: string[]; toxicos: string[]; sintomas: string[]; relato: string | null;
+  nivel: 'guardia' | 'videoconsulta' | 'casa'; motivos: string[]; reglas: string[];
+  mensajes: { rol: string; texto: string }[];
+};
+
+const NIVEL_TONO = {
+  guardia: { label: 'Guardia', fondo: '#fdeceb', borde: '#f3c6c2', tinta: '#b0483f' },
+  videoconsulta: { label: 'Videoconsulta', fondo: '#fdf4e3', borde: '#efdcb4', tinta: '#8a6414' },
+  casa: { label: 'En casa', fondo: '#eaf6ee', borde: '#c3e3cd', tinta: '#2e6b43' },
+} satisfies Record<TriajeRow['nivel'], { label: string; fondo: string; borde: string; tinta: string }>;
+
+/** Las claves de regla son cortas y estables a propósito; acá se leen. */
+function leerRegla(r: string): string {
+  if (r.startsWith('senal:')) return `Señal de urgencia: ${r.slice(6)}`;
+  if (r.startsWith('toxico:')) return `Tóxico: ${r.slice(7)}`;
+  const NOMBRES: Record<string, string> = {
+    'cachorro-menor-3-meses': 'Cachorro de menos de 3 meses con síntomas',
+    'puja-sin-orinar': 'Macho que puja sin orinar',
+    'arcadas-perro-grande': 'Perro de más de 20 kg con arcadas sin vomitar',
+    'gato-sin-comer-mas-de-24h': 'Gato sin comer hace más de 24 horas',
+    'decaimiento-fuerte-o-sin-agua': 'Muy decaído o sin tomar agua',
+    'mayor-de-7-decaido': 'Mayor de 7 años y decaído',
+    'menor-de-3-meses': 'Menor de 3 meses',
+    'come-menos': 'Está comiendo menos',
+    'lleva-mas-de-72-horas': 'Lleva más de 72 horas así',
+    'primera-vez': 'Es la primera vez que le pasa',
+    'repetido-sin-ver': 'Ya le pasó y nunca lo vio un veterinario',
+    'sintomas-sin-urgencia': 'Tiene síntomas, ninguno urgente',
+    'sin-senales': 'Sin señales ni síntomas',
+  };
+  return NOMBRES[r] ?? r;
+}
+
+/**
+ * Las consultas de KUMI, para revisar el criterio.
+ *
+ * No es una pantalla de trabajo diario: es la que convierte "habría que validar
+ * las reglas con un veterinario" en algo que un veterinario pueda hacer. Por eso
+ * arriba va el recuento por regla y no las consultas: lo que hay que decidir no
+ * es si una consulta estuvo bien, es si una REGLA está bien, y para eso hace
+ * falta ver cuántas veces se dispara y qué se lleva puesto cada vez.
+ *
+ * Nada de acá se puede editar, igual que en la base. Un registro de triaje que
+ * se puede cambiar después no sirve como registro.
+ */
+function Triaje({ rows }: { rows: TriajeRow[] }) {
+  const [filtro, setFiltro] = useState<'todas' | TriajeRow['nivel']>('todas');
+  const [abierta, setAbierta] = useState<string | null>(null);
+
+  const porNivel = { guardia: 0, videoconsulta: 0, casa: 0 };
+  const porRegla = new Map<string, { veces: number; niveles: Set<string> }>();
+  for (const r of rows) {
+    porNivel[r.nivel]++;
+    for (const regla of r.reglas) {
+      const e = porRegla.get(regla) ?? { veces: 0, niveles: new Set<string>() };
+      e.veces++; e.niveles.add(r.nivel);
+      porRegla.set(regla, e);
+    }
+  }
+  const reglas = [...porRegla.entries()].sort((a, b) => b[1].veces - a[1].veces);
+  const lista = filtro === 'todas' ? rows : rows.filter((r) => r.nivel === filtro);
+
+  return (
+    <>
+      <h1 style={h1}>KUMI</h1>
+      <p style={sub}>
+        Las consultas de orientación veterinaria y la regla que decidió cada una. Esta pantalla
+        existe para revisar el criterio con un veterinario matriculado: no se edita nada.
+      </p>
+
+      {rows.length === 0 ? (
+        <div style={{ ...card, color: '#8781a0', fontSize: 14 }}>Todavía no hay consultas.</div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', gap: 12, marginBottom: 22, flexWrap: 'wrap' }}>
+            {(['guardia', 'videoconsulta', 'casa'] as const).map((n) => (
+              <div key={n} style={{ ...card, flex: '1 1 180px', background: NIVEL_TONO[n].fondo, borderColor: NIVEL_TONO[n].borde }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: NIVEL_TONO[n].tinta, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{NIVEL_TONO[n].label}</div>
+                <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 30, color: NIVEL_TONO[n].tinta, lineHeight: 1.15 }}>{porNivel[n]}</div>
+                <div style={{ fontSize: 12.5, color: '#5b5670' }}>{Math.round((porNivel[n] / rows.length) * 100)}% de {rows.length}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ ...card, padding: 0, marginBottom: 22, overflow: 'hidden' }}>
+            <div style={{ padding: '15px 18px 2px' }}>
+              <div style={{ fontFamily: '"Baloo 2"', fontWeight: 800, fontSize: 18 }}>Qué reglas se disparan</div>
+              <div style={{ fontSize: 13, color: '#8781a0', marginBottom: 6 }}>
+                Esta es la lista para repasar con el veterinario: cada línea es una decisión escrita que se puede cambiar.
+              </div>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Regla</th><th style={th}>Veces</th><th style={th}>A dónde llevó</th></tr></thead>
+              <tbody>
+                {reglas.map(([clave, e]) => (
+                  <tr key={clave}>
+                    <td style={td}>
+                      {leerRegla(clave)}
+                      <div style={{ fontSize: 11.5, color: '#a29dba', fontFamily: 'ui-monospace, monospace' }}>{clave}</div>
+                    </td>
+                    <td style={{ ...td, fontWeight: 700 }}>{e.veces}</td>
+                    <td style={td}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        {[...e.niveles].map((n) => (
+                          <span key={n} style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: NIVEL_TONO[n as TriajeRow['nivel']].fondo, color: NIVEL_TONO[n as TriajeRow['nivel']].tinta }}>
+                            {NIVEL_TONO[n as TriajeRow['nivel']].label}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{ display: 'flex', gap: 7, marginBottom: 14, flexWrap: 'wrap' }}>
+            {(['todas', 'guardia', 'videoconsulta', 'casa'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFiltro(f)}
+                style={{
+                  border: `1.5px solid ${filtro === f ? 'rgb(93,84,145)' : '#e6e3f0'}`,
+                  background: filtro === f ? 'rgb(93,84,145)' : '#fff',
+                  color: filtro === f ? '#fff' : '#5b5670',
+                  fontFamily: '"DM Sans"', fontWeight: 600, fontSize: 13, padding: '8px 15px', borderRadius: 999, cursor: 'pointer',
+                }}
+              >
+                {f === 'todas' ? `Todas (${rows.length})` : `${NIVEL_TONO[f].label} (${porNivel[f]})`}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {lista.map((c) => {
+              const t = NIVEL_TONO[c.nivel];
+              const open = abierta === c.id;
+              return (
+                <div key={c.id} style={{ ...card, padding: 0, overflow: 'hidden' }}>
+                  <button
+                    onClick={() => setAbierta(open ? null : c.id)}
+                    style={{ width: '100%', background: 'none', border: 'none', padding: '14px 18px', cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontFamily: '"DM Sans"' }}
+                  >
+                    <span style={{ fontSize: 11.5, fontWeight: 700, padding: '4px 11px', borderRadius: 999, background: t.fondo, color: t.tinta, flex: 'none' }}>{t.label}</span>
+                    <span style={{ fontSize: 14, fontWeight: 600, color: '#211e33' }}>
+                      {c.socio}{c.memberNo != null && <span style={{ color: '#a29dba', fontWeight: 400 }}> · socio {c.memberNo}</span>}
+                    </span>
+                    <span style={{ fontSize: 13, color: '#8781a0' }}>
+                      {c.mascota ? `${c.mascota} · ` : ''}{c.especie}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: '#a29dba', marginLeft: 'auto' }}>{c.fecha}</span>
+                    <span style={{ fontSize: 13, color: '#5b5670', flexBasis: '100%' }}>{c.reglas.map(leerRegla).join(' · ') || 'sin reglas'}</span>
+                  </button>
+
+                  {open && (
+                    <div style={{ borderTop: '1px solid #eeecf5', padding: 18, display: 'grid', gap: 18, gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)' }}>
+                      <div>
+                        <Rotulo>La ficha</Rotulo>
+                        <Dato k="Especie" v={c.especie} />
+                        <Dato k="Edad" v={c.edadMeses == null ? '—' : `${c.edadMeses} meses`} />
+                        <Dato k="Peso" v={c.pesoKg == null ? '—' : `${c.pesoKg} kg`} />
+                        <Dato k="Hace cuánto" v={c.horas == null ? '—' : `${c.horas} horas`} />
+                        <Dato k="Señales" v={c.senales.join(', ') || '—'} />
+                        <Dato k="Tóxicos" v={c.toxicos.join(', ') || '—'} />
+                        <Dato k="Síntomas" v={c.sintomas.join(', ') || '—'} />
+
+                        <div style={{ marginTop: 14 }}>
+                          <Rotulo>Lo que se le dijo</Rotulo>
+                          <ul style={{ margin: 0, paddingLeft: 17, fontSize: 13, lineHeight: 1.55, color: '#3f3a55' }}>
+                            {c.motivos.map((m, i) => <li key={i}>{m}</li>)}
+                          </ul>
+                        </div>
+                      </div>
+
+                      <div>
+                        <Rotulo>La conversación</Rotulo>
+                        {c.mensajes.length === 0 ? (
+                          <div style={{ fontSize: 13, color: '#a29dba' }}>
+                            Vino por el formulario de pastillas, no hubo charla.
+                            {c.relato && <div style={{ marginTop: 8, color: '#3f3a55' }}>“{c.relato}”</div>}
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                            {c.mensajes.map((m, i) => (
+                              <div
+                                key={i}
+                                style={{
+                                  alignSelf: m.rol === 'socio' ? 'flex-end' : 'flex-start',
+                                  maxWidth: '88%', borderRadius: 12, padding: '8px 11px', fontSize: 13, lineHeight: 1.5,
+                                  background: m.rol === 'socio' ? 'rgb(93,84,145)' : '#f7f6fa',
+                                  color: m.rol === 'socio' ? '#fff' : '#211e33',
+                                }}
+                              >
+                                {m.texto}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+const Rotulo = ({ children }: { children: ReactNode }) => (
+  <div style={{ fontSize: 11, fontWeight: 700, color: '#a29dba', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 7 }}>{children}</div>
+);
+const Dato = ({ k, v }: { k: string; v: string }) => (
+  <div style={{ display: 'flex', gap: 10, fontSize: 13, padding: '3px 0', color: '#211e33' }}>
+    <span style={{ color: '#8781a0', minWidth: 104, flex: 'none' }}>{k}</span>
+    <span>{v}</span>
+  </div>
+);
+
 /* ── Shell ─────────────────────────────────────────────────────── */
 export default function AppClient({
-  profile, kpi, dist, socios, cola, hist, benefits, plans, faqs, settings, providers, reports, audiences, sent, cobros, traidoEn,
+  profile, kpi, dist, socios, cola, hist, benefits, plans, faqs, settings, providers, reports, audiences, sent, cobros, triajes, traidoEn,
 }: {
   /** Cuándo el servidor trajo todo esto. Lo manda la página, que es la que consulta. */
   traidoEn: string;
   profile: AdminProfile; kpi: KpiVM; dist: DistRow[]; socios: SocioRow[]; cola: ColaRow[]; hist: HistRow[];
   benefits: BenefitAdminVM[]; plans: PlanAdminVM[]; faqs: FaqVM[]; settings: SettingsVM;
   providers: ProviderAdminRow[]; reports: ReportRow[]; audiences: AudienceVM[]; sent: SentPushVM[]; cobros: CobroRow[];
+  triajes: TriajeRow[];
 }) {
   const router = useRouter();
   const [screen, setScreen] = useState<Screen>('dashboard');
@@ -2850,6 +3081,7 @@ export default function AppClient({
           {screen === 'prestadores' && <Prestadores providers={providers} />}
           {screen === 'cobros' && <Cobros cobros={cobros} />}
           {screen === 'moderacion' && <Moderacion reports={reports} />}
+          {screen === 'triaje' && <Triaje rows={triajes} />}
         </div>
       </div>
     </div>
