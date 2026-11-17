@@ -52,7 +52,7 @@ importers:
         version: 2.2.0(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.9)(@types/react@19.2.18)(react@19.2.3))
       '@supabase/supabase-js':
         specifier: ^2.45.4
-        version: 2.112.3
+        version: 2.112.3(@opentelemetry/api@1.10.0)
       expo:
         specifier: ~57.0.17
         version: 57.0.17(@babel/core@7.29.7)(@expo/dom-webview@57.0.1)(@expo/metro-runtime@57.0.14)(react-dom@19.2.3(react@19.2.3))(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.9)(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)
@@ -129,6 +129,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@anthropic-ai/sdk':
+        specifier: ^1.9.0
+        version: 1.9.0(zod@3.25.76)
       '@fontsource/baloo-2':
         specifier: ^5.1.0
         version: 5.3.0
@@ -140,10 +143,10 @@ importers:
         version: link:../../packages/shared
       '@supabase/ssr':
         specifier: ^0.12.4
-        version: 0.12.4(@supabase/supabase-js@2.112.3)
+        version: 0.12.4(@supabase/supabase-js@2.112.3(@opentelemetry/api@1.10.0))
       '@supabase/supabase-js':
         specifier: ^2.45.4
-        version: 2.112.3
+        version: 2.112.3(@opentelemetry/api@1.10.0)
       leaflet:
         specifier: ^1.9.4
         version: 1.9.4
@@ -152,7 +155,7 @@ importers:
         version: 3.4.0
       next:
         specifier: 15.5.23
-        version: 15.5.23(babel-plugin-react-compiler@1.0.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+        version: 15.5.23(@opentelemetry/api@1.10.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
       react:
         specifier: 19.0.0
         version: 19.0.0
@@ -192,7 +195,7 @@ importers:
     dependencies:
       '@supabase/supabase-js':
         specifier: ^2.45.4
-        version: 2.112.3
+        version: 2.112.3(@opentelemetry/api@1.10.0)
     devDependencies:
       '@types/node':
         specifier: ^22.20.1
@@ -206,6 +209,15 @@ packages:
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
     engines: {node: '>=10'}
+
+  '@anthropic-ai/sdk@1.9.0':
+    resolution: {integrity: sha512-xDu4za3B+rK+5ZI8wLLoosiIuwi1ktZk/3L3KKNahwO50O34H+622hly8JdXzaEerLQDhsqwVzp81Nrw80BYHg==}
+    hasBin: true
+    peerDependencies:
+      zod: ^3.25.0 || ^4.0.0
+    peerDependenciesMeta:
+      zod:
+        optional: true
 
   '@babel/code-frame@7.29.7':
     resolution: {integrity: sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==}
@@ -1060,6 +1072,10 @@ packages:
   '@nodelib/fs.walk@1.2.8':
     resolution: {integrity: sha512-oGB+UxlgWcgQkgwo8GcEGwemoTFt3FIO9ababBmaGwXIoBKZ+GTy0pP185beGg7Llih/NSHSV2XAs1lnznocSg==}
     engines: {node: '>= 8'}
+
+  '@opentelemetry/api@1.10.0':
+    resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
+    engines: {node: '>=8.0.0'}
 
   '@react-native-async-storage/async-storage@2.2.0':
     resolution: {integrity: sha512-gvRvjR5JAaUZF8tv2Kcq/Gbt3JHwbKFYfmb445rhOj6NUMx3qPLixmDx5pZAyb9at1bYvJ4/eTUipU5aki45xw==}
@@ -2499,6 +2515,10 @@ packages:
   json-parse-better-errors@1.0.2:
     resolution: {integrity: sha512-mrqyZKfX5EhL7hvqcV6WG1yYjnjeuYDzDhhcAAUrq8Po85NBQBJP+ZDUT75qZQ98IkUoBqdkExkukOU7Ts2wrw==}
 
+  json-schema-to-ts@3.1.1:
+    resolution: {integrity: sha512-+DWg8jCJG2TEnpy7kOm/7/AxaYoaRbjVB4LFZLySZlWn8exGs3A4OLJR966cVvU26N7X9TWxl+Jsw7dzAqKT6g==}
+    engines: {node: '>=16'}
+
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
 
@@ -3528,6 +3548,9 @@ packages:
   tr46@0.0.3:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
 
+  ts-algebra@2.0.0:
+    resolution: {integrity: sha512-FPAhNPFMrkwz76P7cdjdmiShwMynZYN6SgOujD1urY4oNm80Ou9oMdmbR45LotcKOXoy7wSmHkRFE6Mxbrhefw==}
+
   ts-api-utils@2.5.0:
     resolution: {integrity: sha512-OJ/ibxhPlqrMM0UiNHJ/0CKQkoKF243/AEmplt3qpRgkW8VG7IfOS41h7V8TjITqdByHzrjcS/2si+y4lIh8NA==}
     engines: {node: '>=18.12'}
@@ -3781,6 +3804,14 @@ packages:
 snapshots:
 
   '@alloc/quick-lru@5.2.0': {}
+
+  '@anthropic-ai/sdk@1.9.0(zod@3.25.76)':
+    dependencies:
+      '@opentelemetry/api': 1.10.0
+      json-schema-to-ts: 3.1.1
+      standardwebhooks: 1.0.0
+    optionalDependencies:
+      zod: 3.25.76
 
   '@babel/code-frame@7.29.7':
     dependencies:
@@ -4867,6 +4898,8 @@ snapshots:
       '@nodelib/fs.scandir': 2.1.5
       fastq: 1.20.1
 
+  '@opentelemetry/api@1.10.0': {}
+
   '@react-native-async-storage/async-storage@2.2.0(react-native@0.86.3(@babel/core@7.29.7)(@react-native-community/cli@13.6.9)(@types/react@19.2.18)(react@19.2.3))':
     dependencies:
       merge-options: 3.0.4
@@ -5165,9 +5198,9 @@ snapshots:
       '@supabase/phoenix': 0.4.5
       tslib: 2.8.1
 
-  '@supabase/ssr@0.12.4(@supabase/supabase-js@2.112.3)':
+  '@supabase/ssr@0.12.4(@supabase/supabase-js@2.112.3(@opentelemetry/api@1.10.0))':
     dependencies:
-      '@supabase/supabase-js': 2.112.3
+      '@supabase/supabase-js': 2.112.3(@opentelemetry/api@1.10.0)
       cookie: 1.1.1
 
   '@supabase/storage-js@2.112.3':
@@ -5175,13 +5208,15 @@ snapshots:
       iceberg-js: 0.8.1
       tslib: 2.8.1
 
-  '@supabase/supabase-js@2.112.3':
+  '@supabase/supabase-js@2.112.3(@opentelemetry/api@1.10.0)':
     dependencies:
       '@supabase/auth-js': 2.112.3
       '@supabase/functions-js': 2.112.3
       '@supabase/postgrest-js': 2.112.3
       '@supabase/realtime-js': 2.112.3
       '@supabase/storage-js': 2.112.3
+    optionalDependencies:
+      '@opentelemetry/api': 1.10.0
 
   '@swc/helpers@0.5.15':
     dependencies:
@@ -6592,6 +6627,11 @@ snapshots:
   json-parse-better-errors@1.0.2:
     optional: true
 
+  json-schema-to-ts@3.1.1:
+    dependencies:
+      '@babel/runtime': 7.29.7
+      ts-algebra: 2.0.0
+
   json-schema-traverse@0.4.1: {}
 
   json-stable-stringify-without-jsonify@1.0.1: {}
@@ -6982,7 +7022,7 @@ snapshots:
     dependencies:
       content-type: 2.1.0
 
-  next@15.5.23(babel-plugin-react-compiler@1.0.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
+  next@15.5.23(@opentelemetry/api@1.10.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0):
     dependencies:
       '@next/env': 15.5.23
       '@swc/helpers': 0.5.15
@@ -7000,6 +7040,7 @@ snapshots:
       '@next/swc-linux-x64-musl': 15.5.23
       '@next/swc-win32-arm64-msvc': 15.5.23
       '@next/swc-win32-x64-msvc': 15.5.23
+      '@opentelemetry/api': 1.10.0
       babel-plugin-react-compiler: 1.0.0
       sharp: 0.34.5
     transitivePeerDependencies:
@@ -7728,6 +7769,8 @@ snapshots:
   toqr@0.1.1: {}
 
   tr46@0.0.3: {}
+
+  ts-algebra@2.0.0: {}
 
   ts-api-utils@2.5.0(typescript@5.9.3):
     dependencies:
