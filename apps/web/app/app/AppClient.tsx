@@ -4500,7 +4500,14 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
                       ))}
                       <Rapida onClick={() => {
                         if (toxicos.length > 0) { responder(toxicos.join(', ')); void evaluar(hechosDe()); }
-                        else { responder('Nada de eso'); seguirA('edad'); }
+                        else {
+                          responder('Nada de eso');
+                          /* Si la edad vino de la ficha es EXACTA (sale de la fecha
+                             de nacimiento): preguntarla por rangos acá la pisaría con
+                             una aproximación, que es lo contrario de lo que se buscaba
+                             al elegir la mascota. */
+                          seguirA(edadMeses != null ? 'cuando' : 'edad');
+                        }
                       }}>{toxicos.length > 0 ? `Seguir con ${toxicos.length}` : 'Nada de eso'}</Rapida>
                     </>
                   )}
