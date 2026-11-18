@@ -236,7 +236,7 @@ export default async function Page() {
   ] = await Promise.all([
     supabase
       .from('profiles')
-      .select('member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price, refund_pct, tope_mensual, tope_anual)')
+      .select('role, member_no, full_name, email, phone, address, city, province, lat, lng, geo_origen, dni, status, paid_until, mp_subscription_status, addon_odonto, monthly_fee_agreed, bank_holder, bank_holder_dni, bank_cuit, bank_name, bank_cbu, bank_alias, card_brand, card_last4, notifs_seen_at, photo_url, plans(name, base_price, refund_pct, tope_mensual, tope_anual)')
       .eq('id', auth.user.id)
       .single(),
     supabase
@@ -542,5 +542,19 @@ export default async function Page() {
   const guardados: string[] = (favRows ?? []).map((f) => f.provider_id);
   const planes: PlanVM[] = (planRows ?? []).map((p) => ({ id: p.id, name: p.name, price: p.base_price, tagline: p.tagline }));
 
-  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} bloqueados={bloqueados} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} deslindeAceptado={deslindeAceptado} />;
+  /*
+   * KUMI es del plan. Decisión del club (18/11/2026).
+   *
+   * El admin pasa igual, con el mismo criterio que el resto del proyecto: no es
+   * socio, su acceso no depende de la cuota (ver el comentario del middleware y
+   * los `or is_admin()` de la RLS). Sin esto, los únicos que necesitan probar
+   * KUMI —el club y nosotros— serían los únicos que no pueden verlo.
+   *
+   * Esconder la burbuja no alcanza y no es lo que corta: la ruta `/api/kumi`
+   * vuelve a mirar esto del lado del servidor, porque cada vuelta de KUMI le
+   * cuesta plata al club y un botón escondido no es un límite.
+   */
+  const kumiHabilitado = !cuota.debePagar || profileRow.role === 'admin';
+
+  return <AppClient profile={profile} pets={pets} reintegros={reintegros} contacts={contacts} providers={providers} benefits={benefits} posts={posts} negocios={negocios} notifInput={notifInput} bloqueados={bloqueados} guardados={guardados} reviews={reviews} misLikes={misLikes} planes={planes} cuota={cuota} pagos={pagos} centro={{ lat: desde.lat, lng: desde.lng, etiqueta: etiquetaCentro(desde.origen) }} deslindeAceptado={deslindeAceptado} kumiHabilitado={kumiHabilitado} />;
 }

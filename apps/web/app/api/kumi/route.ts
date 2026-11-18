@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { NextResponse } from 'next/server';
 import {
   ACCION, ANTECEDENTES, DESLINDE_VERSION, ESPECIES, SENALES_URGENCIA, SINTOMAS, TOXICOS,
-  evaluarTriaje, senalesEnTexto, type Especie, type HechosTriaje,
+  evaluarTriaje, hoyISO, senalesEnTexto, type Especie, type HechosTriaje,
 } from '@kumo/shared';
 import { createClient } from '@/lib/supabase-server';
 import { getServiceClient } from '@/lib/supabase-service';
@@ -201,6 +201,24 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return NextResponse.json({ error: 'Entrá a tu cuenta para usar KUMI.' }, { status: 401 });
+
+  /*
+   * KUMI es del plan. Decisión del club (18/11/2026).
+   *
+   * Se corta ACÁ y no solo escondiendo la burbuja: un botón que no se ve no es un
+   * límite —la ruta queda igual de abierta para cualquiera que sepa su nombre— y
+   * cada vuelta de conversación le cuesta plata al club de verdad.
+   *
+   * El admin pasa igual, con el mismo criterio que el resto del proyecto: no es
+   * socio y su acceso no depende de la cuota (ver los `or is_admin()` de la RLS y
+   * el comentario del middleware). Sin esto, los únicos que necesitan probar KUMI
+   * serían justo los únicos que no pueden usarlo.
+   */
+  const { data: perfil } = await supabase.from('profiles').select('role, paid_until').eq('id', auth.user.id).single();
+  const alDia = !!perfil?.paid_until && perfil.paid_until >= hoyISO();
+  if (!alDia && perfil?.role !== 'admin') {
+    return NextResponse.json({ error: 'KUMI viene con el plan.' }, { status: 403 });
+  }
 
   const body = (await req.json().catch(() => null)) as Cuerpo | null;
   if (!body?.consentimiento) {

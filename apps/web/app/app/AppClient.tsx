@@ -5246,7 +5246,7 @@ function Notificaciones({ go, groups, visto, marcarLeidas, onAbrirHilo }: { go: 
 
 /* ── Shell ─────────────────────────────────────────────────────── */
 
-export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, bloqueados, guardados, reviews, misLikes, planes, cuota, pagos, centro, deslindeAceptado }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; /** A quién bloqueó el socio, para poder deshacerlo desde Mi perfil. */ bloqueados: Bloqueado[]; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** Si ya aceptó la versión vigente del deslinde de KUMI: la constancia sale de sus consultas anteriores. */ deslindeAceptado: boolean; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
+export default function AppClient({ profile, pets, reintegros, contacts, providers, benefits, posts, negocios, notifInput, bloqueados, guardados, reviews, misLikes, planes, cuota, pagos, centro, deslindeAceptado, kumiHabilitado }: { profile: Profile; pets: Pet[]; reintegros: Reint[]; contacts: EmergencyContact[]; providers: ProviderVM[]; benefits: BenefitVM[]; posts: ForumPost[]; negocios: MiNegocio[]; notifInput: NotifInput; /** A quién bloqueó el socio, para poder deshacerlo desde Mi perfil. */ bloqueados: Bloqueado[]; guardados: string[]; reviews: Record<string, Review[]>; misLikes: MisLikes; planes: PlanVM[]; cuota: CuotaVM; pagos: PagoVM[]; /** Si ya aceptó la versión vigente del deslinde de KUMI: la constancia sale de sus consultas anteriores. */ deslindeAceptado: boolean; /** Si le corresponde ver KUMI: lo decide el servidor (plan al día, o admin). */ kumiHabilitado: boolean; /** El centro del mapa: el domicilio del socio, o el centro de CABA si no se pudo resolver (y ahi `etiqueta` es null, porque no es la casa de nadie). */ centro: { lat: number; lng: number; etiqueta: string | null } }) {
   const [screen, setScreen] = useState<Screen>('inicio');
   const [petIdx, setPetIdx] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
@@ -5371,7 +5371,9 @@ export default function AppClient({ profile, pets, reintegros, contacts, provide
           en cualquier pantalla, no ser un lugar al que hay que ir. `subido` lo
           corre para arriba en Foros, que ya tiene su propio botón flotante en esa
           esquina. */}
-      <Kumi profile={profile} pets={pets} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} centro={centro} deslindeAceptado={deslindeAceptado} />
+      {/* KUMI es del plan: quien no lo tiene no ve ni la burbuja. Lo decide el
+          servidor, que es el que sabe si la cuota está al día. */}
+      {kumiHabilitado && <Kumi profile={profile} pets={pets} pago={pago} onPlan={() => setPlanAbierto(true)} subido={pantalla === 'foros'} centro={centro} deslindeAceptado={deslindeAceptado} />}
     </div>
   );
 }
