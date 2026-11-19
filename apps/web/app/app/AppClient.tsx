@@ -4438,10 +4438,6 @@ function Kumi({ profile, pets, pago, onPlan, subido, centro, deslindeAceptado }:
           </div>
 
           <div style={{ flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ background: TONO_NIVEL.guardia.fondo, border: `1px solid ${TONO_NIVEL.guardia.borde}`, borderRadius: 12, padding: '9px 12px', fontSize: 11.5, lineHeight: 1.45, color: TONO_NIVEL.guardia.tinta }}>
-              <strong>Si no respira, convulsiona o se desmayó: andá a una guardia ahora.</strong> No esperes a terminar esto.
-            </div>
-
             <div style={{ alignSelf: 'flex-start', maxWidth: '88%', background: 'rgb(247,246,250)', borderRadius: 14, padding: '10px 13px', fontSize: 13.5, lineHeight: 1.5 }}>
               Hola {profile.firstName}, soy KUMI. Te hago unas preguntas cortas y te oriento. No reemplazo al veterinario.
             </div>
