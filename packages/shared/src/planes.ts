@@ -19,8 +19,18 @@ export const cuotaMensual = (basePrice: number, addonOdonto: boolean) =>
 
 /* ── Lo que la tarjeta del plan promete ────────────────────────── */
 
-/** Las líneas que ya no se escriben a mano, vengan como vengan redactadas. */
-const ES_GENERADA = /^\s*(reintegros?|topes?)\b/i;
+/**
+ * Las líneas que ya no se escriben a mano, vengan como vengan redactadas.
+ *
+ * Mira la FORMA de la línea generada —"Reintegro 60% del gasto", "Tope mensual
+ * $10.000"—, o sea el número o el período pegado a la palabra, y no la primera
+ * palabra sola. Antes alcanzaba con empezar con "Reintegro" para que la línea
+ * se descartara, y eso se comía beneficios de verdad que no hablan del % del
+ * plan: "Reintegro en Alimento y peluquería del 10% con tope de $10.000" se
+ * guardaba bien desde el panel y no aparecía en ningún lado, ni en la landing
+ * ni en el alta. Un beneficio que no se ve es igual a uno que no existe.
+ */
+const ES_GENERADA = /^\s*(reintegros?\s*:?\s*(del?\s+)?\d|topes?\s*:?\s*(mensual|anual)(es)?\b)/i;
 
 const pesos = (n: number) => `$${n.toLocaleString('es-AR')}`;
 
