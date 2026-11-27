@@ -71,17 +71,19 @@ export default function Alta({
     (async () => {
       const { data: filas } = await supabase
         .from('plans')
-        .select('id, name, base_price, tagline, perks, featured')
+        .select('id, name, base_price, tagline, perks, featured, refund_pct, tope_mensual, tope_anual')
         .order('base_price', { ascending: true });
       if (!vivo) return;
       if (filas?.length) {
         setPlanes(filas.map((f) => ({
           id: String(f.id), name: String(f.name), basePrice: Number(f.base_price),
           tagline: String(f.tagline ?? ''), perks: (f.perks as string[] | null) ?? [], featured: f.featured === true,
+          refundPct: Number(f.refund_pct ?? 0), topeMensual: Number(f.tope_mensual ?? 0), topeAnual: Number(f.tope_anual ?? 0),
         })));
       } else {
         setPlanes(data.plans.map((p) => ({
           id: p.id, name: p.name, basePrice: p.basePrice, tagline: p.tagline ?? '', perks: p.perks ?? [], featured: !!p.featured,
+          refundPct: p.refundPct ?? 0, topeMensual: p.topeMensual ?? 0, topeAnual: p.topeAnual ?? 0,
         })));
       }
     })();

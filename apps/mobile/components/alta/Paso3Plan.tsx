@@ -1,10 +1,19 @@
 import { TouchableOpacity, View } from 'react-native';
-import { colors, cuotaMensual, ODONTO_PRECIO, esGratis, planElegido, PLAN_GRATUITO, type EleccionPlan } from '@kumo/shared';
+import { colors, cuotaMensual, ODONTO_PRECIO, esGratis, planElegido, perksDelPlan, PLAN_GRATUITO, type EleccionPlan } from '@kumo/shared';
 import { Texto as Text, BRAND, INK, LIME, MUTED } from '../ui/Texto';
 import { Punto, Tilde } from '../ui/Controles';
 
-/** Lo que la app necesita saber de un plan. Sale de la base, no del código. */
-export type PlanAlta = { id: string; name: string; basePrice: number; tagline: string; perks: string[]; featured: boolean };
+/**
+ * Lo que la app necesita saber de un plan. Sale de la base, no del código.
+ *
+ * Los números de plata van acá porque la tarjeta no los muestra tal cual: con
+ * ellos `perksDelPlan` arma el renglón del reintegro, igual que la web. Sin
+ * pedirlos, la pantalla no tiene con qué prometer lo que el plan devuelve.
+ */
+export type PlanAlta = {
+  id: string; name: string; basePrice: number; tagline: string; perks: string[]; featured: boolean;
+  refundPct: number; topeMensual: number; topeAnual: number;
+};
 
 const plata = (n: number) => '$' + n.toLocaleString('es-AR');
 
@@ -89,7 +98,12 @@ export default function Paso3Plan({
               </Text>
               {p.tagline ? <Text style={{ fontSize: 13.5, color: '#5b5670', marginTop: 4 }}>{p.tagline}</Text> : null}
               <View style={{ gap: 6, marginTop: 12 }}>
-                {p.perks.map((perk) => (
+                {/* Los mismos renglones que la web, armados por la misma función: el
+                    del reintegro va primero y se escribe solo con el % del plan. El
+                    tope anual se esconde acá igual que en la tarjeta de la web —es un
+                    número grande que distrae al lado del que importa—; sigue a la
+                    vista en la pantalla de reintegros. */}
+                {perksDelPlan(p).filter((perk) => !/^Tope anual/i.test(perk)).map((perk) => (
                   <View key={perk} style={{ flexDirection: 'row', gap: 8 }}>
                     <Text style={{ color: BRAND, fontWeight: '800', fontSize: 13 }}>✓</Text>
                     <Text style={{ fontSize: 13, color: '#4a4560', flex: 1 }}>{perk}</Text>
